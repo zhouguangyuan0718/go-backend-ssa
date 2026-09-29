@@ -15,6 +15,7 @@ import (
 	"go-backend-ssa/objw"
 	"go-backend-ssa/pgo"
 	"go-backend-ssa/pgoir"
+	"go-backend-ssa/pkginit"
 	"go-backend-ssa/position"
 	"go-backend-ssa/reflectdata"
 	"go-backend-ssa/rttype"
@@ -314,6 +315,12 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	}
 	if len(transformed) != 1 || transformed[0].Name.Curfn.Sym().Name != "Captures" || transformed[0].Loop.Op() != ir.ORANGE || graph.CurFunc != nil {
 		t.Fatal("public loop capture rewrite failed", transformed)
+	}
+
+	initialization := pkginit.NewContext(writer)
+	initialization.MakeTask()
+	if len(initialization.InstrumentGlobalsMap) != 0 || graph.CurFunc != nil || pkginit.GetRedzoneSizeForGlobal(33) != 63 {
+		t.Fatal("public initialization state or redzone calculation failed")
 	}
 
 }

@@ -113,6 +113,16 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			}
 			prov.SignatureSources[call.Source] = signatureSources[call.Source]
 		}
+		for _, literal := range u.Literals {
+			data, err := s.Read(literal.Source)
+			if err != nil {
+				return nil, nil, err
+			}
+			if prov.SignatureSources == nil {
+				prov.SignatureSources = map[string]string{}
+			}
+			prov.SignatureSources[literal.Source] = hash(data)
+		}
 		if u.WholeFile {
 			prov.Rule = "whole-file-and-zero-values-v1"
 			prov.Declarations = append(append([]string{"*"}, u.ZeroValues...), u.ReadTables...)
@@ -203,6 +213,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		return nil, nil, err
 	}
 	if err := checkCallAdapters(units, before, outpkg, imports); err != nil {
+		return nil, nil, err
+	}
+	if err := checkLiteralAdapters(units, before, outpkg, imports); err != nil {
 		return nil, nil, err
 	}
 	after.packages[dest] = outpkg

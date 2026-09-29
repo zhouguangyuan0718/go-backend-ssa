@@ -9,7 +9,7 @@ import (
 // identity, including function values captured by closures and initializers.
 // Reviewed parameter methods participate in the same fixed point. Other
 // receiver methods obtain state from their receiver and keep their signature.
-func statefulFunctions(files []*ast.File, info *types.Info, candidates, states, external map[types.Object]string, owners []*OwnerRule, units []Unit) map[types.Object]string {
+func statefulFunctions(files []*ast.File, info *types.Info, candidates, states, external map[types.Object]string, owners []*OwnerRule, units []Unit, literals map[ast.Node]string) map[types.Object]string {
 	needed := map[types.Object]string{}
 	deps := map[types.Object][]types.Object{}
 	for i, f := range files {
@@ -26,7 +26,7 @@ func statefulFunctions(files []*ast.File, info *types.Info, candidates, states, 
 			if fn.Recv != nil {
 				key = receiverType(fn) + "." + key
 			}
-			if hasOwnedAllocation(fn.Body, info, owners) || units[i].Checks[key] != "" || len(units[i].Nullable[key]) != 0 {
+			if hasOwnedAllocation(fn.Body, info, owners) || hasBoundLiteral(fn.Body, literals) || units[i].Checks[key] != "" || len(units[i].Nullable[key]) != 0 {
 				needed[obj] = candidates[obj]
 			}
 			ast.Inspect(fn.Body, func(n ast.Node) bool {

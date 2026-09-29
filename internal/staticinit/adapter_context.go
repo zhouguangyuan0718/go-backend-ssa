@@ -41,6 +41,17 @@ func NewContext(tc *typecheck.Context, rd *reflectdata.Context) *Context {
 func (c *Context) NewSchedule() *Schedule {
 	return &Schedule{compilation: c, Plans: make(map[ir.Node]*Plan), Temps: make(map[ir.Node]*ir.Name)}
 }
+
+// BindSchedule attaches a fresh native value literal to this compilation. Its
+// original maps are retained. A running or already bound schedule cannot move
+// between contexts.
+func (c *Context) BindSchedule(s Schedule) Schedule {
+	if c == nil || s.compilation != nil || s.seenMutation || len(s.Out) != 0 || s.Plans == nil || s.Temps == nil || len(s.Plans) != 0 || len(s.Temps) != 0 {
+		panic("schedule binding requires a fresh initialized value")
+	}
+	s.compilation = c
+	return s
+}
 func (c *Context) fatalf(f string, a ...any) { panic(fmt.Errorf(f, a...)) }
 func (c *Context) fatalfAt(pos src.XPos, f string, a ...any) {
 	panic(fmt.Errorf("%s: %s", c.Typecheck.IR.Base.FmtPos(pos), fmt.Sprintf(f, a...)))

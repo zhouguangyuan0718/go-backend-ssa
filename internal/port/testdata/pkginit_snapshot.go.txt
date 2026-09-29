@@ -1,0 +1,36 @@
+package pkginit
+import("fmt";"encoding/json";"encoding/binary";"os";"strings";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_LOOPVAR";"IMPORT_NODER";EXPAND_RUNTIME AUTO_IMPORT PKGINIT_DRIVER_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ mode:=os.Getenv("SYNCGO_TARGET")
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.SplitN(mode,"-",2)[0],8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ path:="example/p";switch{case strings.HasSuffix(mode,"-main"):path="main";case strings.HasSuffix(mode,"-runtime"):path="runtime";case strings.HasSuffix(mode,"-fuzz"):path="internal/fuzz"}
+ TY.LocalPkg=TY.NewPkg(path,"p");LINK.Pkgpath=path
+ RD_FLAG.ASan=strings.Contains(mode,"-asan")||strings.HasSuffix(mode,"-fuzz")
+ data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
+ PKGINIT_READ
+ PKGINIT_DRIVER
+ if strings.Contains(mode,"-deps"){
+ dep:=TY.NewPkg("example/dep","dep");n:=GRAPH.NewNameAt(AUTO_POS,dep.Lookup(".inittask"),TY.Types[types.TUINT8]);n.Class=ir.PEXTERN;n.Sym().Def=n
+ TC.Target.Imports=append(TC.Target.Imports,dep)
+ }
+ if def:=TY.LocalPkg.Lookup("Linked").Def;def!=nil{TY.LocalPkg.Lookup("Linked").Linkname="external.Linked"}
+ PKGINIT_MAKE
+ var out []string
+ for _,fn:=range TC.Target.Inits{
+ out=append(out,fmt.Sprintf("init:%v:%v:%d",fn.Sym(),fn.Type(),len(fn.Body)))
+ ir.Visit(fn,func(n ir.Node){out=append(out,fmt.Sprintf("node:%v:%v:%d:%v:%v",n.Op(),n.Type(),n.Typecheck(),LINK.PosTable.Pos(n.Pos()),n))})
+ }
+ for _,n:=range TC.Target.Externs{
+ out=append(out,fmt.Sprintf("extern:%v:%v:%v:%d",n,n.Type(),LINK.PosTable.Pos(n.Pos()),n.Type().Size()))
+ }
+ for _,n:=range PKGINIT_STATE.InstrumentGlobalsSlice{out=append(out,fmt.Sprintf("instrument:%v:%t",n,PKGINIT_STATE.InstrumentGlobalsMap[n.Sym().Name]==n))}
+ for _,s:=range LINK.Data{
+ out=append(out,fmt.Sprintf("data:%s:%d:%d:%v:%x",s.Name,s.Type,s.Size,uint32(s.Attribute),s.P))
+ for _,r:=range s.R{out=append(out,fmt.Sprintf("reloc:%d:%d:%d:%d:%v",r.Off,r.Siz,r.Type,r.Add,r.Sym))}
+ }
+ if n,ok:=TY.LocalPkg.Lookup(".inittask").Def.(*ir.Name);ok{out=append(out,"task:"+n.Linksym().Name)}else{out=append(out,"task:none")}
+ for _,size:=range []int64{0,1,31,32,33,127,128,1<<20,1<<30}{out=append(out,fmt.Sprintf("redzone:%d:%d",size,GetRedzoneSizeForGlobal(size)))}
+ out=append(out,fmt.Sprintf("state:%t:%d:%d",GRAPH.CurFunc==nil,len(TC.Target.Inits),len(PKGINIT_STATE.InstrumentGlobalsMap)))
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

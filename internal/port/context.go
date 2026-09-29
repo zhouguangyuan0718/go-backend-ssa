@@ -97,6 +97,10 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	if context == nil {
 		return nil
 	}
+	literals, err := literalBindings(files, info, units)
+	if err != nil {
+		return err
+	}
 	derived, err := contextSourceFunctions(files, info, units)
 	if err != nil {
 		return err
@@ -139,7 +143,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		for obj := range parameterMethods {
 			candidates[obj] = obj.Name()
 		}
-		needed := statefulFunctions(files, info, candidates, states, external, owners, units)
+		needed := statefulFunctions(files, info, candidates, states, external, owners, units, literals)
 		for obj := range functions {
 			if selective[obj] && needed[obj] == "" {
 				if functions[obj] != obj.Name() {
@@ -207,6 +211,18 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				return err
 			}
 		}
+		var bound []ast.Node
+		ast.Inspect(node, func(n ast.Node) bool {
+			if literals[n] != "" {
+				bound = append(bound, n)
+			}
+			return true
+		})
+		// Inner literals first, preserving every initializer and its evaluation order.
+		for i := len(bound) - 1; i >= 0; i-- {
+			lit := bound[i]
+			rewriteExprs(node, map[ast.Node]ast.Expr{lit: &ast.CallExpr{Fun: binding(ctx, nil, literals[lit], lit.Pos()), Args: []ast.Expr{lit.(ast.Expr)}}})
+		}
 		return threadMethodContext(fs, files, node, info, parameterMethods, ctx, context.Type)
 	}
 	// Include receiver methods in the dependency closure: a pure helper is safe
@@ -219,10 +235,10 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			}
 		}
 	}
-	constructorDeps := statefulFunctions(files, info, allFunctions, states, external, owners, units)
+	constructorDeps := statefulFunctions(files, info, allFunctions, states, external, owners, units, literals)
 	unsafeValueInit := false
 	for _, entry := range info.InitOrder {
-		dependent := hasOwnedAllocation(entry.Rhs, info, owners)
+		dependent := hasOwnedAllocation(entry.Rhs, info, owners) || hasBoundLiteral(entry.Rhs, literals)
 		ast.Inspect(entry.Rhs, func(n ast.Node) bool {
 			if id, ok := n.(*ast.Ident); ok {
 				obj := info.Uses[id]
@@ -367,7 +383,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 					}
 					return true
 				})
-				if dependent || hasOwnedAllocation(fn.Body, info, owners) {
+				if dependent || hasOwnedAllocation(fn.Body, info, owners) || hasBoundLiteral(fn.Body, literals) {
 					return fmt.Errorf("native context constructor depends on state before initialization")
 				}
 				fn.Name = &ast.Ident{Name: "syncgoNewContext", NamePos: fn.Name.Pos()}
@@ -414,7 +430,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 					return true
 				})
 				// Also bind methods that only allocate owned objects.
-				needs = needs || hasOwnedAllocation(fn, info, owners)
+				needs = needs || hasOwnedAllocation(fn, info, owners) || hasBoundLiteral(fn, literals)
 				if !needs {
 					decls = append(decls, d)
 					continue

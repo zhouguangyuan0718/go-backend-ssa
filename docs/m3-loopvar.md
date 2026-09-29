@@ -1,5 +1,7 @@
 # M3 原生循环变量捕获
 
+后续已接入 [原生包初始化任务](m3-pkginit.md)；本文记录本阶段边界。
+
 本批迁入完整 `internal/loopvar/loopvar.go`，对外提供 `loopvar.Context.ForCapture` 和 `LogTransformations`。它使用原生 IR 的 DistinctVars、声明和闭包捕获信息，将需要分离的循环变量改写为每次迭代独立的变量。执行顺序保持在整包内联及方法包装之后、escape 分析之前。
 
 当前尚未接通完整 escape/walk/SSA 和上游编译器替换。本批验证的是循环捕获 IR 变换及日志，不将测试提供的逃逸分类视为真实 escape 分析结果。

@@ -1,0 +1,10 @@
+package noder
+import("cmd/compile/internal/ir";"cmd/compile/internal/inline";"cmd/compile/internal/typecheck";"cmd/compile/internal/types";"internal/pkgbits")
+// Test-only entry to the real reader, sharing the local stub with the library.
+func SyncgoReadInit(data string)*ir.Package{
+ pr:=newPkgReader(pkgbits.NewPkgDecoder(types.LocalPkg.Path,data));localPkgReader=pr;readPackage(pr,types.LocalPkg,true)
+ pr.newReader(pkgbits.SectionMeta,pkgbits.PrivateRootIdx,pkgbits.SyncPrivate).pkgInit(types.LocalPkg,typecheck.Target)
+ readBodies(typecheck.Target,false,nil)
+ typecheck.HaveInlineBody=unifiedHaveInlineBody;inline.InlineCall=unifiedInlineCall
+ return typecheck.Target
+}

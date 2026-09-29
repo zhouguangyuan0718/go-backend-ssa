@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v13"
+const ToolVersion = "syncgo-m3-v14"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -56,6 +56,7 @@ type Unit struct {
 	Context        *ContextRule
 	ContextMethods map[string]string   // Free function -> method name when the native Context already uses that name.
 	ContextParams  []string            // Private receiver methods that take an explicit context parameter.
+	Literals       []LiteralRule       // Reviewed external struct values bound to an instance.
 	Calls          []CallRule          // Reviewed external functions bound to context methods.
 	Nullable       map[string][]string // Reviewed owned pointers/receivers that accept nil.
 	Checks         map[string]string   // Selected function/method -> context argument validator.
@@ -64,6 +65,9 @@ type Unit struct {
 // CallRule derives the upstream signature from Source; no replacement package
 // or invented compiler declaration is emitted into the library.
 type CallRule struct{ Source, Function, Method string }
+
+// LiteralRule wraps a native struct value with a func(T) T instance method.
+type LiteralRule struct{ Source, Type, Method string }
 
 // StateRule redirects a type-checked upstream host variable to instance state.
 type StateRule struct{ Source, Variable, Field string }
@@ -210,6 +214,11 @@ func (p Plan) Validate() error {
 		for _, state := range u.State {
 			if u.Context == nil || !safePath(state.Source) || portPath(state.Source) == "" || !token.IsIdentifier(state.Variable) || !memberPath(state.Field) {
 				return fmt.Errorf("invalid external state binding")
+			}
+		}
+		for _, literal := range u.Literals {
+			if u.Context == nil || !safePath(literal.Source) || portPath(literal.Source) == "" || !token.IsIdentifier(literal.Type) || !memberPath(literal.Method) {
+				return fmt.Errorf("invalid literal binding")
 			}
 		}
 		for _, call := range u.Calls {

@@ -58,6 +58,7 @@
 41. [M3 原生去虚化与整包内联](docs/m3-interleaved.md)：静态/PGO 去虚化、原生固定点驱动、状态绑定及源码图差分。
 42. [M3 原生方法包装函数](docs/m3-wrappers.md)：接收者/方法值 wrapper、原生收尾优化及导入去重。
 43. [M3 原生循环变量捕获](docs/m3-loopvar.md)：原生 loopvar 改写、声明搬移、continue 处理和实例诊断。
+44. [M3 原生包初始化任务](docs/m3-pkginit.md)：原生 MakeTask、初始化记录和 ASan 全局变量登记。
 
 ## 当前可运行的工具
 
@@ -70,12 +71,12 @@ export GO_SSA_SOURCE_REPO=/path/to/local/golang-go
 go run ./cmd/syncgo inspect -repo "$GO_SSA_SOURCE_REPO" -out _work/inspection.json -summary _work/inspection-summary.json
 go run ./cmd/syncgo generate -repo "$GO_SSA_SOURCE_REPO"
 go run ./cmd/syncgo check -repo "$GO_SSA_SOURCE_REPO"
-go test -race ./...
+go test -race -timeout 20m ./...
 ```
 
 上游版本和移植规则统一维护在 [internal/port/rules.go](internal/port/rules.go)，不需要 JSON 配置。审计报告按需生成到 `_work/`；`sync/generated.json` 仅由工具自动维护。
 
-设定 `GO_SSA_SOURCE_REPO` 时，测试额外验证官方 go1.27.1 再生成、两版上游位置/符号回归与 SSA 类型切片差分测试、源码树未变以及 go1.27.0 → go1.27.1 升级；仓库需包含两个 tag。不设置该变量时仅跳过这项集成测试，其他测试照常执行。
+设定 `GO_SSA_SOURCE_REPO` 时，测试额外验证官方 go1.27.1 再生成、两版上游位置/符号回归与 SSA 类型切片差分测试、源码树未变以及 go1.27.0 → go1.27.1 升级；仓库需包含两个 tag。完整双版本差分包含多组独立原生编译，使用 `-timeout 20m`，避免默认 10 分钟时限。无该变量时仅跳过这项集成测试，其他测试照常执行。
 
 编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造与完整 typecheck 生产包，以及 types/objabi 的结构和算法切片；reader 的类型/对象实例化、函数体和字典读取主体已接入并完成源码差分；完整包驱动、方法包装、内联和 SSA 流程尚未接通。
 
@@ -125,4 +126,4 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 
 类型布局入口示例见 [独立消费者测试](testdata/consumer/consumer_test.go)。先创建 Universe，再调用原生 `u.InitTypes(defTypeName)`；回调为传入的 Sym/Type 提供宿主的 `types.Object`。随后可直接调用 `Type.Size/Alignment/Registers/HasPointers` 与 `u.CalcSize/PtrDataSize/AlgType/Identical`。当前不提供假 `ir.Name`；宿主绑定契约及失败处理见 M2 文档。
 
-源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；之后可调用 Interleaved 完成整包优化，再调用 MakeWrappers 生成原生方法包装函数，随后逐函数调用 loopvar.ForCapture 处理循环变量捕获；完整 unified 尾部、实验性 midway 和 compiler directives 尚未接入。尚无 SSA 构造入口。
+源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；之后可调用 Interleaved 完成整包优化，再调用 MakeWrappers 生成原生方法包装函数，随后逐函数调用 loopvar.ForCapture 处理循环变量捕获，再调用 pkginit.MakeTask 生成原生初始化任务；完整 unified 尾部、实验性 midway 和 compiler directives 尚未接入。尚无 SSA 构造入口。

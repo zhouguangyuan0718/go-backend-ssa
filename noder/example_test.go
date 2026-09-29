@@ -8,6 +8,7 @@ import (
 	"go-backend-ssa/loopvar"
 	"go-backend-ssa/noder"
 	"go-backend-ssa/objw"
+	"go-backend-ssa/pkginit"
 	"go-backend-ssa/reflectdata"
 	"go-backend-ssa/rttype"
 	"go-backend-ssa/staticdata"
@@ -85,6 +86,7 @@ func ExampleNewContext() {
 	for _, fn := range target.Funcs {
 		capture.ForCapture(fn)
 	}
+	pkginit.NewContext(writer).MakeTask()
 	sum, err := writer.LookupFunc("example/p.Sum")
 	if err != nil {
 		panic(err)
