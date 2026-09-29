@@ -12,6 +12,7 @@ import (
 	"go-backend-ssa/position"
 	"go-backend-ssa/reflectdata"
 	"go-backend-ssa/rttype"
+	"go-backend-ssa/staticdata"
 	"go-backend-ssa/syntax"
 	"go-backend-ssa/target"
 	"go-backend-ssa/typebits"
@@ -430,4 +431,38 @@ func TestNativeReflectionDataPublicAPI(t *testing.T) {
 		t.Fatal("public runtime equality selection")
 	}
 
+}
+
+func TestNativeStaticDataPublicAPI(t *testing.T) {
+	layout, _ := target.NewLayout("linux", "amd64")
+	link := &gcbridge.Link{Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8, ByteOrder: binary.LittleEndian}}}
+	u, err := types.NewUniverseWithPositions(layout, &link.PosTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.LocalPkg = u.NewPkg("example/p", "p")
+	graph := ir.NewContext(u, link)
+	typecheck.NewContext(graph).InitUniverse()
+	c := staticdata.NewContext(graph, objw.NewContext(u, link, "linux"))
+	pos := position.XPos{}
+	data := c.StringSym(pos, "hello")
+	if string(data.P) != "hello" || data != c.StringSym(pos, "hello") {
+		t.Fatal("public native string data")
+	}
+	n := graph.NewNameAt(pos, u.LocalPkg.Lookup("Text"), u.Types[types.String])
+	n.Class = ir.PEXTERN
+	c.InitConst(n, 0, graph.NewBasicLit(pos, n.Type(), constant.MakeString("hello")), 16)
+	symbol := c.GlobalLinksym(n)
+	if len(symbol.R) != 1 || symbol.R[0].Sym != data || binary.LittleEndian.Uint64(symbol.P[8:]) != 5 {
+		t.Fatal("public native string initializer")
+	}
+	fn := graph.NewFunc(pos, pos, u.LocalPkg.Lookup("F"), u.NewSignature(nil, nil, nil))
+	value := c.FuncLinksym(fn.Nname)
+	if value.OnList() {
+		t.Fatal("premature function value emission")
+	}
+	c.WriteFuncSyms()
+	if !value.OnList() || len(value.R) != 1 || value.R[0].Sym != fn.Nname.Linksym() || value.R[0].Sym.ABI() != gcbridge.ABIInternal {
+		t.Fatal("public native function value")
+	}
 }

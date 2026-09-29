@@ -2,7 +2,7 @@
   "schema_version": 1,
   "tool": "syncgo-m3-v10",
   "commit": "862c888e612ac346c7c4d99c9392bdfd265f33b0",
-  "plan_sha256": "2e14d7f3f4ac291fc454708db38d858d574f0c4c5dc070ad761b14325908d7d6",
+  "plan_sha256": "0d1afdd6473616866ab665b777b578c4c9338685022e88d405dea85cb79662c6",
   "files": [
     {
       "output": "internal/cmd/src/pos.go",
@@ -531,6 +531,16 @@
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
+      ]
+    },
+    {
+      "output": "internal/cmd/obj/util.go",
+      "source": "src/cmd/internal/obj/util.go",
+      "source_sha256": "17c642abe98eb67970bf2bf9dded0b2d440fffa76a0cc80c37ebe74aae117c41",
+      "output_sha256": "f3408dcd7cb87c9d92226401cd4edb78707c7e4ab126eb41622c6b354c5d8d47",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "Bool2int"
       ]
     },
     {
@@ -2671,6 +2681,43 @@
       "signature_sources": {
         "src/cmd/compile/internal/base/link.go": "316af57f6117869dae6d8762325773c582a8fc7e8fc8638cb69f8d0381b111f8",
         "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264",
+        "src/cmd/compile/internal/types/size.go": "d32090d796ae53dc8d1430e206b9e98aee8e1e1b2407f952aa7fdd64b8fb9ad5"
+      }
+    },
+    {
+      "output": "internal/staticdata/data.go",
+      "source": "src/cmd/compile/internal/staticdata/data.go",
+      "source_sha256": "17cb5913195654d48612a110e0725fc04b4e47ea5dcd32c3bf14e9fb2e21c044",
+      "output_sha256": "d727ce245d351265b9a14e42ea15c1817471dc957947c53bf432eb81db8a8e13",
+      "rule": "package-state-to-context-methods-v2",
+      "declarations": [
+        "InitAddrOffset",
+        "InitAddr",
+        "InitSlice",
+        "InitSliceBytes",
+        "shortHashString",
+        "StringSym",
+        "StringSymNoCommon",
+        "slicedata",
+        "dstringdata",
+        "FuncLinksym",
+        "GlobalLinksym",
+        "WriteFuncSyms",
+        "InitConst",
+        "stringSymPrefix",
+        "stringSymPattern",
+        "funcsyms",
+        "funcsymsmu",
+        "slicedataGen"
+      ],
+      "adapter_sha256": "b6e1c5ba460fa87fed08b419f6bde80ea2fcc99f234b845f7c2223b6398f242e",
+      "signature_sources": {
+        "src/cmd/compile/internal/base/flag.go": "4a0fa18857d702ea677247cc6c562795c780f4ae6a669e1a2e2352febdcb660a",
+        "src/cmd/compile/internal/base/link.go": "316af57f6117869dae6d8762325773c582a8fc7e8fc8638cb69f8d0381b111f8",
+        "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264",
+        "src/cmd/compile/internal/ir/val.go": "3be3539da1eb2e0683b7e4efe225b31242e77fd3cb7dd8e77086e4a5fd5dab45",
+        "src/cmd/compile/internal/objw/objw.go": "a588072a2d04d34b784fcb4d35763b118b4fd179b582a707b33bc40b1aa21a8f",
+        "src/cmd/compile/internal/types/fmt.go": "0e3f8165f476d75becf0b245f443b8a79913225e900d311e3537e8bda9202be0",
         "src/cmd/compile/internal/types/size.go": "d32090d796ae53dc8d1430e206b9e98aee8e1e1b2407f952aa7fdd64b8fb9ad5"
       }
     },

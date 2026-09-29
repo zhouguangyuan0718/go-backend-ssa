@@ -1,0 +1,33 @@
+package staticdata
+import("fmt";"encoding/json";"encoding/binary";"os";"strings";"go/constant";"go/token";"testing";"IMPORT_TYPES";"IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";RD_OBJW IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian}
+ switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ var out []string
+ pos:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase("p.go","/src/p.go"),7,3))
+ snapshot:=func(s *obj.LSym){out=append(out,fmt.Sprintf("symbol:%s:%v:%d:%d:%x:%d",s.Name,s.Type,s.Size,s.Align,s.P,uint32(s.Attribute)));for _,r:=range s.R{out=append(out,fmt.Sprintf("reloc:%v:%d:%d:%s:%v:%d",r.Type,r.Off,r.Siz,r.Sym.Name,r.Sym.ABI(),r.Add))}}
+ global:=func(name string,typ *types.Type)*ir.Name{n:=GRAPH.NewNameAt(pos,TY.LocalPkg.Lookup(name),typ);n.Class=ir.PEXTERN;return n}
+ for _,text:=range []string{"","abc","go\x00语言\n",strings.Repeat("a",99),strings.Repeat("b",100),strings.Repeat("c",101),strings.Repeat("long",1024)}{s:=UP.StringSym(pos,text);count:=len(LINK.Data);out=append(out,fmt.Sprintf("string-cache:%t:%t",UP.StringSym(pos,text)==s,len(LINK.Data)==count));snapshot(s)}
+ for i:=0;i<2;i++{snapshot(UP.StringSymNoCommon("unexported"))}
+ bytesType:=TY.NewSlice(TY.Types[types.TUINT8])
+ for i,text:=range []string{"abc","abc",""}{n:=global(fmt.Sprint("slice",i),bytesType);UP.InitSliceBytes(n,int64(target.size),text);snapshot(UP.GlobalLinksym(n));out=append(out,fmt.Sprintf("slice-native-node:%v:%v",n,n.Type()))}
+ targetSym:=UP.StringSym(pos,"address")
+ address:=global("address",TY.NewPtr(TY.Types[types.TUINT8]));UP.InitAddrOffset(address,8,targetSym,3);UP.InitAddr(address,8+int64(target.size),targetSym);snapshot(address.Linksym())
+ slice:=global("slice-header",bytesType);UP.InitSlice(slice,0,targetSym,7);snapshot(slice.Linksym())
+ complex:=constant.BinaryOp(constant.MakeFloat64(1.5),token.ADD,constant.MakeImag(constant.MakeFloat64(-2.25)))
+ cases:=[]struct{k types.Kind;v constant.Value}{
+ {types.TBOOL,constant.MakeBool(true)},{types.TBOOL,constant.MakeBool(false)},{types.TINT8,constant.MakeInt64(-3)},{types.TUINT64,constant.MakeUint64(^uint64(0))},{types.TINT,constant.MakeInt64(-7)},
+ {types.TFLOAT32,constant.MakeFloat64(1.25)},{types.TFLOAT64,constant.MakeFloat64(-2.5)},{types.TCOMPLEX64,complex},{types.TCOMPLEX128,complex},{types.TSTRING,constant.MakeString("abc")},{types.TSTRING,constant.MakeString("")},
+ }
+ for i,entry:=range cases{typ:=TY.Types[entry.k];TY.CalcSize(typ);value:=GRAPH.NewBasicLit(pos,typ,entry.v);n:=global(fmt.Sprint("literal",i),typ);UP.InitConst(n,8,value,int(typ.Size()));snapshot(n.Linksym());out=append(out,fmt.Sprintf("literal:%v:%v:%v",value,value.Type(),n.Type()))}
+ nilName:=global("nil",TY.NewPtr(TY.Types[types.TINT]));UP.InitConst(nilName,0,GRAPH.NewNilExpr(pos,nilName.Type()),target.size);snapshot(nilName.Linksym())
+ var names []*ir.Name
+ for _,name:=range []string{"Z","A","M"}{n:=GRAPH.NewFunc(pos,pos,TY.LocalPkg.Lookup(name),TY.NewSignature(nil,nil,nil)).Nname;names=append(names,n);s:=UP.FuncLinksym(n);out=append(out,fmt.Sprintf("function-cache:%s:%t:%t",s.Name,s==UP.FuncLinksym(n),s.OnList()))}
+ UP.WriteFuncSyms()
+ for _,n:=range names{snapshot(UP.FuncLinksym(n))}
+ SD_FLAG.CompilingRuntime=true
+ count:=len(LINK.Data);UP.WriteFuncSyms();out=append(out,fmt.Sprintf("runtime-repeat:%t",len(LINK.Data)==count))
+ for _,s:=range LINK.Data{snapshot(s)}
+ encoded,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(encoded))
+}
