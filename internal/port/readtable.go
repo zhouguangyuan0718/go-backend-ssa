@@ -9,7 +9,7 @@ import (
 	"reflect"
 )
 
-// Stringer's offset tables contain constant array elements. Localize the table
+// Offset and name tables contain constant array elements. Localize the table
 // once per consuming function, retaining the upstream array type and indexing.
 // Only len(table) and indexed reads are accepted, never writes or escapes.
 func localizeReadTables(fs *token.FileSet, files []*ast.File, info *types.Info, units []Unit) error {
@@ -40,8 +40,8 @@ func localizeReadTables(fs *token.FileSet, files []*ast.File, info *types.Info, 
 						return fmt.Errorf("read table requires array type")
 					}
 					basic, ok := array.Elem().Underlying().(*types.Basic)
-					if !ok || basic.Info()&types.IsInteger == 0 {
-						return fmt.Errorf("read table requires integer elements")
+					if !ok || basic.Info()&(types.IsInteger|types.IsString) == 0 {
+						return fmt.Errorf("read table requires integer or string elements")
 					}
 					for _, expr := range literal.Elts {
 						if pair, ok := expr.(*ast.KeyValueExpr); ok {

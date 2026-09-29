@@ -80,6 +80,30 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	if context == nil {
 		return nil
 	}
+	parameterMethods, err := contextParameterMethods(files, info, units)
+	if err != nil {
+		return err
+	}
+	if context.Selective {
+		candidates := map[types.Object]string{}
+		for obj, name := range functions {
+			candidates[obj] = name
+		}
+		for obj := range parameterMethods {
+			candidates[obj] = obj.Name()
+		}
+		needed := statefulFunctions(files, info, candidates, states, external, owners, units)
+		for obj := range functions {
+			if needed[obj] == "" {
+				delete(functions, obj)
+			}
+		}
+		for obj := range parameterMethods {
+			if needed[obj] == "" {
+				delete(parameterMethods, obj)
+			}
+		}
+	}
 	for _, owner := range owners {
 		if owner.Context != context.Type {
 			return fmt.Errorf("owner/context mismatch")
@@ -127,6 +151,9 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			return true
 		})
 		rewriteExprs(node, selectors)
+		if err := threadMethodContext(node, info, parameterMethods, ctx); err != nil {
+			return err
+		}
 		rewriteNodes(node, replacements(ctx))
 		for _, owner := range owners {
 			if err := injectOwnedAllocations(node, info, owner, ctx); err != nil {
@@ -225,6 +252,10 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				decls = append(decls, d)
 				continue
 			}
+			if context.Selective && fn.Recv == nil && fn.Name.Name != "init" && functions[info.Defs[fn.Name]] == "" {
+				decls = append(decls, d)
+				continue
+			}
 			key := fn.Name.Name
 			if fn.Recv != nil {
 				key = receiverType(fn) + "." + key
@@ -233,11 +264,23 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			nullable := append([]string(nil), units[i].Nullable[key]...)
 			ctx := ast.Expr(ast.NewIdent(recv))
 			var guard []ast.Stmt
-			if fn.Recv != nil {
+			if parameterMethods[info.Defs[fn.Name]] {
+				for _, field := range fn.Type.Params.List {
+					if len(field.Names) == 0 {
+						field.Names = []*ast.Ident{{Name: "_", NamePos: field.Pos()}}
+					}
+				}
+				fn.Type.Params.List = append([]*ast.Field{{Names: []*ast.Ident{{Name: recv, NamePos: fn.Type.Params.Opening}}, Type: &ast.StarExpr{Star: fn.Type.Params.Opening, X: &ast.Ident{Name: context.Type, NamePos: fn.Type.Params.Opening}}}}, fn.Type.Params.List...)
+				var err error
+				guard, err = contextStatements("if syncgoCtx == nil { panic(\"uninitialized compilation\") }", fn.Body.Lbrace)
+				if err != nil {
+					return err
+				}
+			} else if fn.Recv != nil {
 				needs := check != "" || len(nullable) != 0
 				refs := replacements(ctx)
 				ast.Inspect(fn, func(n ast.Node) bool {
-					if id, ok := n.(*ast.Ident); ok && refs[id] != nil {
+					if id, ok := n.(*ast.Ident); ok && (refs[id] != nil || parameterMethods[info.Uses[id]]) {
 						needs = true
 					}
 					return true
@@ -257,7 +300,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				}
 				nativeReceiver := context.Existing && receiverType(fn) == context.Type
 				if (!nativeReceiver && owner == nil) || len(fn.Recv.List[0].Names) != 1 {
-					return fmt.Errorf("receiver context requires an owner rule: %s", fn.Name.Name)
+					return fmt.Errorf("receiver context requires an owner rule: %s", key)
 				}
 				receiver := fn.Recv.List[0].Names[0].Name
 				// A value receiver has an owner too, but cannot be compared to nil.

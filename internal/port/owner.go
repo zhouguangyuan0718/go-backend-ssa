@@ -47,12 +47,28 @@ func addOwnerFields(f *ast.File, rule *OwnerRule) error {
 			if !ok {
 				return fmt.Errorf("owner target must be struct: %s", t.Name.Name)
 			}
+			existing := false
 			for _, field := range st.Fields.List {
 				for _, id := range field.Names {
 					if id.Name == rule.Field {
-						return fmt.Errorf("owner field collision: %s.%s", t.Name.Name, id.Name)
+						pointer, _ := field.Type.(*ast.StarExpr)
+						var name *ast.Ident
+						if pointer != nil {
+							name, _ = pointer.X.(*ast.Ident)
+						}
+						if !rule.Existing || name == nil || name.Name != rule.Context {
+							return fmt.Errorf("owner field collision or incompatible type: %s.%s", t.Name.Name, id.Name)
+						}
+						existing = true
 					}
 				}
+			}
+			if rule.Existing {
+				if !existing {
+					return fmt.Errorf("existing owner field not found: %s.%s", t.Name.Name, rule.Field)
+				}
+				found[t.Name.Name] = true
+				continue
 			}
 			st.Fields.List = append(st.Fields.List, &ast.Field{Names: []*ast.Ident{{Name: rule.Field, NamePos: st.Fields.Closing}}, Type: &ast.StarExpr{Star: st.Fields.Closing, X: &ast.Ident{Name: rule.Context, NamePos: st.Fields.Closing}}})
 			found[t.Name.Name] = true

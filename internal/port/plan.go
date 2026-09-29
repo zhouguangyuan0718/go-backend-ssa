@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v2"
+const ToolVersion = "syncgo-m3-v3"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -45,6 +45,7 @@ type Unit struct {
 	State         []StateRule
 	ReceiverState *ReceiverStateRule
 	Context       *ContextRule
+	ContextParams []string            // Private receiver methods that take an explicit context parameter.
 	Calls         []CallRule          // Reviewed external functions bound to context methods.
 	Nullable      map[string][]string // Reviewed owned pointers/receivers that accept nil.
 	Checks        map[string]string   // Selected function/method -> context argument validator.
@@ -65,11 +66,13 @@ type ReceiverStateRule struct {
 }
 
 type OwnerRule struct {
+	Existing       bool // Bind an existing *Context field instead of adding one.
 	Types          []string
 	Context, Field string
 }
 
 type ContextRule struct {
+	Selective         bool // Only bind free functions that depend on state or owned allocation.
 	Existing          bool // Extend the upstream Type and run its original Constructor first.
 	Type, Constructor string
 	Fields            map[string]string
@@ -148,6 +151,14 @@ func (p Plan) Validate() error {
 				seen[field] = true
 			}
 		}
+		parameterMethods := map[string]bool{}
+		for _, name := range u.ContextParams {
+			receiver, method, ok := strings.Cut(name, ".")
+			if u.Context == nil || !ok || !token.IsIdentifier(receiver) || !token.IsIdentifier(method) || token.IsExported(method) || parameterMethods[name] {
+				return fmt.Errorf("invalid context parameter method: %s", name)
+			}
+			parameterMethods[name] = true
+		}
 		for _, state := range u.State {
 			if u.Context == nil || !safePath(state.Source) || portPath(state.Source) == "" || !token.IsIdentifier(state.Variable) || !token.IsIdentifier(state.Field) {
 				return fmt.Errorf("invalid external state binding")
@@ -189,7 +200,7 @@ func (p Plan) Validate() error {
 			return fmt.Errorf("incompatible whole-file rules: %s", u.Source)
 		}
 		if owner := u.Owner; owner != nil {
-			if len(owner.Types) == 0 || !token.IsIdentifier(owner.Context) || !token.IsIdentifier(owner.Field) || token.IsExported(owner.Field) {
+			if len(owner.Types) == 0 || !token.IsIdentifier(owner.Context) || !token.IsIdentifier(owner.Field) || !owner.Existing && token.IsExported(owner.Field) {
 				return fmt.Errorf("invalid owner rule")
 			}
 			seen := map[string]bool{}
@@ -205,7 +216,7 @@ func (p Plan) Validate() error {
 		}
 		if c := u.Context; c != nil {
 			if previous := contexts[pkg]; previous != nil {
-				if previous.Type != c.Type || previous.Constructor != c.Constructor || previous.Adapter != c.Adapter || previous.Existing != c.Existing {
+				if previous.Type != c.Type || previous.Constructor != c.Constructor || previous.Adapter != c.Adapter || previous.Existing != c.Existing || previous.Selective != c.Selective {
 					return fmt.Errorf("inconsistent package context: %s", pkg)
 				}
 			} else {

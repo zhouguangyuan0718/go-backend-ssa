@@ -87,7 +87,7 @@ func checkTypes(fset *token.FileSet, pkg string, files []*ast.File, imp types.Im
 // Selection may remove every use of a dot import. Resolve identifiers first,
 // then remove unused imports; final output still gets normal strict checking.
 func checkTypesImports(fset *token.FileSet, pkg string, files []*ast.File, imp types.Importer, allowUnused bool) (*types.Package, *types.Info, error) {
-	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}, Types: map[ast.Expr]types.TypeAndValue{}, Implicits: map[ast.Node]types.Object{}}
+	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}, Types: map[ast.Expr]types.TypeAndValue{}, Implicits: map[ast.Node]types.Object{}, Selections: map[*ast.SelectorExpr]*types.Selection{}}
 	c := types.Config{Importer: imp, GoVersion: "go1.27", DisableUnusedImportCheck: allowUnused}
 	p, err := c.Check(pkg, fset, files, info)
 	return p, info, err
