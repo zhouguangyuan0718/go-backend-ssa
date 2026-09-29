@@ -1,5 +1,7 @@
 # M3 原生 ABI wrappers
 
+后续已接入 [原生 deadlocals](m3-deadlocals.md)，以下记录本批完成时的范围与验证。
+
 本批从 `ssagen/abi.go` 迁入原生 `SymABIs`、汇编 ABI 信息解析与查询、`GenABIWrappers`、wrapper ABI 遍历和 IR 构造。对外增加 `ssagen.Context`，绑定已有 typecheck 图；不引入新函数模型或 ABI 描述模型。
 
 GenABIWrappers 在 pkginit.MakeTask 后运行。这里只接入这一原生驱动阶段，尚未接入 SSA 构造、机器码生成和上游编译器替换。该文件的 Wasm import/export 机器码包装与布局函数依赖后续 ABI 分配、objw.Progs 和后端初始化，继续留在对应阶段实现；没有添加空实现。

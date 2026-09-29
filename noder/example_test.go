@@ -3,6 +3,7 @@ package noder_test
 import (
 	"encoding/binary"
 	"fmt"
+	"go-backend-ssa/deadlocals"
 	"go-backend-ssa/gcbridge"
 	"go-backend-ssa/ir"
 	"go-backend-ssa/loopvar"
@@ -89,6 +90,7 @@ func ExampleNewContext() {
 	}
 	pkginit.NewContext(writer).MakeTask()
 	ssagen.NewContext(tc).NewSymABIs().GenABIWrappers()
+	deadlocals.NewContext(graph).Funcs(target.Funcs)
 	sum, err := writer.LookupFunc("example/p.Sum")
 	if err != nil {
 		panic(err)

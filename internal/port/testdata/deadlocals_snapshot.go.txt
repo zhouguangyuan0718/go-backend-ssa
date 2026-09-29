@@ -1,0 +1,34 @@
+package deadlocals_test
+import("fmt";"encoding/json";"encoding/binary";"os";"strings";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_LOOPVAR";"IMPORT_NODER";"IMPORT_PKGINIT";"IMPORT_SSAGEN";"IMPORT_DEADLOCALS";EXPAND_RUNTIME AUTO_IMPORT PKGINIT_DRIVER_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ mode:=os.Getenv("SYNCGO_TARGET")
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.SplitN(mode,"-",2)[0],8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
+ PKGINIT_READ
+ PKGINIT_DRIVER
+ INIT_BEFORE_ABI
+ EXPERIMENT.RegabiWrappers=target.arch=="amd64"||target.arch=="ppc64"
+ raw:="ref example/p.Dead ABI0\n"
+ ABI_READ
+ s.GenABIWrappers()
+ if strings.HasSuffix(mode,"-noopt"){LOOP_BASE.Flag.N=1}
+ if strings.HasSuffix(mode,"-disabled"){ND_DEBUG.NoDeadLocals=1}
+ fns:=TC.Target.Funcs
+ if strings.HasSuffix(mode,"-closureonly"){fns=nil;for _,fn:=range TC.Target.Funcs{if fn.IsClosure(){fns=append(fns,fn)}};if len(fns)==0{t.Fatal("missing captured closures")}}
+ var out []string
+ snapshot:=func(phase string){
+ for _,fn:=range TC.Target.Funcs{
+ out=append(out,fmt.Sprintf("%s:func:%v:%v:%d:%d:%t:%t:%v:%d",phase,fn.Sym(),fn.Type(),fn.ABI,fn.ABIRefs,fn.IsClosure(),fn.ABIWrapper(),fn.Pragma,len(fn.Body)))
+ if fn.LSym!=nil{out=append(out,fmt.Sprintf("text:%s:%d:%t",fn.LSym.Name,uint32(fn.LSym.Attribute),fn.LSym.Func()!=nil))}
+ ir.Visit(fn,func(n ir.Node){out=append(out,fmt.Sprintf("node:%v:%v:%d:%v:%v",n.Op(),n.Type(),n.Typecheck(),LINK.PosTable.Pos(n.Pos()),n));if name,ok:=n.(*ir.Name);ok{out=append(out,fmt.Sprintf("def:%v:%v",name,name.Defn))}})
+ for _,d:=range fn.Dcl{out=append(out,fmt.Sprintf("local:%v:%v:%d:%t:%v",d,d.Type(),d.Class,d.Curfn==fn,d.Defn))}
+ for _,d:=range fn.ClosureVars{out=append(out,fmt.Sprintf("capture:%v:%v:%v",d,d.Canonical(),d.Canonical().Defn))}
+ }
+ out=append(out,fmt.Sprintf("state:%d:%t:%v",LINK.DwTextCount,GRAPH.CurFunc==nil,LINK.PosTable.Pos(POS)))
+ }
+ snapshot("before")
+ DEAD_RUN
+ snapshot("after")
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}
