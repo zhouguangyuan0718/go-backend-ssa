@@ -125,3 +125,24 @@ func TestPublicSignatureGraph(t *testing.T) {
 		t.Fatal("backend cannot inspect call results")
 	}
 }
+
+func TestNativeLayoutFromPublicModule(t *testing.T) {
+	layout, _ := target.NewLayout("linux", "386")
+	u, err := types.NewUniverse(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.InitTypes(func(sym *types.Sym, typ *types.Type) types.Object { return binding{sym, typ} })
+	value, err := u.Scalar(types.Int)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := u.NewStruct([]*types.Field{u.NewField(position.XPos{}, nil, u.NewPtr(value)), u.NewField(position.XPos{}, nil, value)})
+	var native *gcbridge.Type = record
+	if native.Size() != 8 || native.Alignment() != 4 || u.PtrDataSize(native) != 4 || !u.IsComparable(native) || u.AlgType(native) != types.AMEM {
+		t.Fatal("native layout API", native)
+	}
+	if !u.Identical(u.ByteType, u.Types[types.Uint8]) || u.Diagnostics.HasErrors() {
+		t.Fatal("builtin binding")
+	}
+}

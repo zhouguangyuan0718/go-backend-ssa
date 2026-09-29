@@ -190,10 +190,11 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				key = receiverType(fn) + "." + key
 			}
 			check := units[i].Checks[key]
+			nullable := append([]string(nil), units[i].Nullable[key]...)
 			ctx := ast.Expr(ast.NewIdent(recv))
 			var guard []ast.Stmt
 			if fn.Recv != nil {
-				needs := check != ""
+				needs := check != "" || len(nullable) != 0
 				refs := replacements(ctx)
 				ast.Inspect(fn, func(n ast.Node) bool {
 					if id, ok := n.(*ast.Ident); ok && refs[id] != nil {
@@ -229,6 +230,22 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 					return err
 				}
 				ctx = &ast.SelectorExpr{X: ast.NewIdent(receiver), Sel: ast.NewIdent(owner.Field)}
+				for n, name := range nullable {
+					if name == receiver {
+						if _, ok := fn.Recv.List[0].Type.(*ast.StarExpr); !ok {
+							return fmt.Errorf("nullable receiver must be pointer: %s", key)
+						}
+						// Nil formatting has no owner. Give this invocation fresh
+						// state, retaining the upstream formatter's nil semantics.
+						guard, err = contextStatements("var syncgoCtx *"+context.Type+"; if "+receiver+" == nil { syncgoCtx = "+context.Constructor+"() } else { syncgoCtx = "+receiver+"."+owner.Field+" }; if syncgoCtx == nil { panic(\"receiver has no compilation owner\") }", fn.Body.Lbrace)
+						if err != nil {
+							return err
+						}
+						ctx = ast.NewIdent(recv)
+						nullable = append(nullable[:n], nullable[n+1:]...)
+						break
+					}
+				}
 			} else {
 				var err error
 				guard, err = contextStatements("if syncgoCtx == nil { panic(\"uninitialized compilation\") }", fn.Body.Lbrace)
@@ -248,7 +265,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			if err := rewrite(fn.Body, ctx); err != nil {
 				return err
 			}
-			checks, err := ownedArgumentChecks(fn, info, owners, nodeText(fs, ctx))
+			checks, err := ownedArgumentChecks(fn, info, owners, nodeText(fs, ctx), nullable)
 			if err != nil {
 				return err
 			}
@@ -372,8 +389,12 @@ func hasOwnedAllocation(node ast.Node, info *types.Info, owners []*OwnerRule) bo
 // Match *owned-type and []*owned-type parameters. Invalid graph composition is
 // rejected before any upstream mutation. Slice storage keeps upstream ownership
 // semantics: callers must not mutate it to insert foreign nodes after the call.
-func ownedArgumentChecks(fn *ast.FuncDecl, info *types.Info, owners []*OwnerRule, ctx string) ([]ast.Stmt, error) {
+func ownedArgumentChecks(fn *ast.FuncDecl, info *types.Info, owners []*OwnerRule, ctx string, nullable []string) ([]ast.Stmt, error) {
 	var code strings.Builder
+	optional := map[string]bool{}
+	for _, name := range nullable {
+		optional[name] = false
+	}
 	for _, field := range fn.Type.Params.List {
 		t := info.TypeOf(field.Type)
 		slice, isSlice := t.(*types.Slice)
@@ -397,10 +418,25 @@ func ownedArgumentChecks(fn *ast.FuncDecl, info *types.Info, owners []*OwnerRule
 				fmt.Fprintf(&code, "for _, syncgoArg := range %s {\n", arg)
 				arg = "syncgoArg"
 			}
+			if _, ok := optional[name.Name]; ok {
+				if isSlice {
+					return nil, fmt.Errorf("nullable rule requires a direct owned pointer: %s", name.Name)
+				}
+				optional[name.Name] = true
+				fmt.Fprintf(&code, "if %s != nil {\n", arg)
+			}
 			fmt.Fprintf(&code, "if %s == nil || %s == nil || %s.%s != %s { panic(\"argument belongs to another or uninitialized compilation\") }\n", ctx, arg, arg, owner.Field, ctx)
+			if optional[name.Name] {
+				code.WriteString("}\n")
+			}
 			if isSlice {
 				code.WriteString("}\n")
 			}
+		}
+	}
+	for name, found := range optional {
+		if !found {
+			return nil, fmt.Errorf("nullable parameter not found or not owned: %s", name)
 		}
 	}
 	return contextStatements(code.String(), fn.Body.Lbrace)

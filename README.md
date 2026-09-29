@@ -4,14 +4,14 @@
 
 库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。每次调用拥有独立编译状态，返回结果在后续调用期间仍有效。
 
-当前状态：**M1 已完成，M2 已推进到跨文件状态解耦与 SSA 类型身份隔离；尚无 Go 源码到 SSA 的 Build API。** 当前可用位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造；完整类型布局和编译流程仍待移植。
+当前状态：**M1 已完成，M2 已完成原生类型布局、预声明类型初始化及相关状态解耦；尚无 Go 源码到 SSA 的 Build API。** 当前可用位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
 
 - 语言范围：Go 1.27；其他语言版本尚不支持。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
 - 交付形式：普通 Go module，进程内调用，返回本库的 SSA 对象。
 - 对外保证目标：调用隔离、无共享可变编译状态、可重入、跨调用并发安全。
 - 并列验收目标：可替换官方 Go 1.27 编译器对应实现，接回原生后端并完成工具链构建。
-- 初始目标配置：`linux/amd64` 和 `linux/arm64`；32 位布局在正式保证目标隔离前加入验证。
+- 初始目标配置：`linux/amd64` 和 `linux/arm64`；`linux/386` 已加入布局隔离验证，不表示支持完整的 386 编译器。
 
 ## 阅读顺序
 
@@ -25,7 +25,7 @@
 8. [原生编译器回接](docs/go-compiler-integration.md)：共享对象模型、gcbridge、native tail 与自举验收。
 9. [M1 实现与验证](docs/m1.md)：首批工具与切片记录。
 10. [M2 基础设施](docs/m2.md)：第一批位置设施与归属设计。
-11. [M2 类型与 Universe](docs/m2-universe.md)：第二至六批实现、对外入口及类型布局边界。
+11. [M2 类型与 Universe](docs/m2-universe.md)：第二至七批实现、对外入口及类型布局边界。
 
 ## 当前可运行的工具
 
@@ -55,6 +55,7 @@ go test -race ./...
 | [internal/syntax/pos.go](internal/syntax/pos.go)、[source.go](internal/syntax/source.go) | 前端位置与实例化字符读取 |
 | [internal/types/type.go](internal/types/type.go)、[sym.go](internal/types/sym.go) | 真实 Type/Sym 结构、标志位与选定构造算法 |
 | [internal/cmd/obj/link.go](internal/cmd/obj/link.go) | 真实 LSym/Reloc/Attribute 数据声明 |
+| [internal/types/size.go](internal/types/size.go)、[universe.go](internal/types/universe.go)、[identity.go](internal/types/identity.go) | 原生布局/延迟队列、预声明类型初始化及等价判断 |
 | [internal/types/pkg.go](internal/types/pkg.go) | Universe 包表、字符串驻留与 Pkg 查找方法 |
 | [internal/cmd/objabi/path.go](internal/cmd/objabi/path.go) | 符号路径编码与解码 |
 | [internal/ir/func.go](internal/ir/func.go) | 链接函数名解析及辅助函数 |
@@ -83,3 +84,5 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 未定类型使用上游名字：`u.UntypedInt`、`u.UntypedRune`、`u.UntypedString` 等；常量映射为 `u.UntypedTypes[constant.Int]` 和 `u.DefaultKinds[constant.Int]`。`Type.IsUntyped` 等分类方法直接复用上游实现，完整预声明类型初始化和类型检查仍待接入。
 
 字段和签名使用 `u.NewField(pos, sym, typ)`、`u.NewStruct(fields)`、`u.NewSignature(recv, params, results)`。通过 `FieldType`、`Params`、`Results`、`ResultsTuple` 等原生访问器消费，公开 `types.Field` 与 `gcbridge.Field` 是同一对象类型。字段偏移和结构体布局仍待 CalcSize。
+
+类型布局入口示例见 [独立消费者测试](testdata/consumer/consumer_test.go)。先创建 Universe，再调用原生 `u.InitTypes(defTypeName)`；回调为传入的 Sym/Type 提供宿主的 `types.Object`。随后可直接调用 `Type.Size/Alignment/Registers/HasPointers` 与 `u.CalcSize/PtrDataSize/AlgType/Identical`。当前不提供假 `ir.Name`；宿主绑定契约及失败处理见 M2 文档。

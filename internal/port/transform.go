@@ -26,13 +26,52 @@ type packageImporter struct {
 	packages map[string]*types.Package
 	standard types.Importer
 	zeros    map[types.Object]string
+	support  map[string]map[string][]byte
+	loading  map[string]bool
 }
 
 func newImporter() *packageImporter {
-	return &packageImporter{packages: map[string]*types.Package{}, standard: importer.Default(), zeros: map[types.Object]string{}}
+	return &packageImporter{packages: map[string]*types.Package{}, standard: importer.Default(), zeros: map[types.Object]string{}, loading: map[string]bool{}}
 }
 func (i *packageImporter) Import(p string) (*types.Package, error) {
 	if pkg := i.packages[p]; pkg != nil {
+		return pkg, nil
+	}
+	if files := i.support[p]; len(files) > 0 {
+		if i.loading[p] {
+			return nil, fmt.Errorf("cyclic support import: %s", p)
+		}
+		i.loading[p] = true
+		defer delete(i.loading, p)
+		fs := token.NewFileSet()
+		var astFiles []*ast.File
+		for _, name := range sortedKeys(files) {
+			f, err := parser.ParseFile(fs, name, files[name], parser.ParseComments)
+			if err != nil {
+				return nil, err
+			}
+			for _, im := range f.Imports {
+				if im.Name != nil && (im.Name.Name == "_" || im.Name.Name == ".") {
+					return nil, fmt.Errorf("unsupported support import in %s", name)
+				}
+			}
+			for _, group := range f.Comments {
+				for _, c := range group.List {
+					if strings.HasPrefix(c.Text, "//go:build") || strings.HasPrefix(c.Text, "// +build") {
+						return nil, fmt.Errorf("conditional support source requires explicit adaptation: %s", name)
+					}
+				}
+			}
+			astFiles = append(astFiles, f)
+		}
+		pkg, info, err := checkTypes(fs, p, astFiles, i)
+		if err != nil {
+			return nil, err
+		}
+		if err := auditOutput(pkg, astFiles, info); err != nil {
+			return nil, err
+		}
+		i.packages[p] = pkg
 		return pkg, nil
 	}
 	if strings.HasPrefix(p, "cmd/") || strings.HasPrefix(p, "internal/") || strings.HasPrefix(p, "go-backend-ssa/") {

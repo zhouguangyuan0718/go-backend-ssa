@@ -59,6 +59,13 @@ func testUpstreamSymbols(t *testing.T, s *Source, r *Rendered, root string) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
+	for _, name := range Migration().SupportFiles {
+		data, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeTestFile(t, dir, name, string(data))
+	}
 	for name, data := range r.Files {
 		writeTestFile(t, dir, name, string(data))
 	}

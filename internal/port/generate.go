@@ -17,11 +17,12 @@ import (
 const ledgerPath = "sync/generated.json"
 
 type Generated struct {
-	SchemaVersion int          `json:"schema_version"`
-	Tool          string       `json:"tool"`
-	Commit        string       `json:"commit"`
-	PlanSHA256    string       `json:"plan_sha256"`
-	Files         []Provenance `json:"files"`
+	SchemaVersion  int               `json:"schema_version"`
+	Tool           string            `json:"tool"`
+	Commit         string            `json:"commit"`
+	PlanSHA256     string            `json:"plan_sha256"`
+	Files          []Provenance      `json:"files"`
+	SupportSources map[string]string `json:"support_sources,omitempty"`
 }
 type Provenance struct {
 	Output           string            `json:"output"`
@@ -55,6 +56,30 @@ func Render(s *Source, p Plan, root string) (*Rendered, error) {
 	r := &Rendered{Files: map[string][]byte{}, Ledger: Generated{SchemaVersion: 1, Tool: ToolVersion, Commit: s.Pin.Commit, PlanSHA256: hash(planJSON)}}
 	before, after := newImporter(), newImporter()
 	imports := p.importMap(s.Pin.TargetModule)
+	after.support = map[string]map[string][]byte{}
+	if len(p.SupportFiles) > 0 {
+		r.Ledger.SupportSources = map[string]string{}
+	}
+	for _, name := range p.SupportFiles {
+		if err := checkPath(root, name); err != nil {
+			return nil, err
+		}
+		data, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			return nil, err
+		}
+		pkg := s.Pin.TargetModule + "/" + path.Dir(name)
+		for _, dest := range imports {
+			if pkg == dest {
+				return nil, fmt.Errorf("support file overlaps migrated package: %s", name)
+			}
+		}
+		if after.support[pkg] == nil {
+			after.support[pkg] = map[string][]byte{}
+		}
+		after.support[pkg][name] = data
+		r.Ledger.SupportSources[name] = hash(data)
+	}
 	// A package is checked as a unit, in first-appearance dependency order.
 	var order []string
 	groups := make(map[string][]Unit)
@@ -74,6 +99,11 @@ func Render(s *Source, p Plan, root string) (*Rendered, error) {
 			r.Files[name] = data
 		}
 		r.Ledger.Files = append(r.Ledger.Files, provenance...)
+	}
+	for _, pkg := range sortedKeys(after.support) {
+		if _, err := after.Import(pkg); err != nil {
+			return nil, fmt.Errorf("support package %s: %w", pkg, err)
+		}
 	}
 	for _, name := range []string{"LICENSE", "PATENTS"} {
 		b, err := s.Read(name)
@@ -111,8 +141,17 @@ func auditProductionFiles(root string, p Plan) error {
 			allowed[u.adapterPath()] = true
 		}
 	}
+	for _, file := range p.SupportFiles {
+		allowed[file] = true
+	}
+	dirs := map[string]bool{}
+	for _, file := range p.SupportFiles {
+		dirs[path.Dir(file)] = true
+	}
 	for _, u := range p.Units {
-		dir := path.Dir(u.output())
+		dirs[path.Dir(u.output())] = true
+	}
+	for _, dir := range sortedKeys(dirs) {
 		if err := checkPath(root, dir); err != nil {
 			return err
 		}

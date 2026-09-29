@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m2-v7"
+const ToolVersion = "syncgo-m2-v8"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -30,6 +30,7 @@ type Pin struct {
 // Plan and its rules are ordinary Go values defined in rules.go.
 type Plan struct {
 	InspectRoots []string
+	SupportFiles []string // Reviewed handwritten dependencies used by context adapters.
 	Units        []Unit
 }
 
@@ -43,8 +44,9 @@ type Unit struct {
 	ReadTables   []string // Constant array lookups localized in their consuming functions.
 	State        []StateRule
 	Context      *ContextRule
-	Calls        []CallRule        // Reviewed external functions bound to context methods.
-	Checks       map[string]string // Selected function/method -> context argument validator.
+	Calls        []CallRule          // Reviewed external functions bound to context methods.
+	Nullable     map[string][]string // Reviewed owned pointers/receivers that accept nil.
+	Checks       map[string]string   // Selected function/method -> context argument validator.
 }
 
 // CallRule derives the upstream signature from Source; no replacement package
@@ -109,6 +111,13 @@ func (p Plan) Validate() error {
 	if len(p.Units) == 0 || len(p.InspectRoots) == 0 {
 		return fmt.Errorf("empty migration plan")
 	}
+	supportSeen := map[string]bool{}
+	for _, file := range p.SupportFiles {
+		if supportSeen[file] || !safePath(file) || path.Ext(file) != ".go" || strings.HasSuffix(file, "_test.go") {
+			return fmt.Errorf("invalid support file: %s", file)
+		}
+		supportSeen[file] = true
+	}
 	outputs := map[string]bool{}
 	contexts := map[string]*ContextRule{}
 	states := map[string]map[string]bool{}
@@ -126,6 +135,22 @@ func (p Plan) Validate() error {
 		for _, call := range u.Calls {
 			if u.Context == nil || !safePath(call.Source) || portPath(call.Source) == "" || !token.IsIdentifier(call.Function) || !token.IsIdentifier(call.Method) {
 				return fmt.Errorf("invalid external call binding")
+			}
+		}
+		for name, params := range u.Nullable {
+			selected := false
+			for _, declaration := range append(append([]string(nil), u.Functions...), u.Declarations...) {
+				selected = selected || name == declaration
+			}
+			if u.Context == nil || !selected || len(params) == 0 {
+				return fmt.Errorf("invalid nullable rule: %s", name)
+			}
+			seen := map[string]bool{}
+			for _, param := range params {
+				if !token.IsIdentifier(param) || param == "_" || seen[param] {
+					return fmt.Errorf("invalid nullable parameter: %s", param)
+				}
+				seen[param] = true
 			}
 		}
 		for name, method := range u.Checks {

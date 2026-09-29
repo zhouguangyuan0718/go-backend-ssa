@@ -160,13 +160,13 @@ func checkCallAdapters(units []Unit, before *packageImporter, out *types.Package
 			if _, ok := adapter.(*types.Func); !ok {
 				return fmt.Errorf("missing adapter method %s", call.Method)
 			}
-			want := types.TypeString(original.Type(), func(p *types.Package) string {
+			want := types.TypeString(unnamedSignature(original.Type()), func(p *types.Package) string {
 				if mapped := imports[p.Path()]; mapped != "" {
 					return mapped
 				}
 				return p.Path()
 			})
-			if got := types.TypeString(adapter.Type(), nil); got != want {
+			if got := types.TypeString(unnamedSignature(adapter.Type()), nil); got != want {
 				return fmt.Errorf("adapter signature mismatch for %s: got %s, want %s", call.Method, got, want)
 			}
 		}
@@ -188,7 +188,7 @@ func checkStateAdapters(units []Unit, before *packageImporter, out *types.Packag
 			if !ok || !field.IsField() {
 				return fmt.Errorf("missing state field %s", state.Field)
 			}
-			want := types.TypeString(original.Type(), func(p *types.Package) string {
+			want := types.TypeString(unnamedSignature(original.Type()), func(p *types.Package) string {
 				if mapped := imports[p.Path()]; mapped != "" {
 					return mapped
 				}

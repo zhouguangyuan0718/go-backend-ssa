@@ -1,6 +1,6 @@
 // Package types exposes compiler object identity and compilation ownership.
-// This is a partial frontend model: layout calculation, builtin bindings and
-// type checking are not yet implemented. Scalars have uncomputed width/alignment.
+// Initialize builtin types with Universe.InitTypes before computing layouts.
+// Parsing, type checking and source-to-SSA construction are not yet available.
 package types
 
 import (
@@ -19,6 +19,7 @@ type ChanDir = compiler.ChanDir
 type Map = compiler.Map
 type Field = compiler.Field
 type Struct = compiler.Struct
+type AlgKind = compiler.AlgKind
 
 const (
 	Int8          = compiler.TINT8
@@ -49,6 +50,7 @@ const (
 	Chan          = compiler.TCHAN
 	StructKind    = compiler.TSTRUCT
 	Func          = compiler.TFUNC
+	Interface     = compiler.TINTER
 	RecvOnly      = compiler.Crecv
 	SendOnly      = compiler.Csend
 	SendRecv      = compiler.Cboth
@@ -61,3 +63,25 @@ func NewUniverse(layout target.Layout) (*Universe, error) {
 	return compiler.NewUniverse(layout.PointerSize(), layout.RegisterSize(), layout.MaxWidth()), nil
 }
 func CompareSyms(a, b *Sym) int { return compiler.CompareSyms(a, b) }
+
+// Original compiler comparison/hash algorithm categories.
+const (
+	AUNK      = compiler.AUNK
+	ANOEQ     = compiler.ANOEQ
+	ANOALG    = compiler.ANOALG
+	AMEM      = compiler.AMEM
+	AMEM0     = compiler.AMEM0
+	AMEM8     = compiler.AMEM8
+	AMEM16    = compiler.AMEM16
+	AMEM32    = compiler.AMEM32
+	AMEM64    = compiler.AMEM64
+	AMEM128   = compiler.AMEM128
+	ASTRING   = compiler.ASTRING
+	AINTER    = compiler.AINTER
+	ANILINTER = compiler.ANILINTER
+	AFLOAT32  = compiler.AFLOAT32
+	AFLOAT64  = compiler.AFLOAT64
+	ACPLX64   = compiler.ACPLX64
+	ACPLX128  = compiler.ACPLX128
+	ASPECIAL  = compiler.ASPECIAL
+)

@@ -2,6 +2,7 @@ package port
 
 import (
 	"fmt"
+	"go/token"
 	"go/types"
 	"strings"
 )
@@ -37,16 +38,37 @@ func checkEntryAdapters(units []Unit, original, output *types.Package, imports m
 			if _, ok := actual.(*types.Func); !ok {
 				return fmt.Errorf("missing validator %s", method)
 			}
-			want := types.TypeString(expected, func(p *types.Package) string {
+			want := types.TypeString(unnamedSignature(expected), func(p *types.Package) string {
 				if dst := imports[p.Path()]; dst != "" {
 					return dst
 				}
 				return p.Path()
 			})
-			if got := types.TypeString(actual.Type(), nil); got != want {
+			if got := types.TypeString(unnamedSignature(actual.Type()), nil); got != want {
 				return fmt.Errorf("validator signature mismatch for %s: got %s, want %s", method, got, want)
 			}
 		}
 	}
 	return nil
+}
+
+// Parameter/result names are documentation, not part of Go function identity.
+// Keep nested callback signatures strict while ignoring their local names too.
+func unnamedSignature(t types.Type) types.Type {
+	sig, ok := t.(*types.Signature)
+	if !ok {
+		return t
+	}
+	tuple := func(in *types.Tuple) *types.Tuple {
+		vars := make([]*types.Var, in.Len())
+		for i := range vars {
+			vars[i] = types.NewVar(token.NoPos, nil, "", unnamedSignature(in.At(i).Type()))
+		}
+		return types.NewTuple(vars...)
+	}
+	var params []*types.TypeParam
+	for i := 0; i < sig.TypeParams().Len(); i++ {
+		params = append(params, sig.TypeParams().At(i))
+	}
+	return types.NewSignatureType(nil, nil, params, tuple(sig.Params()), tuple(sig.Results()), sig.Variadic())
 }
