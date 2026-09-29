@@ -39,6 +39,7 @@
 22. [M3 原生 runtime 声明](docs/m3-runtime.md)：隐藏声明、类型参数替换、ABI 符号与实例计时。
 23. [M3 原生 IR 检查](docs/m3-typecheck-ir.md)：表达式/语句改写、函数声明、嵌入成员和闭包捕获布局。
 24. [M3 reader 记录解码](docs/m3-reader-metadata.md)：原生读取结构、包/位置/引用记录、内联位置和 ScopeMarker。
+25. [M3 原生对象数据写入](docs/m3-object-data.md)：LSym 数据/重定位、Global 登记及实例 FIPS 状态。
 
 ## 当前可运行的工具
 
@@ -83,7 +84,7 @@ go test -race ./...
 
 ## 当前公开基础设施
 
-`position` 暴露上游位置对象，`diagnostic` 提供实例诊断收集，`target` 提供显式布局输入；`ir` 提供原生节点和实例构造入口，`typecheck` 提供原生 IR 检查与改写，`types` 提供 Universe 和包符号查找，`gcbridge` 共用位置及 Type/Pkg/Sym 对象。见 [独立 consumer 示例](testdata/consumer/consumer_test.go)。每次编译需独立创建位置表和 base；XPos 必须用原表解码。同一实例的可变操作由调用方串行。
+`position` 暴露上游位置对象，`diagnostic` 提供实例诊断收集，`target` 提供显式布局输入；`ir` 提供原生节点和实例构造入口，`typecheck` 提供原生 IR 检查与改写，`objw` 提供原生符号数据和重定位写入，`types` 提供 Universe 和包符号查找，`gcbridge` 共用位置及 Type/Pkg/Sym 对象。见 [独立 consumer 示例](testdata/consumer/consumer_test.go)。每次编译需独立创建位置表和 base；XPos 必须用原表解码。同一实例的可变操作由调用方串行。
 
 后端当前可直接使用实例中的上游 SSA 类型和构造函数：
 

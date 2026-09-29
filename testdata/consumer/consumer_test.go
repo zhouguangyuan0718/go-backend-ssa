@@ -1,11 +1,13 @@
 package consumer
 
 import (
+	"encoding/binary"
 	"fmt"
 	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/gcbridge"
 	"go-backend-ssa/ir"
 	"go-backend-ssa/noder"
+	"go-backend-ssa/objw"
 	"go-backend-ssa/position"
 	"go-backend-ssa/syntax"
 	"go-backend-ssa/target"
@@ -312,5 +314,22 @@ func TestNativeIRPublicGraph(t *testing.T) {
 	ir.Visit(dup, func(ir.Node) { count++ })
 	if count != 3 {
 		t.Fatal(count)
+	}
+}
+
+func TestNativeObjectWriterPublicAPI(t *testing.T) {
+	layout, _ := target.NewLayout("linux", "amd64")
+	link := &gcbridge.Link{Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8, ByteOrder: binary.LittleEndian}}}
+	u, err := types.NewUniverseWithPositions(layout, &link.PosTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := objw.NewContext(u, link, "linux")
+	data, targetSym := link.Lookup("p.dictionary"), link.Lookup("p.type")
+	c.Uintptr(data, 0, 42)
+	end := c.SymPtr(data, 8, targetSym, 0)
+	c.Global(data, int32(end), objw.RODATA|objw.DUPOK)
+	if binary.LittleEndian.Uint64(data.P) != 42 || len(data.R) != 1 || data.R[0].Sym != targetSym || data.R[0].Siz != 8 || data.Type.String() != "SRODATA" || !data.DuplicateOK() || link.Data[0] != data {
+		t.Fatal("native object writer identity/bytes/relocation")
 	}
 }

@@ -54,7 +54,11 @@ func extendNativeContext(files []*ast.File, info *types.Info, units []Unit) erro
 			}
 		}
 	}
-	if structure == nil || constructors != 1 {
+	wantConstructors := 1
+	if context.Initialize {
+		wantConstructors = 0
+	}
+	if structure == nil || constructors != wantConstructors {
 		return fmt.Errorf("native context requires its struct and one original constructor")
 	}
 	if context.Embed != "" {

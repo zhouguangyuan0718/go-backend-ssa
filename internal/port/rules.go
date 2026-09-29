@@ -56,9 +56,9 @@ func Migration() Plan {
 			{Source: "src/cmd/internal/objabi/line.go", Functions: []string{"AbsFile", "ApplyRewrites", "applyRewrite", "hasPathPrefix"},
 				Context: &ContextRule{Type: "PathContext", Constructor: "newPathContext", Adapter: "adapter_path.go", Selective: true},
 				State:   []StateRule{{Source: "src/internal/buildcfg/cfg.go", Variable: "GOROOT", Field: "GOROOT"}}},
-			{Source: "src/cmd/internal/objabi/symkind.go", Declarations: []string{"SymKind", "Sxxx"}},
-			{Source: "src/cmd/internal/objabi/reloctype.go", Declarations: []string{"RelocType"}},
-			{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Addr", "AddrName", "AddrPos", "AddrType", "As", "Attribute", "Func", "LSym", "Link", "LinkArch", "OperandPos", "Prog", "Reloc", "ABI", "ABI0", "ABISet", "ABISetCallable", "AttrDuplicateOK", "symOnce", "Attribute.load", "Attribute.Set", "Attribute.ABI", "Attribute.SetABI", "Attribute.Static", "ABISet.Set", "ABISet.Get", "ABISet.String"}, Functions: []string{"ABISetOf", "ParseABI"}},
+			{Source: "src/cmd/internal/objabi/symkind.go", WholeFile: true},
+			{Source: "src/cmd/internal/objabi/reloctype.go", WholeFile: true},
+			{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Addr", "AddrName", "AddrPos", "AddrType", "As", "Attribute", "Func", "LSym", "Link", "LinkArch", "OperandPos", "Prog", "Reloc", "ABI", "ABI0", "ABISet", "ABISetCallable", "AttrDuplicateOK", "symOnce", "Attribute.load", "Attribute.Set", "Attribute.ABI", "Attribute.SetABI", "Attribute.Static", "ABISet.Set", "ABISet.Get", "ABISet.String", "Link.Diag", "Attribute.OnList", "Attribute.DuplicateOK", "Attribute.Local", "LSym.String", "LSym.NewTypeInfo", "LSym.TypeInfo", "LSym.NewItabInfo", "LSym.ItabInfo", "TypeInfo", "ItabInfo"}, Functions: []string{"ABISetOf", "ParseABI"}, Context: objectDataContext()},
 			{Source: "src/internal/goexperiment/flags.go", Declarations: []string{"Flags"}},
 			{Source: "src/internal/buildcfg/exp.go", Declarations: []string{"ExperimentFlags"}},
 			{Source: "src/internal/types/errors/codes.go", WholeFile: true},
@@ -167,7 +167,10 @@ func Migration() Plan {
 	for i, u := range plan.Units {
 		if u.Source == "src/cmd/internal/obj/link.go" {
 			units := append([]Unit(nil), plan.Units[:i]...)
+			dataUnits := objectDataMigration()
+			units = append(units, dataUnits[:1]...) // bisect precedes native Link state
 			units = append(units, objectDeclarations()...)
+			units = append(units, dataUnits[1:]...)
 			plan.Units = append(units, plan.Units[i:]...)
 			break
 		}
@@ -178,6 +181,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, types2Migration()...)
 	plan.Units = append(plan.Units, pkgbitsMigration()...)
 	plan.Units = append(plan.Units, rangefuncMigration()...)
+	plan.Units = append(plan.Units, objwMigration()...)
 	plan.Units = append(plan.Units, dwarfgenMigration()...)
 	plan.Units = append(plan.Units, noderMigration()...)
 	// base's symbol helpers now consume the native obj package. Keep their

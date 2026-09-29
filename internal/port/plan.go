@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v8"
+const ToolVersion = "syncgo-m3-v9"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -245,9 +245,6 @@ func (p Plan) Validate() error {
 			}
 		}
 		if c := u.Context; c != nil {
-			if c.Initialize && c.Existing {
-				return fmt.Errorf("receiver initialization cannot wrap a native constructor")
-			}
 			if c.Embed != "" && (!c.Existing || c.Adapter == "" || !token.IsIdentifier(c.Embed) || c.Embed == "_") {
 				return fmt.Errorf("invalid native context embed")
 			}

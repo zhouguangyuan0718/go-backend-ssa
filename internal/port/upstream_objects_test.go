@@ -56,6 +56,22 @@ func testUpstreamObjectDeclarations(t *testing.T, s *Source, r *Rendered) {
 				}
 				for _, spec := range g.Specs {
 					ts := spec.(*ast.TypeSpec)
+					if !original && u.Source == "src/cmd/internal/obj/link.go" && ts.Name.Name == "Link" {
+						st := ts.Type.(*ast.StructType)
+						extra := st.Fields.List[len(st.Fields.List)-2:]
+						embed, ok := extra[0].Type.(*ast.Ident)
+						ptr, pok := extra[1].Type.(*ast.StarExpr)
+						if !ok || embed.Name != "dataState" || len(extra[0].Names) != 0 || !pok || len(extra[1].Names) != 1 || extra[1].Names[0].Name != "bisectFIPS" {
+							t.Fatal("unexpected Link state extension")
+						}
+						sel, sok := ptr.X.(*ast.SelectorExpr)
+						if !sok || sel.Sel.Name != "Matcher" || names[sel.X.(*ast.Ident).Name] != "go-backend-ssa/internal/go/bisect" {
+							t.Fatal("unexpected Link matcher type")
+						}
+						// Compare every original field and callback unchanged;
+						// only these two reviewed instance fields are appended.
+						st.Fields.List = st.Fields.List[:len(st.Fields.List)-2]
+					}
 					ast.Inspect(ts.Type, func(n ast.Node) bool {
 						if sel, ok := n.(*ast.SelectorExpr); ok {
 							if id, ok := sel.X.(*ast.Ident); ok && names[id.Name] != "" {
@@ -124,6 +140,9 @@ func testUpstreamObjectMethods(t *testing.T, s *Source, r *Rendered) {
 			return out
 		}
 		original, ported := parse(raw), parse(r.Files[portPath(source)])
+		for name, body := range original {
+			original[name] = strings.ReplaceAll(body, "src.NoXPos", "(src.XPos{})")
+		}
 		for _, name := range names {
 			if original[name] == "" || ported[name] != original[name] {
 				t.Fatalf("native object method changed: %s %s\noriginal: %s\nported: %s", source, name, original[name], ported[name])

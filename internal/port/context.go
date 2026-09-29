@@ -305,6 +305,9 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				continue
 			}
 			if context.Existing && fn.Recv == nil && fn.Name.Name == context.Constructor {
+				if context.Initialize {
+					return fmt.Errorf("receiver initialization cannot wrap a native constructor")
+				}
 				sig := info.Defs[fn.Name].Type().(*types.Signature)
 				var result types.Type
 				if sig.Results().Len() == 1 {

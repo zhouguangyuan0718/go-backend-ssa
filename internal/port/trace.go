@@ -29,6 +29,15 @@ func hostReferences(info *types.Info, trace, exit bool) map[types.Object]string 
 			case "Print":
 				refs[obj] = "tracePrint"
 			}
+		case "log":
+			if _, ok := obj.(*types.Func); ok && exit {
+				switch obj.Name() {
+				case "Fatal":
+					refs[obj] = "fatalLog"
+				case "Fatalf":
+					refs[obj] = "fatalLogf"
+				}
+			}
 		case "os":
 			if _, ok := obj.(*types.Func); ok && exit && obj.Name() == "Exit" {
 				refs[obj] = "abort"

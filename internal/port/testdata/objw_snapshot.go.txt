@@ -1,0 +1,30 @@
+package objw
+import("fmt";"encoding/json";"encoding/binary";"testing";"IMPORT_TYPES";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_OBJABI";"IMPORT_BITVEC";IMPORT_BASE IMPORT_BUILDCFG)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ var out []string
+ for _,target:=range []struct{os,arch string;size int;order binary.ByteOrder}{
+ {"linux","amd64",8,binary.LittleEndian},{"linux","386",4,binary.LittleEndian},{"linux","mips",4,binary.BigEndian},{"windows","386",4,binary.LittleEndian},{"aix","ppc64",8,binary.BigEndian},{"js","wasm",8,binary.LittleEndian},
+ }{
+ SETUP
+ out=append(out,fmt.Sprintf("target:%s:%s",target.os,target.arch))
+ var diagnostics []string;LINK.DiagFunc=func(f string,a ...any){diagnostics=append(diagnostics,fmt.Sprintf(f,a...))}
+ s,ref:=LINK.Lookup("p.data"),LINK.Lookup("p.target")
+ UP.Uint8(s,0,0xaa);UP.Bool(s,1,true);UP.Uint16(s,2,0x1122);UP.Uint32(s,4,0x33445566);UP.Uintptr(s,8,0x778899)
+ off:=UP.SymPtr(s,8+target.size+1,ref,13);off=UP.SymPtrWeak(s,off,ref,17);off=UP.SymPtrOff(s,off,ref);off=UP.SymPtrWeakOff(s,off,ref)
+ off=UP.Uvarint(s,off,300);off=UP.BitVec(s,off,bitvec.BitVec{N:16,B:[]uint32{0x1234}})
+ UP.Global(s,int32(off),obj.RODATA|obj.DUPOK|obj.LOCAL)
+ snapshot:=func(s *obj.LSym){out=append(out,fmt.Sprintf("symbol:%s:%v:%d:%x:%t:%t:%t",s.Name,s.Type,s.Size,s.P,s.OnList(),s.DuplicateOK(),s.Local()));for _,r:=range s.R{out=append(out,fmt.Sprintf("reloc:%v:%d:%d:%s:%d",r.Type,r.Off,r.Siz,r.Sym.Name,r.Add))}}
+ snapshot(s)
+ raw:=LINK.Lookup("p.raw");raw.WriteFloat32(LINK,0,1.25);raw.WriteFloat64(LINK,4,-2.5);raw.WriteString(LINK,12,5,"go");raw.WriteBytes(LINK,17,[]byte{1,2,3});raw.WriteCURelativeAddr(LINK,24,ref,19);raw.WriteDwTxtAddrx(LINK,40,ref,300);raw.GrowCap(100);snapshot(raw)
+ for _,flags:=range []int16{0,obj.NOPTR,obj.TLSBSS}{g:=LINK.Lookup(fmt.Sprintf("p.global%d",flags));UP.Global(g,32,flags);snapshot(g)}
+ UP.Global(s,int32(off),obj.RODATA)
+ LINK.Pkgpath="crypto/internal/fips140/sha256";LINK.Flag_shared=true
+ for _,pattern:=range []string{"qy","qn"}{FIPSHASH(pattern)
+ for i,name:=range []string{"crypto/internal/fips140/sha256.value","crypto/internal/fips140/sha256..dict.F","crypto/internal/fips140/sha256.f·f"}{
+ f:=LINK.Lookup(fmt.Sprintf("%s.%d.%s",name,i,pattern));if i==2{f=LINK.Lookup(name)}
+ UP.Uint32(f,0,7);UP.SymPtr(f,8,ref,0);f.AddRel(LINK,obj.Reloc{Type:objabi.R_USEIFACE,Sym:ref});snapshot(f)
+ }}
+ out=append(out,fmt.Sprintf("diagnostics:%d:%v",LINK.Errors,diagnostics))
+ }
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(data))
+}
