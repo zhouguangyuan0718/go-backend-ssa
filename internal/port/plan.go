@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m2-v6"
+const ToolVersion = "syncgo-m2-v7"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -41,6 +41,7 @@ type Unit struct {
 	WholeFile    bool     // Preserve types, constants and existing receivers.
 	ZeroValues   []string // Reviewed zero-valued struct globals replaced by fresh values.
 	ReadTables   []string // Constant array lookups localized in their consuming functions.
+	State        []StateRule
 	Context      *ContextRule
 	Calls        []CallRule        // Reviewed external functions bound to context methods.
 	Checks       map[string]string // Selected function/method -> context argument validator.
@@ -49,6 +50,9 @@ type Unit struct {
 // CallRule derives the upstream signature from Source; no replacement package
 // or invented compiler declaration is emitted into the library.
 type CallRule struct{ Source, Function, Method string }
+
+// StateRule redirects an explicitly typed upstream host variable to instance state.
+type StateRule struct{ Source, Variable, Field string }
 
 type OwnerRule struct {
 	Types          []string
@@ -113,6 +117,11 @@ func (p Plan) Validate() error {
 		output := u.output()
 		if !safePath(u.Source) || !ownedPath(output) || path.Ext(output) != ".go" || (!u.WholeFile && len(u.Functions)+len(u.Declarations) == 0 && (u.Context == nil || len(u.Context.Fields) == 0)) || outputs[output] {
 			return fmt.Errorf("invalid migration source: %s", u.Source)
+		}
+		for _, state := range u.State {
+			if u.Context == nil || !safePath(state.Source) || portPath(state.Source) == "" || !token.IsIdentifier(state.Variable) || !token.IsIdentifier(state.Field) {
+				return fmt.Errorf("invalid external state binding")
+			}
 		}
 		for _, call := range u.Calls {
 			if u.Context == nil || !safePath(call.Source) || portPath(call.Source) == "" || !token.IsIdentifier(call.Function) || !token.IsIdentifier(call.Method) {

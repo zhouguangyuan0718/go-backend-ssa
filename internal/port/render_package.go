@@ -48,6 +48,13 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		return nil, nil, err
 	}
 
+	for _, unit := range units {
+		for _, name := range unit.ZeroValues {
+			obj := pkg.Scope().Lookup(name)
+			before.zeros[obj] = obj.Type().(*types.Named).Obj().Name()
+		}
+	}
+	replaceImportedZeros(original, info, before.zeros)
 	if err := localizeReadTables(fs, original, info, units); err != nil {
 		return nil, nil, err
 	}
@@ -70,6 +77,12 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		}
 		output = append(output, outf)
 		prov := Provenance{Output: u.output(), Source: u.Source, SourceSHA256: hash(sources[i]), OutputSHA256: hash(out), Rule: "select-and-relocate-v1", Declarations: append(append([]string(nil), u.Functions...), u.Declarations...)}
+		for _, state := range u.State {
+			if prov.SignatureSources == nil {
+				prov.SignatureSources = map[string]string{}
+			}
+			prov.SignatureSources[state.Source] = signatureSources[state.Source]
+		}
 		for _, call := range u.Calls {
 			if prov.SignatureSources == nil {
 				prov.SignatureSources = map[string]string{}
@@ -144,6 +157,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		}
 	}
 	if err := checkEntryAdapters(units, pkg, outpkg, imports); err != nil {
+		return nil, nil, err
+	}
+	if err := checkStateAdapters(units, before, outpkg, imports); err != nil {
 		return nil, nil, err
 	}
 	if err := checkCallAdapters(units, before, outpkg, imports); err != nil {

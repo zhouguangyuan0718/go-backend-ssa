@@ -49,6 +49,17 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				states[obj] = field
 			}
 		}
+		for _, state := range u.State {
+			pkg := strings.TrimPrefix(path.Dir(state.Source), "src/")
+			for _, obj := range info.Uses {
+				if obj != nil && obj.Pkg() != nil && obj.Pkg().Path() == pkg && obj.Name() == state.Variable && obj.Parent() == obj.Pkg().Scope() {
+					if previous := external[obj]; previous != "" && previous != state.Field {
+						return fmt.Errorf("conflicting external state binding")
+					}
+					external[obj] = state.Field
+				}
+			}
+		}
 		for _, call := range u.Calls {
 			pkg := strings.TrimPrefix(path.Dir(call.Source), "src/")
 			for _, obj := range info.Uses {

@@ -25,10 +25,11 @@ func nodeText(fset *token.FileSet, n ast.Node) string {
 type packageImporter struct {
 	packages map[string]*types.Package
 	standard types.Importer
+	zeros    map[types.Object]string
 }
 
 func newImporter() *packageImporter {
-	return &packageImporter{map[string]*types.Package{}, importer.Default()}
+	return &packageImporter{packages: map[string]*types.Package{}, standard: importer.Default(), zeros: map[types.Object]string{}}
 }
 func (i *packageImporter) Import(p string) (*types.Package, error) {
 	if pkg := i.packages[p]; pkg != nil {

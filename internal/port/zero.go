@@ -86,3 +86,20 @@ func replaceZeroValues(fs *token.FileSet, files []*ast.File, units []Unit, info 
 	}
 	return nil
 }
+
+// Uses of another migrated package's zero sentinel follow the declaration's
+// reviewed rule; consumers do not need a second per-file replacement list.
+func replaceImportedZeros(files []*ast.File, info *types.Info, zeros map[types.Object]string) {
+	for _, f := range files {
+		replacements := map[ast.Node]ast.Expr{}
+		ast.Inspect(f, func(n ast.Node) bool {
+			if sel, ok := n.(*ast.SelectorExpr); ok {
+				if name := zeros[info.Uses[sel.Sel]]; name != "" {
+					replacements[sel] = &ast.ParenExpr{X: &ast.CompositeLit{Type: &ast.SelectorExpr{X: sel.X, Sel: &ast.Ident{Name: name, NamePos: sel.Sel.Pos()}}}}
+				}
+			}
+			return true
+		})
+		rewriteExprs(f, replacements)
+	}
+}
