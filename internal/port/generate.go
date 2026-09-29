@@ -202,6 +202,13 @@ func auditOutput(pkg *types.Package, files []*ast.File, info *types.Info) error 
 		if p == "runtime" && stackDiagnosticObject(obj) {
 			continue
 		}
+		// CmdFlags keeps its original flag.Value field type. A passive interface
+		// declaration does not parse flags or consult the process FlagSet.
+		if p == "flag" && obj.Name() == "Value" {
+			if _, ok := obj.(*types.TypeName); ok {
+				continue
+			}
+		}
 		if p == "unsafe" || p == "os" || p == "os/exec" || p == "syscall" || p == "log" || p == "flag" || p == "runtime" {
 			return fmt.Errorf("unclassified environment dependency %s.%s", p, obj.Name())
 		}

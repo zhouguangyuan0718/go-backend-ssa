@@ -2,7 +2,7 @@
   "schema_version": 1,
   "tool": "syncgo-m3-v6",
   "commit": "862c888e612ac346c7c4d99c9392bdfd265f33b0",
-  "plan_sha256": "1e3545c8c7e4f7843558686db201989c283e22bdfa87799dea7d2edae884be36",
+  "plan_sha256": "c5a61cee10c26d69fae2f5a73b22136c9f9ddc7e0147cd1bfaec459d81dd0ab8",
   "files": [
     {
       "output": "internal/cmd/src/pos.go",
@@ -203,6 +203,16 @@
       ]
     },
     {
+      "output": "internal/cmd/objabi/head.go",
+      "source": "src/cmd/internal/objabi/head.go",
+      "source_sha256": "5be1369d6a6504b32367d69fa320002cfeed890da8341364cb75d885d83459c3",
+      "output_sha256": "26d376dd80b24455204e726ce019a0fddaa955cc184db64e11fc10964b38dc19",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "HeadType"
+      ]
+    },
+    {
       "output": "internal/cmd/objabi/path.go",
       "source": "src/cmd/internal/objabi/path.go",
       "source_sha256": "ff1e056f2f2b3aa1f757bf7be3da769f1f5241da65438e5ebb9f65a6716c8343",
@@ -235,15 +245,148 @@
       ]
     },
     {
+      "output": "internal/go/goarch/goarch.go",
+      "source": "src/internal/goarch/goarch.go",
+      "source_sha256": "4ba164d62956cbf38638637453837789c39761e739aeff267702b33bdf5908a9",
+      "output_sha256": "39941db362d5fc8d7e9866c54ca03b48f2772d51c441acb8152d2ea74bc9fb48",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "ArchFamilyType"
+      ]
+    },
+    {
+      "output": "internal/cmd/sys/arch.go",
+      "source": "src/cmd/internal/sys/arch.go",
+      "source_sha256": "07ac549fe63e0df269822d5b10b704ca710489b2aa25e176df5d98f2a2c6b8f2",
+      "output_sha256": "cb5424b3ff8dc1d26ec1169c301283f5709ba220dc5b4c419c68000298752a3b",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "Arch",
+        "ArchFamily"
+      ]
+    },
+    {
+      "output": "internal/cmd/dwarf/dwarf.go",
+      "source": "src/cmd/internal/dwarf/dwarf.go",
+      "source_sha256": "e608077914681daa41264b1cfa07d12ba9df9090b8f2b4bfc7242af890f2d91a",
+      "output_sha256": "0392db500cbe75f957a60c9eefd2a662f9e03e1756e5eb2426d9e18ef852816b",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "InlCall",
+        "InlCalls",
+        "Range",
+        "Scope",
+        "Sym",
+        "Var"
+      ]
+    },
+    {
+      "output": "internal/cmd/goobj/objfile.go",
+      "source": "src/cmd/internal/goobj/objfile.go",
+      "source_sha256": "caf835a17e23aa02cae9bda6e8723d8be359846fc4453bd53f3a3947744b938a",
+      "output_sha256": "ba7867f9ef00357178dd7d9da550938ad35145d4a597021761f038c109bef18f",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "FingerprintType",
+        "ImportedPkg"
+      ]
+    },
+    {
+      "output": "internal/cmd/cov/covcmd/cmddefs.go",
+      "source": "src/cmd/internal/cov/covcmd/cmddefs.go",
+      "source_sha256": "925700facaff2685223e2b83694d1e96da216f435e5fa9982d92a255e60327dc",
+      "output_sha256": "ef927b86eb8387ab6b0af082c67e2104fb162f2b5dca24244b7e073a9337622e",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "CoverFixupConfig"
+      ]
+    },
+    {
+      "output": "internal/base/base.go",
+      "source": "src/cmd/compile/internal/base/base.go",
+      "source_sha256": "2cfa9d3b3927e2ade103bc5ef7c91593ca86192c198d4851dc9c00028efa6094",
+      "output_sha256": "1e0aeab9ef90a3b3b96a78bad47650438cf25cd67e38949ce0728fccdd9b5cc6",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "EnableTrace"
+      ]
+    },
+    {
+      "output": "internal/base/debug.go",
+      "source": "src/cmd/compile/internal/base/debug.go",
+      "source_sha256": "993de7fcc9bf1d1ae39e99277df18dbc04113aba450c155609a02238ea9050ab",
+      "output_sha256": "8e1cabb32599a0f5727112d2451bff8a76b2923d0722848e3166b99010b57ac3",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "DebugFlags"
+      ]
+    },
+    {
+      "output": "internal/base/flag.go",
+      "source": "src/cmd/compile/internal/base/flag.go",
+      "source_sha256": "4a0fa18857d702ea677247cc6c562795c780f4ae6a669e1a2e2352febdcb660a",
+      "output_sha256": "241d86f5c4cd999a22654dac4e13180aa1ca116196808103c2aff39010b11d9d",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "CmdFlags",
+        "CountFlag"
+      ]
+    },
+    {
+      "output": "internal/cmd/obj/dwarf.go",
+      "source": "src/cmd/internal/obj/dwarf.go",
+      "source_sha256": "46d1b0d61d3068f28928f716622098091a78f98f33311e7eb8a251fd80fd955d",
+      "output_sha256": "a7cdbc1e4e665d0648786ff053c71be4d28ca4fde10f6df00ac16449ddebcdfa",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "DwarfFixupTable",
+        "declOffset",
+        "fnState",
+        "relFixup",
+        "symFixups"
+      ]
+    },
+    {
+      "output": "internal/cmd/obj/inl.go",
+      "source": "src/cmd/internal/obj/inl.go",
+      "source_sha256": "768c3aa365cccd79b09abe47a4b5fc891e0f06484d6c45a56dbc2cdeea475c0d",
+      "output_sha256": "11f38c5e0a3951da88056967282f0b54a18e01cb6c9d55eaf2efc44bb6bc4f02",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "InlTree",
+        "InlinedCall"
+      ]
+    },
+    {
       "output": "internal/cmd/obj/link.go",
       "source": "src/cmd/internal/obj/link.go",
       "source_sha256": "918978ac6b04e839f5222282b2526230c6ca95b50248456ba9f73e9083258e1f",
-      "output_sha256": "d5166f43e86b2287116cd3b01ab8048ccb2054eed1fa447bfde1f1943de08eda",
+      "output_sha256": "0435b16cb22b717116cbbe5cba9f4180ebda420bf4f4152aa7fe16843c888965",
       "rule": "select-and-relocate-v1",
       "declarations": [
-        "LSym",
+        "Addr",
+        "AddrName",
+        "AddrPos",
+        "AddrType",
+        "As",
         "Attribute",
+        "Func",
+        "LSym",
+        "Link",
+        "LinkArch",
+        "OperandPos",
+        "Prog",
         "Reloc"
+      ]
+    },
+    {
+      "output": "internal/cmd/obj/plist.go",
+      "source": "src/cmd/internal/obj/plist.go",
+      "source_sha256": "50c121d6c72c356c605176e02bce549dd6e0e8107af6c0eed467f7b3adb418e3",
+      "output_sha256": "93884f0b85e0aacfab103773d8d562441ce1cfccd86e4e20a08ae776602212ae",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "ProgAlloc"
       ]
     },
     {
@@ -257,6 +400,19 @@
         "splitPkg",
         "escapedImportPathOK",
         "modPathOK"
+      ]
+    },
+    {
+      "output": "internal/ir/node.go",
+      "source": "src/cmd/compile/internal/ir/node.go",
+      "source_sha256": "c3a15411b58f5d820724f7e488aea6693ec382dfdd84fea73a107a11388194c8",
+      "output_sha256": "83b93b05b573246358780693873caa7a334498a4d2c8d8b037554b64c991b5f6",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "Op",
+        "PragmaFlag",
+        "OXXX",
+        "Nointerface"
       ]
     },
     {
@@ -302,16 +458,6 @@
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
-      ]
-    },
-    {
-      "output": "internal/base/base.go",
-      "source": "src/cmd/compile/internal/base/base.go",
-      "source_sha256": "2cfa9d3b3927e2ade103bc5ef7c91593ca86192c198d4851dc9c00028efa6094",
-      "output_sha256": "1e0aeab9ef90a3b3b96a78bad47650438cf25cd67e38949ce0728fccdd9b5cc6",
-      "rule": "select-and-relocate-v1",
-      "declarations": [
-        "EnableTrace"
       ]
     },
     {

@@ -32,8 +32,261 @@
 package obj
 
 import (
+	"bufio"
+
+	"go-backend-ssa/internal/cmd/dwarf"
+	"go-backend-ssa/internal/cmd/goobj"
 	"go-backend-ssa/internal/cmd/objabi"
+	"go-backend-ssa/internal/cmd/src"
+	"go-backend-ssa/internal/cmd/sys"
+
+	"sync"
 )
+
+// An Addr is an argument to an instruction.
+// The general forms and their encodings are:
+//
+//	sym±offset(symkind)(reg)(index*scale)
+//		Memory reference at address &sym(symkind) + offset + reg + index*scale.
+//		Any of sym(symkind), ±offset, (reg), (index*scale), and *scale can be omitted.
+//		If (reg) and *scale are both omitted, the resulting expression (index) is parsed as (reg).
+//		To force a parsing as index*scale, write (index*1).
+//		Encoding:
+//			type = TYPE_MEM
+//			name = symkind (NAME_AUTO, ...) or 0 (NAME_NONE)
+//			sym = sym
+//			offset = ±offset
+//			reg = reg (REG_*)
+//			index = index (REG_*)
+//			scale = scale (1, 2, 4, 8)
+//
+//	$<mem>
+//		Effective address of memory reference <mem>, defined above.
+//		Encoding: same as memory reference, but type = TYPE_ADDR.
+//
+//	$<±integer value>
+//		This is a special case of $<mem>, in which only ±offset is present.
+//		It has a separate type for easy recognition.
+//		Encoding:
+//			type = TYPE_CONST
+//			offset = ±integer value
+//
+//	*<mem>
+//		Indirect reference through memory reference <mem>, defined above.
+//		Only used on x86 for CALL/JMP *sym(SB), which calls/jumps to a function
+//		pointer stored in the data word sym(SB), not a function named sym(SB).
+//		Encoding: same as above, but type = TYPE_INDIR.
+//
+//	$*$<mem>
+//		No longer used.
+//		On machines with actual SB registers, $*$<mem> forced the
+//		instruction encoding to use a full 32-bit constant, never a
+//		reference relative to SB.
+//
+//	$<floating point literal>
+//		Floating point constant value.
+//		Encoding:
+//			type = TYPE_FCONST
+//			val = floating point value
+//
+//	$<string literal, up to 8 chars>
+//		String literal value (raw bytes used for DATA instruction).
+//		Encoding:
+//			type = TYPE_SCONST
+//			val = string
+//
+//	<symbolic constant name>
+//		Special symbolic constants for ARM64 (such as conditional flags, tlbi_op and so on)
+//		and RISCV64 (such as names for vector configuration instruction arguments and CSRs).
+//		Encoding:
+//			type = TYPE_SPECIAL
+//			offset = The constant value corresponding to this symbol
+//
+//	<register name>
+//		Any register: integer, floating point, control, segment, and so on.
+//		If looking for specific register kind, must check type and reg value range.
+//		Encoding:
+//			type = TYPE_REG
+//			reg = reg (REG_*)
+//
+//	x(PC)
+//		Encoding:
+//			type = TYPE_BRANCH
+//			val = Prog* reference OR ELSE offset = target pc (branch takes priority)
+//
+//	$±x-±y
+//		Final argument to TEXT, specifying local frame size x and argument size y.
+//		In this form, x and y are integer literals only, not arbitrary expressions.
+//		This avoids parsing ambiguities due to the use of - as a separator.
+//		The ± are optional.
+//		If the final argument to TEXT omits the -±y, the encoding should still
+//		use TYPE_TEXTSIZE (not TYPE_CONST), with u.argsize = ArgsSizeUnknown.
+//		Encoding:
+//			type = TYPE_TEXTSIZE
+//			offset = x
+//			val = int32(y)
+//
+//	reg<<shift, reg>>shift, reg->shift, reg@>shift
+//		Shifted register value, for ARM and ARM64.
+//		In this form, reg must be a register and shift can be a register or an integer constant.
+//		Encoding:
+//			type = TYPE_SHIFT
+//		On ARM:
+//			offset = (reg&15) | shifttype<<5 | count
+//			shifttype = 0, 1, 2, 3 for <<, >>, ->, @>
+//			count = (reg&15)<<8 | 1<<4 for a register shift count, (n&31)<<7 for an integer constant.
+//		On ARM64:
+//			offset = (reg&31)<<16 | shifttype<<22 | (count&63)<<10
+//			shifttype = 0, 1, 2 for <<, >>, ->
+//
+//	(reg, reg)
+//		A destination register pair. When used as the last argument of an instruction,
+//		this form makes clear that both registers are destinations.
+//		Encoding:
+//			type = TYPE_REGREG
+//			reg = first register
+//			offset = second register
+//
+//	[reg, reg, reg-reg]
+//		Register list for ARM, ARM64, 386/AMD64.
+//		Encoding:
+//			type = TYPE_REGLIST
+//		On ARM:
+//			offset = bit mask of registers in list; R0 is low bit.
+//		On ARM64:
+//			offset = register count (Q:size) | arrangement (opcode) | first register
+//		On 386/AMD64:
+//			reg = range low register
+//			offset = 2 packed registers + kind tag (see x86.EncodeRegisterRange)
+//
+//	reg, reg
+//		Register pair for ARM.
+//		TYPE_REGREG2
+//
+//	(reg+reg)
+//		Register pair for PPC64.
+//		Encoding:
+//			type = TYPE_MEM
+//			reg = first register
+//			index = second register
+//			scale = 1
+//
+//	reg.[US]XT[BHWX]
+//		Register extension for ARM64
+//		Encoding:
+//			type = TYPE_REG
+//			reg = REG_[US]XT[BHWX] + register + shift amount
+//			offset = ((reg&31) << 16) | (exttype << 13) | (amount<<10)
+//
+//	reg.<T>
+//		Register arrangement for ARM64 and Loong64 SIMD register
+//		e.g.:
+//			On ARM64: V1.S4, V2.S2, V7.D2, V2.H4, V6.B16
+//			On Loong64: X1.B32, X1.H16, X1.W8, X2.V4, X1.Q1, V1.B16, V1.H8, V1.W4, V1.V2
+//		Encoding:
+//			type = TYPE_REG
+//			reg = REG_ARNG + register + arrangement
+//
+//	reg.<T>[index]
+//		Register element for ARM64 and Loong64
+//		Encoding:
+//			type = TYPE_REG
+//			reg = REG_ELEM + register + arrangement
+//			index = element index
+
+type Addr struct {
+	Reg    int16
+	Index  int16
+	Scale  int16 // Sometimes holds a register.
+	Type   AddrType
+	Name   AddrName
+	Class  int8
+	Offset int64
+	Sym    *LSym
+
+	// argument value:
+	//	for TYPE_SCONST, a string
+	//	for TYPE_FCONST, a float64
+	//	for TYPE_BRANCH, a *Prog (optional)
+	//	for TYPE_TEXTSIZE, an int32 (optional)
+	Val any
+}
+
+type AddrName int8
+
+//go:generate stringer -type AddrType
+
+type AddrType uint8
+
+// Prog describes a single machine instruction.
+//
+// The general instruction form is:
+//
+//	(1) As.Scond From [, ...RestArgs], To
+//	(2) As.Scond From, Reg [, ...RestArgs], To, RegTo2
+//
+// where As is an opcode and the others are arguments:
+// From, Reg are sources, and To, RegTo2 are destinations.
+// RestArgs can hold additional sources and destinations.
+// Usually, not all arguments are present.
+// For example, MOVL R1, R2 encodes using only As=MOVL, From=R1, To=R2.
+// The Scond field holds additional condition bits for systems (like arm)
+// that have generalized conditional execution.
+// (2) form is present for compatibility with older code,
+// to avoid too much changes in a single swing.
+// (1) scheme is enough to express any kind of operand combination.
+//
+// Jump instructions use the To.Val field to point to the target *Prog,
+// which must be in the same linked list as the jump instruction.
+//
+// The Progs for a given function are arranged in a list linked through the Link field.
+//
+// Each Prog is charged to a specific source line in the debug information,
+// specified by Pos.Line().
+// Every Prog has a Ctxt field that defines its context.
+// For performance reasons, Progs are usually bulk allocated, cached, and reused;
+// those bulk allocators should always be used, rather than new(Prog).
+//
+// The other fields not yet mentioned are for use by the back ends and should
+// be left zeroed by creators of Prog lists.
+type Prog struct {
+	Ctxt     *Link     // linker context
+	Link     *Prog     // next Prog in linked list
+	From     Addr      // first source operand
+	RestArgs []AddrPos // can pack any operands that not fit into {Prog.From, Prog.To}, same kinds of operands are saved in order
+	To       Addr      // destination operand (second is RegTo2 below)
+	Pool     *Prog     // constant pool entry, for arm,arm64 back ends
+	Forwd    *Prog     // for x86 back end
+	Rel      *Prog     // for x86, arm back ends
+	Pc       int64     // for back ends or assembler: virtual or actual program counter, depending on phase
+	Pos      src.XPos  // source position of this instruction
+	Spadj    int32     // effect of instruction on stack pointer (increment or decrement amount)
+	As       As        // assembler opcode
+	Reg      int16     // 2nd source operand
+	RegTo2   int16     // 2nd destination operand
+	Mark     uint16    // bitmask of arch-specific items
+	Optab    uint16    // arch-specific opcode index
+	Scond    uint8     // bits that describe instruction suffixes (e.g. ARM conditions, RISCV Rounding Mode)
+	Back     uint8     // for x86 back end: backwards branch state
+	Ft       uint8     // for x86 back end: type index of Prog.From
+	Tt       uint8     // for x86 back end: type index of Prog.To
+	Isize    uint8     // for x86 back end: size of the instruction in bytes
+}
+
+// AddrPos indicates whether the operand is the source or the destination.
+type AddrPos struct {
+	Addr
+	Pos OperandPos
+}
+
+type OperandPos int8
+
+// An As denotes an assembler opcode.
+// There are some portable opcodes, declared here in package obj,
+// that are common to all architectures.
+// However, the majority of opcodes are arch-specific
+// and are declared in their respective architecture's subpackage.
+type As int16
 
 // An LSym is the sort of symbol that is written to an object file.
 // It represents Go symbols in a flat pkg+"."+name namespace.
@@ -64,4 +317,90 @@ type Reloc struct {
 	Type objabi.RelocType
 	Add  int64
 	Sym  *LSym
+}
+
+// A Func represents a Go function. If non-nil, it must be a *ir.Func.
+type Func interface {
+	Pos() src.XPos
+}
+
+// Link holds the context for writing object code from a compiler
+// to be linker input or for reading that input into the linker.
+type Link struct {
+	Headtype             objabi.HeadType
+	Arch                 *LinkArch
+	CompressInstructions bool // use compressed instructions where possible (if supported by architecture)
+	Debugasm             int
+	Debugvlog            bool
+	Debugpcln            string
+	Flag_shared          bool
+	Flag_dynlink         bool
+	Flag_linkshared      bool
+	Flag_optimize        bool
+	Flag_locationlists   bool
+	Flag_noRefName       bool   // do not include referenced symbol names in object file
+	Retpoline            bool   // emit use of retpoline stubs for indirect jmp/call
+	Flag_maymorestack    string // If not "", call this function before stack checks
+	Bso                  *bufio.Writer
+	Pathname             string
+	Pkgpath              string // the current package's import path
+
+	hashmu          sync.Mutex       // protects hash, funchash
+	hash            sync.Map         // name(string) -> sym(*syncOnce) mapping
+	funchash        sync.Map         // name(string) -> sym(*syncOnce) mapping for ABIInternal syms
+	statichash      map[string]*LSym // name -> sym mapping for static syms
+	PosTable        src.PosTable
+	InlTree         InlTree // global inlining tree used by gc/inl.go
+	DwFixups        *DwarfFixupTable
+	DwTextCount     int
+	Imports         []goobj.ImportedPkg
+	DiagFunc        func(string, ...any)
+	DiagFlush       func()
+	DebugInfo       func(ctxt *Link, fn *LSym, info *LSym, curfn Func) ([]dwarf.Scope, dwarf.InlCalls)
+	GenAbstractFunc func(fn *LSym)
+	Errors          int
+
+	InParallel    bool // parallel backend phase in effect
+	UseBASEntries bool // use Base Address Selection Entries in location lists and PC ranges
+	IsAsm         bool // is the source assembly language, which may contain surprising idioms (e.g., call tables)
+	Std           bool // is standard library package
+
+	// state for writing objects
+	Text []*LSym
+	Data []*LSym
+
+	// Constant symbols (e.g. $i64.*) are data symbols created late
+	// in the concurrent phase. To ensure a deterministic order, we
+	// add them to a separate list, sort at the end, and append it
+	// to Data.
+	constSyms []*LSym
+
+	// Windows SEH symbols are also data symbols that can be created
+	// concurrently.
+	SEHSyms []*LSym
+
+	// pkgIdx maps package path to index. The index is used for
+	// symbol reference in the object file.
+	pkgIdx map[string]int32
+
+	defs         []*LSym // list of defined symbols in the current package
+	hashed64defs []*LSym // list of defined short (64-bit or less) hashed (content-addressable) symbols
+	hasheddefs   []*LSym // list of defined hashed (content-addressable) symbols
+	nonpkgdefs   []*LSym // list of defined non-package symbols
+	nonpkgrefs   []*LSym // list of referenced non-package symbols
+
+	Fingerprint goobj.FingerprintType // fingerprint of symbol indices, to catch index mismatch
+}
+
+// LinkArch is the definition of a single architecture.
+type LinkArch struct {
+	*sys.Arch
+	Init           func(*Link)
+	ErrorCheck     func(*Link, *LSym)
+	Preprocess     func(*Link, *LSym, ProgAlloc)
+	Assemble       func(*Link, *LSym, ProgAlloc)
+	Progedit       func(*Link, *Prog, ProgAlloc)
+	SEH            func(*Link, *LSym) *LSym
+	UnaryDst       map[As]bool // Instruction takes one operand, a destination.
+	DWARFRegisters map[int16]int16
 }

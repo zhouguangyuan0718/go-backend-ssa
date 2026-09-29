@@ -183,3 +183,30 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 		t.Fatal("checker bridge identity")
 	}
 }
+
+func TestNativeObjectGraph(t *testing.T) {
+	// The host and migrated packages share positions, symbols and callbacks.
+	link := &gcbridge.Link{Pkgpath: "example/native", Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "test", PtrSize: 8, RegSize: 8}}}
+	pos := link.PosTable.XPos(position.Make(position.NewFile("native.go", "/src/native.go"), 7, 2))
+	symbol := &gcbridge.LinkSymbol{Name: "example/native.F"}
+	prog := &gcbridge.Prog{Ctxt: link, Pos: pos, From: gcbridge.Addr{Sym: symbol}}
+	link.Text = []*gcbridge.LinkSymbol{symbol}
+	called := false
+	link.Arch.Assemble = func(got *gcbridge.Link, sym *gcbridge.LinkSymbol, newProg gcbridge.ProgAlloc) {
+		if got != link || sym != symbol || newProg() != prog {
+			t.Error("native callback identity")
+		}
+		called = true
+	}
+	link.Arch.Assemble(link, symbol, func() *gcbridge.Prog { return prog })
+	if !called || link.PosTable.Pos(prog.Pos).Line() != 7 || prog.From.Sym != link.Text[0] {
+		t.Fatal("native graph identity")
+	}
+	// A second instance cannot mutate the first position table or symbol list.
+	other := &gcbridge.Link{Pkgpath: "example/native"}
+	other.PosTable.XPos(position.Make(position.NewFile("other.go", "/src/other.go"), 20, 1))
+	other.Text = append(other.Text, &gcbridge.LinkSymbol{Name: symbol.Name})
+	if link.PosTable.Pos(prog.Pos).Base().Filename() != "native.go" || other.Text[0] == symbol {
+		t.Fatal("instance coupling")
+	}
+}

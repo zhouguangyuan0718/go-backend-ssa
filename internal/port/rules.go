@@ -53,7 +53,7 @@ func Migration() Plan {
 			},
 			{Source: "src/cmd/internal/objabi/symkind.go", Declarations: []string{"SymKind", "Sxxx"}},
 			{Source: "src/cmd/internal/objabi/reloctype.go", Declarations: []string{"RelocType"}},
-			{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"LSym", "Attribute", "Reloc"}},
+			{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Addr", "AddrName", "AddrPos", "AddrType", "As", "Attribute", "Func", "LSym", "Link", "LinkArch", "OperandPos", "Prog", "Reloc"}},
 			{
 				Source:    "src/cmd/compile/internal/ir/func.go",
 				Functions: []string{"ParseLinkFuncName", "splitPkg", "escapedImportPathOK", "modPathOK"},
@@ -156,6 +156,14 @@ func Migration() Plan {
 				},
 			},
 		},
+	}
+	for i, u := range plan.Units {
+		if u.Source == "src/cmd/internal/obj/link.go" {
+			units := append([]Unit(nil), plan.Units[:i]...)
+			units = append(units, objectDeclarations()...)
+			plan.Units = append(units, plan.Units[i:]...)
+			break
+		}
 	}
 	plan.Units = append(plan.Units, types2Migration()...)
 	plan.Units = append(plan.Units, pkgbitsMigration()...)

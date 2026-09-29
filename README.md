@@ -29,6 +29,7 @@
 12. [M3 原生语法树](docs/m3-syntax.md)：Parse、AST、无全局解析状态与上游差分。
 13. [M3 类型检查迁移](docs/m3-types2.md)：源码类型检查入口、Context 隔离、显式导入/尺寸及完整上游差分。
 14. [M3 Unified IR 编码基础](docs/m3-unified.md)：原生 codec、解码失败隔离及字节级差分。
+15. [M3 原生对象声明](docs/m3-objects.md)：Link/Prog/架构/驱动输入、公共别名及完整声明对照。
 
 ## 当前可运行的工具
 
@@ -59,7 +60,7 @@ go test -race ./...
 | [internal/types2/api.go](internal/types2/api.go) | 原生类型检查、实例 Context、类型/对象及 Info |
 | [internal/go/pkgbits/encoder.go](internal/go/pkgbits/encoder.go)、[decoder.go](internal/go/pkgbits/decoder.go) | Unified IR 底层编码/解码、实例诊断与可恢复失败 |
 | [internal/types/type.go](internal/types/type.go)、[sym.go](internal/types/sym.go) | 真实 Type/Sym 结构、标志位与选定构造算法 |
-| [internal/cmd/obj/link.go](internal/cmd/obj/link.go) | 真实 LSym/Reloc/Attribute 数据声明 |
+| [internal/cmd/obj/link.go](internal/cmd/obj/link.go) | 完整原生 Link/LinkArch/Prog/Addr/LSym 及依赖数据声明 |
 | [internal/types/size.go](internal/types/size.go)、[universe.go](internal/types/universe.go)、[identity.go](internal/types/identity.go) | 原生布局/延迟队列、预声明类型初始化及等价判断 |
 | [internal/types/pkg.go](internal/types/pkg.go) | Universe 包表、字符串驻留与 Pkg 查找方法 |
 | [internal/cmd/objabi/path.go](internal/cmd/objabi/path.go) | 符号路径编码与解码 |
