@@ -83,3 +83,60 @@ func TestNativeContext(t *testing.T) {
 		})
 	}
 }
+
+// Native value constructors have input parameters and must keep imports from
+// their own source file. Constructor dependencies are checked transitively.
+func TestNativeValueContext(t *testing.T) {
+	const ctor = `package p
+ import "bytes"
+ type Context struct{ cache string }
+ func pure(s string)string { return s+"!" }
+ func NewContext(b *bytes.Buffer, suffix ...string)Context{return Context{cache:pure(b.String()+suffix[0])}}
+ func(c *Context) Text()string{return c.cache}
+ `
+	const state = `package p
+ var count=7
+ func(c *Context) Next()int{count++;return count}
+ `
+	contextRule := func(fields map[string]string) *ContextRule {
+		return &ContextRule{Existing: true, Selective: true, Type: "Context", Constructor: "NewContext", Fields: fields}
+	}
+	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{
+		{Source: "src/cmd/compile/internal/p/a.go", WholeFile: true, Context: contextRule(map[string]string{"count": "count"})},
+		{Source: "src/cmd/compile/internal/p/z.go", WholeFile: true, Context: contextRule(nil)},
+	}}
+	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", plan.Units[0].Source: state, plan.Units[1].Source: ctor})
+	s, err := OpenSource(context.Background(), repo, pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	r, err := Render(s, plan, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(dir, r); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
+	writeTestFile(t, dir, "internal/p/context_test.go", `package p
+ import("testing";"bytes")
+ func TestConstructor(t *testing.T){a:=NewContext(bytes.NewBufferString("a"),"b");b:=NewContext(bytes.NewBufferString("b"),"c");if a.Text()!="ab!"||b.Text()!="bc!"||a.Next()!=8||a.Next()!=9||b.Next()!=8{t.Fatal("constructor parameters or state")}}
+ `)
+	cmd := exec.Command("go", "test", "-race", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.27.1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	s.cache[plan.Units[1].Source] = []byte(strings.Replace(ctor, `return s+"!"`, `c:=Context{};c.Next();return s+"!"`, 1))
+	if _, err := Render(s, plan, dir); err == nil || !strings.Contains(err.Error(), "depends on state") {
+		t.Fatalf("indirect constructor dependency: %v", err)
+	}
+	s.cache[plan.Units[1].Source] = []byte(ctor)
+	s.cache[plan.Units[0].Source] = []byte(state + `var saved=&count`)
+	plan.Units[0].Context.Fields["saved"] = "saved"
+	if _, err := Render(s, plan, dir); err == nil || !strings.Contains(err.Error(), "initializer may retain") {
+		t.Fatalf("value copy back-pointer: %v", err)
+	}
+}

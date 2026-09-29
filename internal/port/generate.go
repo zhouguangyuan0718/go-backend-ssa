@@ -197,12 +197,10 @@ func auditOutput(pkg *types.Package, files []*ast.File, info *types.Info) error 
 			continue
 		}
 		p := obj.Pkg().Path()
-		// Caller reads this invocation's stack, not mutable process settings.
-		// Retain the upstream assertion's source-location diagnostic.
-		if p == "runtime" && obj.Name() == "Caller" {
-			if _, ok := obj.(*types.Func); ok {
-				continue
-			}
+		// These operations inspect the current stack only; they do not read or
+		// mutate process configuration. Preserve upstream sync diagnostics.
+		if p == "runtime" && stackDiagnosticObject(obj) {
+			continue
 		}
 		if p == "unsafe" || p == "os" || p == "os/exec" || p == "syscall" || p == "log" || p == "flag" || p == "runtime" {
 			return fmt.Errorf("unclassified environment dependency %s.%s", p, obj.Name())
@@ -423,4 +421,36 @@ func readJSON(name string, dst any) error {
 		return fmt.Errorf("%s: trailing JSON data", name)
 	}
 	return nil
+}
+
+func stackDiagnosticObject(obj types.Object) bool {
+	pkg := obj.Pkg()
+	if pkg == nil || pkg.Path() != "runtime" {
+		return false
+	}
+	if obj.Parent() == pkg.Scope() {
+		switch obj.Name() {
+		case "Caller", "Callers", "CallersFrames", "Frame", "Frames":
+			return true
+		}
+	}
+	for _, name := range []string{"Frame", "Frames"} {
+		typ := pkg.Scope().Lookup(name).Type().(*types.Named)
+		if fields, ok := typ.Underlying().(*types.Struct); ok {
+			for i := 0; i < fields.NumFields(); i++ {
+				if name == "Frame" && fields.Field(i) == obj {
+					return true
+				}
+			}
+		}
+		if name == "Frames" {
+			for i := 0; i < typ.NumMethods(); i++ {
+				m := typ.Method(i)
+				if m == obj && m.Name() == "Next" {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

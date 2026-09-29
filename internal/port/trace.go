@@ -7,7 +7,7 @@ import (
 
 // Only the known diagnostic output operations are redirected. Other os/runtime
 // operations still fail the environment audit; this is not an ambient host API.
-func traceReferences(info *types.Info) map[types.Object]string {
+func hostReferences(info *types.Info, trace, exit bool) map[types.Object]string {
 	refs := map[types.Object]string{}
 	for _, obj := range info.Uses {
 		if obj == nil || obj.Pkg() == nil {
@@ -15,6 +15,9 @@ func traceReferences(info *types.Info) map[types.Object]string {
 		}
 		switch obj.Pkg().Path() {
 		case "fmt":
+			if !trace {
+				continue
+			}
 			if _, ok := obj.(*types.Func); !ok {
 				continue
 			}
@@ -27,6 +30,12 @@ func traceReferences(info *types.Info) map[types.Object]string {
 				refs[obj] = "tracePrint"
 			}
 		case "os":
+			if _, ok := obj.(*types.Func); ok && exit && obj.Name() == "Exit" {
+				refs[obj] = "abort"
+			}
+			if !trace {
+				continue
+			}
 			if _, ok := obj.(*types.Var); ok && (obj.Name() == "Stdout" || obj.Name() == "Stderr") {
 				refs[obj] = "traceWriter"
 			}
@@ -37,14 +46,14 @@ func traceReferences(info *types.Info) map[types.Object]string {
 
 func checkTraceAdapters(units []Unit, info *types.Info, out *types.Package) error {
 	for _, u := range units {
-		if u.Context == nil || !u.Context.RedirectTrace {
+		if u.Context == nil || (!u.Context.RedirectTrace && !u.Context.RedirectExit) {
 			continue
 		}
 		ctx := out.Scope().Lookup(u.Context.Type)
 		if ctx == nil {
 			return fmt.Errorf("trace context missing")
 		}
-		for obj, name := range traceReferences(info) {
+		for obj, name := range hostReferences(info, u.Context.RedirectTrace, u.Context.RedirectExit) {
 			method, _, _ := types.LookupFieldOrMethod(types.NewPointer(ctx.Type()), true, out, name)
 			if _, ok := method.(*types.Func); !ok {
 				return fmt.Errorf("trace adapter method missing: %s", name)

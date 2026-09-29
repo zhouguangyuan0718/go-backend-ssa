@@ -158,5 +158,6 @@ func Migration() Plan {
 		},
 	}
 	plan.Units = append(plan.Units, types2Migration()...)
+	plan.Units = append(plan.Units, pkgbitsMigration()...)
 	return plan
 }

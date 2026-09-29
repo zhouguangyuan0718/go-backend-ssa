@@ -4,7 +4,7 @@
 
 库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。每次调用拥有独立编译状态，返回结果在后续调用期间仍有效。
 
-当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
+当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口，并移植 Unified IR 的 pkgbits 编码基础；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
 
 - 语言范围：Go 1.27；其他语言版本尚不支持。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
@@ -28,6 +28,7 @@
 11. [M2 类型与 Universe](docs/m2-universe.md)：第二至七批实现、对外入口及类型布局边界。
 12. [M3 原生语法树](docs/m3-syntax.md)：Parse、AST、无全局解析状态与上游差分。
 13. [M3 类型检查迁移](docs/m3-types2.md)：源码类型检查入口、Context 隔离、显式导入/尺寸及完整上游差分。
+14. [M3 Unified IR 编码基础](docs/m3-unified.md)：原生 codec、解码失败隔离及字节级差分。
 
 ## 当前可运行的工具
 
@@ -47,7 +48,7 @@ go test -race ./...
 
 设定 `GO_SSA_SOURCE_REPO` 时，测试额外验证官方 go1.27.1 再生成、两版上游位置/符号回归与 SSA 类型切片差分测试、源码树未变以及 go1.27.0 → go1.27.1 升级；仓库需包含两个 tag。不设置该变量时仅跳过这项集成测试，其他测试照常执行。
 
-编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST，以及 types/ir/objabi 的结构和算法切片；完整类型系统和编译器尚未实现。
+编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker 和 pkgbits codec，以及 types/ir/objabi 的结构和算法切片；完整 compiler IR 和编译流程尚未实现。
 
 移植后的源码直接保存在本项目，和手写适配、转换规则一起纳入版本管理。使用本库时不需要先运行移植工具；维护者更新上游版本时再重新生成。
 
@@ -55,6 +56,8 @@ go test -race ./...
 | --- | --- |
 | [internal/cmd/src/pos.go](internal/cmd/src/pos.go)、[xpos.go](internal/cmd/src/xpos.go) | 位置、压缩位置、位置表与调试标记 |
 | [internal/syntax/parser.go](internal/syntax/parser.go)、[scanner.go](internal/syntax/scanner.go)、[nodes.go](internal/syntax/nodes.go) | 编译器语法解析、独立扫描状态及原生 AST |
+| [internal/types2/api.go](internal/types2/api.go) | 原生类型检查、实例 Context、类型/对象及 Info |
+| [internal/go/pkgbits/encoder.go](internal/go/pkgbits/encoder.go)、[decoder.go](internal/go/pkgbits/decoder.go) | Unified IR 底层编码/解码、实例诊断与可恢复失败 |
 | [internal/types/type.go](internal/types/type.go)、[sym.go](internal/types/sym.go) | 真实 Type/Sym 结构、标志位与选定构造算法 |
 | [internal/cmd/obj/link.go](internal/cmd/obj/link.go) | 真实 LSym/Reloc/Attribute 数据声明 |
 | [internal/types/size.go](internal/types/size.go)、[universe.go](internal/types/universe.go)、[identity.go](internal/types/identity.go) | 原生布局/延迟队列、预声明类型初始化及等价判断 |
@@ -81,11 +84,11 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 
 `NewTuple` 和 `NewResults` 保留上游返回 `*Type` 的签名；跨 Universe 或 nil 元素会 panic。`NewResults` 按上游语义保留输入 slice，调用后不能将其修改为外来类型。SSA 单例字段也应当作只读绑定使用。以上接口尚不生成 SSA 函数图。
 
-复合类型也直接使用上游入口：`u.NewPtr(value)`、`u.NewSlice(value)`、`u.NewArray(value, n)`、`u.NewMap(key, value)`、`u.NewChan(value, types.SendRecv)`；通过 `Elem`、`Key`、`NumElem`、`ChanDir` 等方法读取。`u.NewPtrCacheEnabled` 只控制当前实例。指针构造已使用实例目标宽度，完整类型布局仍待实现。
+复合类型也直接使用上游入口：`u.NewPtr(value)`、`u.NewSlice(value)`、`u.NewArray(value, n)`、`u.NewMap(key, value)`、`u.NewChan(value, types.SendRecv)`；通过 `Elem`、`Key`、`NumElem`、`ChanDir` 等方法读取。`u.NewPtrCacheEnabled` 只控制当前实例。指针构造和下述 CalcSize 布局均使用实例目标宽度。
 
-未定类型使用上游名字：`u.UntypedInt`、`u.UntypedRune`、`u.UntypedString` 等；常量映射为 `u.UntypedTypes[constant.Int]` 和 `u.DefaultKinds[constant.Int]`。`Type.IsUntyped` 等分类方法直接复用上游实现，完整预声明类型初始化和类型检查仍待接入。
+未定类型使用上游名字：`u.UntypedInt`、`u.UntypedRune`、`u.UntypedString` 等；常量映射为 `u.UntypedTypes[constant.Int]` 和 `u.DefaultKinds[constant.Int]`。`Type.IsUntyped` 等分类方法直接复用上游实现，预声明类型由下述 InitTypes 初始化；源码类型检查使用独立的 types2 入口。
 
-字段和签名使用 `u.NewField(pos, sym, typ)`、`u.NewStruct(fields)`、`u.NewSignature(recv, params, results)`。通过 `FieldType`、`Params`、`Results`、`ResultsTuple` 等原生访问器消费，公开 `types.Field` 与 `gcbridge.Field` 是同一对象类型。字段偏移和结构体布局仍待 CalcSize。
+字段和签名使用 `u.NewField(pos, sym, typ)`、`u.NewStruct(fields)`、`u.NewSignature(recv, params, results)`。通过 `FieldType`、`Params`、`Results`、`ResultsTuple` 等原生访问器消费，公开 `types.Field` 与 `gcbridge.Field` 是同一对象类型。字段偏移和结构体布局由下述 CalcSize 计算。
 
 类型布局入口示例见 [独立消费者测试](testdata/consumer/consumer_test.go)。先创建 Universe，再调用原生 `u.InitTypes(defTypeName)`；回调为传入的 Sym/Type 提供宿主的 `types.Object`。随后可直接调用 `Type.Size/Alignment/Registers/HasPointers` 与 `u.CalcSize/PtrDataSize/AlgType/Identical`。当前不提供假 `ir.Name`；宿主绑定契约及失败处理见 M2 文档。
 

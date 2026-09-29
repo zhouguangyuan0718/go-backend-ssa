@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v5"
+const ToolVersion = "syncgo-m3-v6"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -75,6 +75,7 @@ type OwnerRule struct {
 type ContextRule struct {
 	PreserveNilArgs   bool   // Keep original nil argument semantics; still reject foreign non-nil owners.
 	Embed             string // Handwritten instance fields embedded into the original context.
+	RedirectExit      bool   // Replace process exit with a non-returning instance adapter.
 	RedirectTrace     bool   // Route stdout/stderr tracing through instance adapter methods.
 	Selective         bool   // Only bind free functions that depend on state or owned allocation.
 	Existing          bool   // Extend the upstream Type and run its original Constructor first.
@@ -227,11 +228,11 @@ func (p Plan) Validate() error {
 			if c.Embed != "" && (!c.Existing || c.Adapter == "" || !token.IsIdentifier(c.Embed) || c.Embed == "_") {
 				return fmt.Errorf("invalid native context embed")
 			}
-			if c.RedirectTrace && c.Adapter == "" {
+			if (c.RedirectTrace || c.RedirectExit) && c.Adapter == "" {
 				return fmt.Errorf("trace redirection requires an adapter")
 			}
 			if previous := contexts[pkg]; previous != nil {
-				if previous.Type != c.Type || previous.Constructor != c.Constructor || previous.Adapter != c.Adapter || previous.Existing != c.Existing || previous.Selective != c.Selective || previous.Embed != c.Embed || previous.RedirectTrace != c.RedirectTrace || previous.PreserveNilArgs != c.PreserveNilArgs {
+				if previous.Type != c.Type || previous.Constructor != c.Constructor || previous.Adapter != c.Adapter || previous.Existing != c.Existing || previous.Selective != c.Selective || previous.Embed != c.Embed || previous.RedirectTrace != c.RedirectTrace || previous.RedirectExit != c.RedirectExit || previous.PreserveNilArgs != c.PreserveNilArgs {
 					return fmt.Errorf("inconsistent package context: %s", pkg)
 				}
 			} else {

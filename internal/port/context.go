@@ -92,8 +92,8 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		return nil
 	}
 	traceBindings := map[types.Object]string{}
-	if context.RedirectTrace {
-		traceBindings = traceReferences(info)
+	if context.RedirectTrace || context.RedirectExit {
+		traceBindings = hostReferences(info, context.RedirectTrace, context.RedirectExit)
 		for obj, method := range traceBindings {
 			external[obj] = method
 		}
@@ -187,6 +187,30 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		}
 		return threadMethodContext(fs, files, node, info, parameterMethods, ctx, context.Type)
 	}
+	// Include receiver methods in the dependency closure: a pure helper is safe
+	// during allocation, but an indirect read of moved state is not.
+	allFunctions := map[types.Object]string{}
+	for _, f := range files {
+		for _, d := range f.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok {
+				allFunctions[info.Defs[fn.Name]] = fn.Name.Name
+			}
+		}
+	}
+	constructorDeps := statefulFunctions(files, info, allFunctions, states, external, owners, units)
+	unsafeValueInit := false
+	for _, entry := range info.InitOrder {
+		dependent := hasOwnedAllocation(entry.Rhs, info, owners)
+		ast.Inspect(entry.Rhs, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok {
+				obj := info.Uses[id]
+				dependent = dependent || states[obj] != "" || external[obj] != "" || constructorDeps[obj] != ""
+			}
+			return true
+		})
+		unsafeValueInit = unsafeValueInit || dependent
+	}
+
 	// Save initializer expressions before declaration rewriting changes their roots.
 	helpers := make([]string, len(files))
 	var calls []string
@@ -223,6 +247,11 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	if previous >= 0 {
 		helpers[previous] += "}\n"
 	}
+	constructorFile := first
+	constructorType := "func() *" + context.Type
+	constructorArgs := ""
+	valueContext := false
+
 	for i, f := range files {
 		if units[i].Context == nil {
 			continue
@@ -246,13 +275,47 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			}
 			if context.Existing && fn.Recv == nil && fn.Name.Name == context.Constructor {
 				sig := info.Defs[fn.Name].Type().(*types.Signature)
-				var pointer *types.Pointer
+				var result types.Type
 				if sig.Results().Len() == 1 {
-					pointer, _ = sig.Results().At(0).Type().(*types.Pointer)
+					result = sig.Results().At(0).Type()
 				}
-				ok := pointer != nil
-				if sig.Params().Len() != 0 || sig.Results().Len() != 1 || !ok || types.TypeString(pointer.Elem(), func(*types.Package) string { return "" }) != context.Type {
-					return fmt.Errorf("native context constructor must have signature func() *%s", context.Type)
+				elem := result
+				if pointer, ok := result.(*types.Pointer); ok {
+					elem = pointer.Elem()
+				} else {
+					valueContext = true
+				}
+				if elem == nil || types.TypeString(elem, func(*types.Package) string { return "" }) != context.Type || sig.TypeParams().Len() != 0 {
+					return fmt.Errorf("native context constructor must have signature func(...) %s or *%s", context.Type, context.Type)
+				}
+				constructorFile = i
+				constructorType = nodeText(fs, fn.Type)
+				// Names may be absent or blank in the original; the wrapper needs
+				// stable argument names without changing the original declaration.
+				params := make([]string, sig.Params().Len())
+				for j := range params {
+					params[j] = fmt.Sprintf("syncgoArg%d", j)
+				}
+				wrapper, err := parser.ParseExpr(constructorType)
+				if err != nil {
+					return err
+				}
+				j := 0
+				for _, field := range wrapper.(*ast.FuncType).Params.List {
+					if len(field.Names) == 0 {
+						field.Names = []*ast.Ident{ast.NewIdent(params[j])}
+						j++
+					} else {
+						for k := range field.Names {
+							field.Names[k] = ast.NewIdent(params[j])
+							j++
+						}
+					}
+				}
+				constructorType = nodeText(token.NewFileSet(), wrapper)
+				constructorArgs = strings.Join(params, ",")
+				if sig.Variadic() {
+					constructorArgs += "..."
 				}
 				dependent := false
 				refs := replacements(ast.NewIdent(recv))
@@ -264,7 +327,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 						// A package call can read moved state indirectly (including
 						// native receiver methods). Require an explicit adaptation
 						// before allowing such calls during original allocation.
-						if called, ok := info.Uses[id].(*types.Func); ok && called.Pkg() == info.Defs[fn.Name].Pkg() {
+						if constructorDeps[info.Uses[id]] != "" {
 							dependent = true
 						}
 					}
@@ -446,9 +509,9 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	}
 	allocate := "&" + context.Type + "{}"
 	if context.Existing {
-		allocate = "syncgoNewContext()"
+		allocate = "syncgoNewContext(" + constructorArgs + ")"
 	}
-	constructor := fmt.Sprintf("\nfunc %s() *%s {\n%s := %s\n", context.Constructor, context.Type, recv, allocate)
+	constructor := "\nfunc " + context.Constructor + strings.TrimPrefix(constructorType, "func") + " {\n" + recv + " := " + allocate + "\n"
 	// Source variables exist at their zero value before any initializer runs.
 	// Bind value-typed owned state at that same point, including variables whose
 	// initializer may inspect another variable through a method call.
@@ -458,6 +521,27 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			valueOwners[field] = owner.Field
 		}
 	}
+	if valueContext {
+		// Returning a copied context cannot preserve back-pointers installed by
+		// state initializers. Native value constructors are for plain state.
+		for _, owner := range owners {
+			if !owner.Existing {
+				return fmt.Errorf("value context requires existing owner fields")
+			}
+		}
+		if len(valueOwners) != 0 {
+			return fmt.Errorf("value context cannot own value state")
+		}
+		for _, u := range units {
+			if u.Context != nil && u.Context.Init {
+				return fmt.Errorf("value context cannot run stateful init")
+			}
+		}
+		if unsafeValueInit {
+			return fmt.Errorf("value context initializer may retain context before copy")
+		}
+
+	}
 	for _, field := range sortedKeys(valueOwners) {
 		constructor += fmt.Sprintf("%s.%s.%s = %s\n", recv, field, valueOwners[field], recv)
 	}
@@ -465,7 +549,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		constructor += recv + "." + name + "()\n"
 	}
 	constructor += "return " + recv + "\n}\n"
-	helpers[first] += constructor
+	helpers[constructorFile] += constructor
 	for i, code := range helpers {
 		if code == "" {
 			continue
