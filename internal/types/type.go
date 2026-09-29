@@ -184,17 +184,19 @@ const (
 	typeIsFullyInstantiated
 )
 
-func (t *Type) NotInHeap() bool  { return t.flags&typeNotInHeap != 0 }
-func (t *Type) Noalg() bool      { return t.flags&typeNoalg != 0 }
-func (t *Type) Deferwidth() bool { return t.flags&typeDeferwidth != 0 }
-func (t *Type) Recur() bool      { return t.flags&typeRecur != 0 }
-func (t *Type) IsShape() bool    { return t.flags&typeIsShape != 0 }
-func (t *Type) HasShape() bool   { return t.flags&typeHasShape != 0 }
+func (t *Type) NotInHeap() bool           { return t.flags&typeNotInHeap != 0 }
+func (t *Type) Noalg() bool               { return t.flags&typeNoalg != 0 }
+func (t *Type) Deferwidth() bool          { return t.flags&typeDeferwidth != 0 }
+func (t *Type) Recur() bool               { return t.flags&typeRecur != 0 }
+func (t *Type) IsShape() bool             { return t.flags&typeIsShape != 0 }
+func (t *Type) HasShape() bool            { return t.flags&typeHasShape != 0 }
+func (t *Type) IsFullyInstantiated() bool { return t.flags&typeIsFullyInstantiated != 0 }
 
-func (t *Type) SetNotInHeap(b bool)  { t.flags.set(typeNotInHeap, b) }
-func (t *Type) SetNoalg(b bool)      { t.flags.set(typeNoalg, b) }
-func (t *Type) SetDeferwidth(b bool) { t.flags.set(typeDeferwidth, b) }
-func (t *Type) SetRecur(b bool)      { t.flags.set(typeRecur, b) }
+func (t *Type) SetNotInHeap(b bool)           { t.flags.set(typeNotInHeap, b) }
+func (t *Type) SetNoalg(b bool)               { t.flags.set(typeNoalg, b) }
+func (t *Type) SetDeferwidth(b bool)          { t.flags.set(typeDeferwidth, b) }
+func (t *Type) SetRecur(b bool)               { t.flags.set(typeRecur, b) }
+func (t *Type) SetIsFullyInstantiated(b bool) { t.flags.set(typeIsFullyInstantiated, b) }
 
 // Should always do SetHasShape(true) when doing SetIsShape(true).
 func (t *Type) SetIsShape(b bool)  { t.flags.set(typeIsShape, b) }
@@ -1661,6 +1663,41 @@ func (syncgoCtx *Universe) ComplexForFloat(t *Type) *Type {
 	return nil
 }
 
+func (syncgoCtx *Universe) TypeSym(t *Type) *Sym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if syncgoCtx == nil || t == nil || t.universe != syncgoCtx {
+		panic("argument belongs to another or uninitialized compilation")
+	}
+	return syncgoCtx.TypeSymLookup(syncgoCtx.TypeSymName(t))
+}
+
+func (syncgoCtx *Universe) TypeSymLookup(name string) *Sym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	syncgoCtx.typepkgmu.Lock()
+	s := syncgoCtx.typepkg.Lookup(name)
+	syncgoCtx.typepkgmu.Unlock()
+	return s
+}
+
+func (syncgoCtx *Universe) TypeSymName(t *Type) string {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if syncgoCtx == nil || t == nil || t.universe != syncgoCtx {
+		panic("argument belongs to another or uninitialized compilation")
+	}
+	name := t.LinkString()
+	// Use a separate symbol name for Noalg types for #17752.
+	if syncgoCtx.TypeHasNoAlg(t) {
+		name = "noalg." + name
+	}
+	return name
+}
+
 func (t *Type) IsSIMD() bool {
 	return t.isSIMD
 }
@@ -1696,5 +1733,6 @@ func (syncgoCtx *Universe) syncgoInitVars3() {
 	syncgoCtx.TypeVec512 = syncgoCtx.newSIMD("vec512")
 	syncgoCtx.TypeMask = syncgoCtx.newSIMD("mask")
 	syncgoCtx.TypeResultMem = syncgoCtx.newResults([]*Type{syncgoCtx.TypeMem})
+	syncgoCtx.typepkg = syncgoCtx.NewPkg("type", "type")
 	syncgoCtx.ShapePkg = syncgoCtx.NewPkg("go.shape", "go.shape")
 }

@@ -18,7 +18,11 @@ func TestNativeSymbolBinding(t *testing.T) {
 		{"type", "int", "type:int", "type"},
 		{"example/p", "_", "_", "example/p"},
 	} {
-		x, y := a.NewPkg(tc.path, "p").Lookup(tc.name), b.NewPkg(tc.path, "p").Lookup(tc.name)
+		pkgName := "p"
+		if tc.path == "type" {
+			pkgName = "type"
+		}
+		x, y := a.NewPkg(tc.path, pkgName).Lookup(tc.name), b.NewPkg(tc.path, pkgName).Lookup(tc.name)
 		s := x.Linksym()
 		if s.Name != tc.want || s.Pkg != tc.pkg || s.ABI() != obj.ABI0 || s != left.Lookup(s.Name) || s == y.Linksym() {
 			t.Fatalf("native symbol identity: %+v", s)
@@ -28,6 +32,9 @@ func TestNativeSymbolBinding(t *testing.T) {
 		if fn == s || fn.ABI() != obj.ABIInternal || fn != x.LinksymABI(obj.ABIInternal) {
 			t.Fatal("function ABI separation")
 		}
+	}
+	if a.TypeSymLookup("int") != a.NewPkg("type", "type").Lookup("int") || a.TypeSymLookup("int") == b.TypeSymLookup("int") {
+		t.Fatal("runtime type package identity or isolation")
 	}
 	renamed := a.NewPkg("example/p", "p").Lookup("Local")
 	renamed.Linkname = "runtime.external"

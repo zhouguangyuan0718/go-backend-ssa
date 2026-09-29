@@ -1,0 +1,60 @@
+package reflectdata
+import("fmt";"encoding/json";"encoding/binary";"os";"slices";"testing";"IMPORT_TYPES";"IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_RTTYPE";RD_OBJW IMPORT_BASE IMPORT_BUILDCFG)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian}
+ switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ var out []string
+ pos:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase("p.go","/src/p.go"),7,3))
+ named:=func(pkg *types.Pkg,name string,under *types.Type)*types.Type{n:=GRAPH.NewDeclNameAt(pos,ir.OTYPE,pkg.Lookup(name));typ:=TY.NewNamed(n);n.SetType(typ);n.SetTypecheck(1);typ.SetUnderlying(under);return typ}
+ local:=named(TY.LocalPkg,"Local",TY.NewStruct(nil));foreign:=named(TY.NewPkg("example/dep","dep"),"Foreign",TY.NewStruct(nil))
+ instantiated:=named(foreign.Sym().Pkg,"Generic[int]",TY.NewStruct(nil));instantiated.SetIsFullyInstantiated(true)
+ shape:=named(TY.ShapePkg,"Shape",TY.NewStruct(nil));shape.SetHasShape(true)
+ noalg:=TY.NewStruct([]*types.Field{TY.NewField(pos,TY.LocalPkg.Lookup("X"),TY.Types[types.TINT])});noalg.SetNoalg(true)
+ for _,typ:=range []*types.Type{TY.Types[types.TINT],TY.NewPtr(TY.ByteType),TY.NewPtr(TY.Types[types.TUINT8]),local,foreign,instantiated,noalg}{
+  sym:=UP.TypeSym(typ);lsym:=UP.TypeLinksym(typ);UP.NeedRuntimeType(typ)
+  out=append(out,fmt.Sprintf("symbol:%v:%s:%s:%t:%t:%t:%s",typ,TY.TypeSymName(typ),lsym.Name,sym==TY.TypeSymLookup(sym.Name),lsym==UP.TypeLinksymLookup(sym.Name),lsym.TypeInfo().Type==typ,UP.TypeLinksymPrefix("eq",typ).Name))
+ }
+ wrappedError:=TY.NewSignature(nil,[]*types.Field{TY.NewField(pos,nil,TY.ErrorType)},[]*types.Field{TY.NewField(pos,nil,TY.Types[types.TSTRING])})
+ for _,path:=range []string{"example/p","runtime"}{LINK.Pkgpath=path
+ for _,typ:=range []*types.Type{TY.Types[types.TINT],TY.Types[types.TUNSAFEPTR],TY.AnyType,TY.ErrorType,TY.NewInterface(nil),TY.NewSlice(TY.Types[types.TINT]),wrappedError,local,foreign,instantiated,shape,noalg}{out=append(out,fmt.Sprintf("emit:%s:%v:%t",path,typ,UP.NeedEmit(typ)))}}
+ LINK.Pkgpath="example/p"
+ ptr:=UP.TypePtrAt(pos,local);lsym:=ptr.X.(*ir.LinksymOffsetExpr).Linksym
+ out=append(out,fmt.Sprintf("addr:%v:%v:%d:%t:%t",ptr,ptr.Type(),ptr.Typecheck(),ptr.Pos()==pos,lsym==UP.TypeLinksym(local)))
+ from:=LINK.Lookup("p.F");UP.MarkTypeUsedInInterface(local,from);UP.MarkTypeSymUsedInInterface(UP.TypeLinksym(noalg),from)
+ for _,r:=range from.R{out=append(out,fmt.Sprintf("reloc:%d:%d:%v:%s",r.Off,r.Siz,r.Type,r.Sym.Name))}
+ out=append(out,"track:"+UP.TrackSym(noalg,noalg.Field(0)).Name)
+
+ // All migrated metadata helpers: derive static symbols and preserve existing dictionary expressions.
+ integer:=TY.Types[types.TINT];slice:=TY.NewSlice(integer);m:=TY.NewMap(TY.Types[types.TSTRING],integer);ch:=TY.NewChan(integer,types.Cboth)
+ value:=func(name string,typ *types.Type)ir.Node{return GRAPH.NewNameAt(pos,TY.LocalPkg.Lookup(name),typ)}
+ sv,mv,iv:=value("slice",slice),value("map",m),value("integer",integer)
+ iface:=value("iface",TY.NewInterface(nil));cached:=UP.TypePtrAt(pos,foreign)
+ check:=func(label string,read func()ir.Node,set func(ir.Node)){n:=read();out=append(out,fmt.Sprintf("helper:%s:%s:%v:%d",label,n.(*ir.AddrExpr).X.(*ir.LinksymOffsetExpr).Linksym.Name,n.Type(),n.Typecheck()));set(cached);out=append(out,fmt.Sprintf("cached:%s:%t",label,read()==cached))}
+ appendNode:=GRAPH.NewCallExpr(pos,ir.OAPPEND,nil,[]ir.Node{sv,iv});appendNode.SetType(slice);check("append",func()ir.Node{return UP.AppendElemRType(pos,appendNode)},func(n ir.Node){appendNode.RType=n})
+ for _,left:=range []bool{false,true}{x,y:=iv,iface;if left{x,y=y,x};n:=GRAPH.NewBinaryExpr(pos,ir.OEQ,x,y);check(fmt.Sprint("compare",left),func()ir.Node{return UP.CompareRType(pos,n)},func(v ir.Node){n.RType=v})}
+ conv:=GRAPH.NewConvExpr(pos,ir.OCONVIFACE,iface.Type(),iv);check("conv",func()ir.Node{return UP.ConvIfaceSrcRType(pos,conv)},func(n ir.Node){conv.SrcRType=n})
+ cp:=GRAPH.NewBinaryExpr(pos,ir.OCOPY,sv,sv);check("copy",func()ir.Node{return UP.CopyElemRType(pos,cp)},func(n ir.Node){cp.RType=n})
+ del:=GRAPH.NewCallExpr(pos,ir.ODELETE,nil,[]ir.Node{mv,iv});check("delete",func()ir.Node{return UP.DeleteMapRType(pos,del)},func(n ir.Node){del.RType=n})
+ index:=GRAPH.NewIndexExpr(pos,mv,iv);index.SetOp(ir.OINDEXMAP);check("index",func()ir.Node{return UP.IndexMapRType(pos,index)},func(n ir.Node){index.RType=n})
+ for _,entry:=range []struct{op ir.Op;typ *types.Type}{ {ir.OMAKECHAN,ch},{ir.OMAKEMAP,m},{ir.OMAKESLICE,slice},{ir.OMAKESLICECOPY,slice} }{
+ n:=GRAPH.NewMakeExpr(pos,entry.op,nil,nil);n.SetType(entry.typ)
+ read:=func()ir.Node{switch entry.op{case ir.OMAKECHAN:return UP.MakeChanRType(pos,n);case ir.OMAKEMAP:return UP.MakeMapRType(pos,n);default:return UP.MakeSliceElemRType(pos,n)}}
+ check(fmt.Sprint(entry.op),read,func(v ir.Node){n.RType=v})
+ }
+ rng:=GRAPH.NewRangeStmt(pos,nil,nil,mv,nil,false);check("range",func()ir.Node{return UP.RangeMapRType(pos,rng)},func(n ir.Node){rng.RType=n})
+ unsafeSlice:=GRAPH.NewBinaryExpr(pos,ir.OUNSAFESLICE,iv,iv);unsafeSlice.SetType(slice);check("unsafeSlice",func()ir.Node{return UP.UnsafeSliceElemRType(pos,unsafeSlice)},func(n ir.Node){unsafeSlice.RType=n})
+
+ // Preserve native caches, named runtime IR, zero-sized entries and indirect keys/elements.
+ for _,typ:=range []*types.Type{UP.MapType(),UP.mapTableType(),UP.MapIterType()}{out=append(out,fmt.Sprintf("runtime:%v:%d:%d",typ,typ.Size(),typ.Alignment()));for _,f:=range typ.Fields(){out=append(out,fmt.Sprintf("field:%s:%v:%d",f.Sym.Name,f.Type,f.Offset))}}
+ out=append(out,fmt.Sprintf("cache:%t:%t:%t",UP.MapType()==UP.MapType(),UP.MapIterType()==UP.MapIterType(),UP.MapIterType().Field(3).Type.Elem()==UP.MapType()))
+ for _,split:=range []bool{false,true}{EXPERIMENT.MapSplitGroup=split
+ for _,entry:=range []struct{key,elem *types.Type}{ {integer,TY.Types[types.TUINT8]},{TY.NewStruct(nil),TY.NewStruct(nil)},{TY.NewArray(TY.Types[types.TUINT8],129),TY.NewArray(integer,129)},{TY.Types[types.TSTRING],TY.NewSlice(integer)} }{
+ typ:=TY.NewMap(entry.key,entry.elem);group:=UP.MapGroupType(typ)
+ out=append(out,fmt.Sprintf("group:%t:%v:%v:%d:%d:%t:%t:%t",split,typ,group,group.Size(),group.Alignment(),group==UP.MapGroupType(typ),group.StructType().Map==typ,group.Noalg()))
+ for _,f:=range group.Fields(){out=append(out,fmt.Sprintf("gfield:%s:%d:%d:%t",f.Sym.Name,f.Offset,f.Type.Size(),f.Type.Noalg()))}
+ }}
+ queue:=append([]typeAndStr(nil),UP.signatslice...);slices.SortFunc(queue,typesStrCmp)
+ for _,ts:=range queue{out=append(out,fmt.Sprintf("queued:%s:%s",ts.short,ts.regular))}
+ encoded,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(encoded))
+}

@@ -18,6 +18,8 @@ import (
 // Universe owns one compilation's mutable type and package graph. Its zero value
 // is invalid. Except for InternString, calls within a Universe are serialized.
 type Universe struct {
+	typepkgmu                                      sync.Mutex
+	typepkg                                        *Pkg
 	links                                          *base.LinkContext
 	initialized                                    bool
 	ComparableType, recvType                       *Type

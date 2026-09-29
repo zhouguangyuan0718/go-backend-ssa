@@ -2,7 +2,7 @@
   "schema_version": 1,
   "tool": "syncgo-m3-v10",
   "commit": "862c888e612ac346c7c4d99c9392bdfd265f33b0",
-  "plan_sha256": "f1b6384e48d400ead4702514e79738cc3b374dc026b9732480836f465e35c9eb",
+  "plan_sha256": "75da15c9be3474b72df7466f5beb309e24ff8ff9c6af08d1429e711b5f884080",
   "files": [
     {
       "output": "internal/cmd/src/pos.go",
@@ -666,7 +666,7 @@
         "Type.setAlg",
         "algPriority"
       ],
-      "adapter_sha256": "d7b9fd25df3a53967052036d0719486cdc2ec814a702dc196d45260428f6a823",
+      "adapter_sha256": "0bc47d367f7db2c71d28894be952d589ced7287415628f84a99c9f4023fe9692",
       "signature_sources": {
         "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264"
       }
@@ -714,7 +714,7 @@
         "UnsafePkg",
         "fmtBufferPool"
       ],
-      "adapter_sha256": "d7b9fd25df3a53967052036d0719486cdc2ec814a702dc196d45260428f6a823",
+      "adapter_sha256": "0bc47d367f7db2c71d28894be952d589ced7287415628f84a99c9f4023fe9692",
       "signature_sources": {
         "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264"
       }
@@ -733,7 +733,7 @@
         "identIgnoreTags",
         "typePair"
       ],
-      "adapter_sha256": "d7b9fd25df3a53967052036d0719486cdc2ec814a702dc196d45260428f6a823"
+      "adapter_sha256": "0bc47d367f7db2c71d28894be952d589ced7287415628f84a99c9f4023fe9692"
     },
     {
       "output": "internal/types/kind_string.go",
@@ -766,7 +766,7 @@
         "nopkg",
         "pkgMap"
       ],
-      "adapter_sha256": "d7b9fd25df3a53967052036d0719486cdc2ec814a702dc196d45260428f6a823"
+      "adapter_sha256": "0bc47d367f7db2c71d28894be952d589ced7287415628f84a99c9f4023fe9692"
     },
     {
       "output": "internal/types/size.go",
@@ -802,7 +802,7 @@
         "defercalc",
         "deferredTypeStack"
       ],
-      "adapter_sha256": "d7b9fd25df3a53967052036d0719486cdc2ec814a702dc196d45260428f6a823",
+      "adapter_sha256": "0bc47d367f7db2c71d28894be952d589ced7287415628f84a99c9f4023fe9692",
       "signature_sources": {
         "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264",
         "src/internal/buildcfg/exp.go": "5825d40b47471bca28a00c0c19215930efef22b758120b6d972da1a955f21fa0"
@@ -833,7 +833,7 @@
         "Sym.Linksym",
         "Sym.LinksymABI"
       ],
-      "adapter_sha256": "d7b9fd25df3a53967052036d0719486cdc2ec814a702dc196d45260428f6a823",
+      "adapter_sha256": "0bc47d367f7db2c71d28894be952d589ced7287415628f84a99c9f4023fe9692",
       "signature_sources": {
         "src/cmd/compile/internal/base/link.go": "316af57f6117869dae6d8762325773c582a8fc7e8fc8638cb69f8d0381b111f8",
         "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264"
@@ -843,9 +843,12 @@
       "output": "internal/types/type.go",
       "source": "src/cmd/compile/internal/types/type.go",
       "source_sha256": "50e7b9332dd700aebbd6999f9a5d1bc17e8d24e3f21b06b3c30a628ea751e696",
-      "output_sha256": "e7f5d3d04eabf5d4c1d17e1073c82c9247f57935fc7bcc6952cc37950f7b7445",
+      "output_sha256": "0f78443e83698972b88258aa1975b7a8a00f13a13208bd7648bbf9e45a96d096",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
+        "TypeSym",
+        "TypeSymLookup",
+        "TypeSymName",
         "IsInterfaceMethod",
         "ComplexForFloat",
         "ReceiverBaseType",
@@ -899,6 +902,8 @@
         "Field",
         "fields",
         "fieldIsDDD",
+        "Type.IsFullyInstantiated",
+        "Type.SetIsFullyInstantiated",
         "Type.IsUintptr",
         "Type.copy",
         "Type.forwardType",
@@ -1039,9 +1044,11 @@
         "UntypedRune",
         "UntypedString",
         "UntypedTypes",
-        "recvType"
+        "recvType",
+        "typepkg",
+        "typepkgmu"
       ],
-      "adapter_sha256": "d7b9fd25df3a53967052036d0719486cdc2ec814a702dc196d45260428f6a823",
+      "adapter_sha256": "0bc47d367f7db2c71d28894be952d589ced7287415628f84a99c9f4023fe9692",
       "signature_sources": {
         "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264"
       }
@@ -1059,7 +1066,7 @@
         "basicTypes",
         "typedefs"
       ],
-      "adapter_sha256": "d7b9fd25df3a53967052036d0719486cdc2ec814a702dc196d45260428f6a823",
+      "adapter_sha256": "0bc47d367f7db2c71d28894be952d589ced7287415628f84a99c9f4023fe9692",
       "signature_sources": {
         "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264"
       }
@@ -2695,6 +2702,95 @@
         "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264",
         "src/cmd/compile/internal/objw/objw.go": "a588072a2d04d34b784fcb4d35763b118b4fd179b582a707b33bc40b1aa21a8f",
         "src/cmd/compile/internal/types/size.go": "d32090d796ae53dc8d1430e206b9e98aee8e1e1b2407f952aa7fdd64b8fb9ad5",
+        "src/cmd/compile/internal/types/type.go": "50e7b9332dd700aebbd6999f9a5d1bc17e8d24e3f21b06b3c30a628ea751e696"
+      }
+    },
+    {
+      "output": "internal/reflectdata/helpers.go",
+      "source": "src/cmd/compile/internal/reflectdata/helpers.go",
+      "source_sha256": "c7309f4fa25c579bcba0194d9b9f3ddfe12a2c9a01db02f3afb89e4d9d148d7a",
+      "output_sha256": "c116dc81e35c53d2b60d953ceaac459a40416f80d442ab3c9a700fb060a8b278",
+      "rule": "package-state-to-context-methods-v2",
+      "declarations": [
+        "hasRType",
+        "assertOp",
+        "assertOp2",
+        "kindRType",
+        "mapRType",
+        "chanRType",
+        "sliceElemRType",
+        "concreteRType",
+        "AppendElemRType",
+        "CompareRType",
+        "ConvIfaceSrcRType",
+        "CopyElemRType",
+        "DeleteMapRType",
+        "IndexMapRType",
+        "MakeChanRType",
+        "MakeMapRType",
+        "MakeSliceElemRType",
+        "RangeMapRType",
+        "UnsafeSliceElemRType"
+      ],
+      "adapter_sha256": "2d259dcc019ccf4a718f4b0e43098864f84b69fa2f66c54a6c130567ecb3e124"
+    },
+    {
+      "output": "internal/reflectdata/map.go",
+      "source": "src/cmd/compile/internal/reflectdata/map.go",
+      "source_sha256": "52d041b43fb7d0747685bd568bbaea7c3b32594b80e96d59adfe7fb39a465eb3",
+      "output_sha256": "b01f525ee2163345ffb731bdcb9eefa0047d7024083cc554a915096271cd2f14",
+      "rule": "package-state-to-context-methods-v2",
+      "declarations": [
+        "MapGroupType",
+        "mapTableType",
+        "MapType",
+        "MapIterType",
+        "cachedMapIterType",
+        "cachedMapTableType",
+        "cachedMapType"
+      ],
+      "adapter_sha256": "2d259dcc019ccf4a718f4b0e43098864f84b69fa2f66c54a6c130567ecb3e124",
+      "signature_sources": {
+        "src/cmd/compile/internal/ir/name.go": "ded604a74bb741602d034c06be2ef9c2a4bf881aa7f77b5a63d90071d1619c3e",
+        "src/cmd/compile/internal/ir/symtab.go": "0aac16901a94fb1a152cd68370142df495d6b55e36103a6377d2b96fd17e06d2",
+        "src/cmd/compile/internal/reflectdata/reflect.go": "2cd6932b9965b200029ce0559cb201d96398be546adbf866f30cd3bc8897fb41",
+        "src/cmd/compile/internal/types/alg.go": "9b4d6c846095292518c83f6ae1df49d9e7b18f3ec1578dc7672e2145c12caa19",
+        "src/cmd/compile/internal/types/size.go": "d32090d796ae53dc8d1430e206b9e98aee8e1e1b2407f952aa7fdd64b8fb9ad5",
+        "src/cmd/compile/internal/types/type.go": "50e7b9332dd700aebbd6999f9a5d1bc17e8d24e3f21b06b3c30a628ea751e696",
+        "src/internal/buildcfg/exp.go": "5825d40b47471bca28a00c0c19215930efef22b758120b6d972da1a955f21fa0"
+      }
+    },
+    {
+      "output": "internal/reflectdata/reflect.go",
+      "source": "src/cmd/compile/internal/reflectdata/reflect.go",
+      "source_sha256": "2cd6932b9965b200029ce0559cb201d96398be546adbf866f30cd3bc8897fb41",
+      "output_sha256": "9b1102f195c0ff1f74f29b1651567de6624d18d7e5a67a7fe461066014f6a5e2",
+      "rule": "package-state-to-context-methods-v2",
+      "declarations": [
+        "TrackSym",
+        "TypeSymPrefix",
+        "TypeSym",
+        "TypeLinksymPrefix",
+        "TypeLinksymLookup",
+        "TypeLinksym",
+        "TypePtrAt",
+        "NeedRuntimeType",
+        "writtenByWriteBasicTypes",
+        "NeedEmit",
+        "typesStrCmp",
+        "MarkTypeUsedInInterface",
+        "MarkTypeSymUsedInInterface",
+        "typeAndStr",
+        "signatmu",
+        "signatset",
+        "signatslice"
+      ],
+      "adapter_sha256": "2d259dcc019ccf4a718f4b0e43098864f84b69fa2f66c54a6c130567ecb3e124",
+      "signature_sources": {
+        "src/cmd/compile/internal/base/link.go": "316af57f6117869dae6d8762325773c582a8fc7e8fc8638cb69f8d0381b111f8",
+        "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264",
+        "src/cmd/compile/internal/typecheck/subr.go": "5c1a3dd3ac2abe6ab245f455d75e02598aecb63a89fd7b22ad6644d469d6c056",
+        "src/cmd/compile/internal/types/fmt.go": "0e3f8165f476d75becf0b245f443b8a79913225e900d311e3537e8bda9202be0",
         "src/cmd/compile/internal/types/type.go": "50e7b9332dd700aebbd6999f9a5d1bc17e8d24e3f21b06b3c30a628ea751e696"
       }
     },

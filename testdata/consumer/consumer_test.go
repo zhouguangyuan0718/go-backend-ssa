@@ -9,6 +9,7 @@ import (
 	"go-backend-ssa/noder"
 	"go-backend-ssa/objw"
 	"go-backend-ssa/position"
+	"go-backend-ssa/reflectdata"
 	"go-backend-ssa/rttype"
 	"go-backend-ssa/syntax"
 	"go-backend-ssa/target"
@@ -352,5 +353,35 @@ func TestNativeRuntimeLayoutsPublicAPI(t *testing.T) {
 	methods.Elem(1).WritePtrWeak(fn)
 	if c.ITab.Size() != 16 || delta != 4 || c.Type.Universe() != u || len(s.R) != 1 || s.R[0].Sym != fn || s.R[0].Off != 16 || s.R[0].Siz != 4 {
 		t.Fatal("public runtime layout/relocation")
+	}
+}
+
+func TestNativeReflectionDataPublicAPI(t *testing.T) {
+	layout, _ := target.NewLayout("linux", "386")
+	link := &gcbridge.Link{Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "386", PtrSize: 4, RegSize: 4, ByteOrder: binary.LittleEndian}}}
+	u, err := types.NewUniverseWithPositions(layout, &link.PosTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tc := typecheck.NewContext(ir.NewContext(u, link))
+	tc.InitUniverse()
+	rt := rttype.NewContext(objw.NewContext(u, link, "linux"))
+	rt.Init()
+	c := reflectdata.NewContext(tc, rt)
+	typ := u.NewMap(u.Types[types.String], u.Types[types.Int])
+	symbol := c.TypeLinksym(typ)
+	ref := c.TypePtrAt(position.XPos{}, typ)
+	var native *ir.AddrExpr = ref
+	if native.X.(*ir.LinksymOffsetExpr).Linksym != symbol || native.Type().Elem() != u.Types[types.Uint8] || symbol.TypeInfo().Type != typ {
+		t.Fatal("native reflection type identity")
+	}
+	from := link.Lookup("p.F")
+	c.MarkTypeUsedInInterface(typ, from)
+	if len(from.R) != 1 || from.R[0].Type.String() != "R_USEIFACE" || from.R[0].Sym != symbol {
+		t.Fatal("interface-use marker")
+	}
+	group := c.MapGroupType(typ)
+	if group != c.MapGroupType(typ) || group.StructType().Map != typ || c.MapType().Size() != 32 || c.MapIterType().Size() != 64 {
+		t.Fatal("public native map layout")
 	}
 }

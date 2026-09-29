@@ -13,7 +13,7 @@ func writeLinkSnapshots(t *testing.T, dir string) {
   SETUP
   var out []string
   for _,prefix:=range []string{"example/p","space name/p","go","type"}{for _,name:=range []string{"F","x","_"}{
-   sym:=UP.NewPkg(prefix,"p").Lookup(name)
+   pkgName:="p";if prefix=="type"{pkgName="type"};sym:=UP.NewPkg(prefix,pkgName).Lookup(name)
    data:=sym.Linksym()
    sym.SetFunc(true)
    fn:=sym.Linksym()
@@ -22,12 +22,13 @@ func writeLinkSnapshots(t *testing.T, dir string) {
    renamed:=sym.LinksymABI(obj.ABI0)
    out=append(out,fmt.Sprintf("linkname:%s:%s:%s:%t",renamed.Name,renamed.Pkg,renamed.ABI(),renamed==link.Lookup(renamed.Name)))
   }}
+  out=append(out,fmt.Sprint("type-package:",UP.TypeSymLookup("T")==UP.NewPkg("type","type").Lookup("T")))
   return out
  }
  `
 	for _, v := range []struct{ path, prefix, setup, extra string }{
 		{"internal/types", "u.", "u:=NewUniverse(8,8,1<<50);u.BindLink(link)", ""},
-		{"internal/reference/types", "", "pkgMap=make(map[string]*Pkg);base.Ctxt=link", `"go-backend-ssa/internal/reference/base"`},
+		{"internal/reference/types", "", `pkgMap=make(map[string]*Pkg);typepkg=NewPkg("type","type");base.Ctxt=link`, `"go-backend-ssa/internal/reference/base"`},
 	} {
 		code := strings.NewReplacer("UP.", v.prefix, "SETUP", v.setup, "EXTRA", v.extra).Replace(template)
 		writeTestFile(t, dir, v.path+"/adapter_link_snapshot.go", code)
