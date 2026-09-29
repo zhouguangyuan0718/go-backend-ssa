@@ -10,6 +10,7 @@ import (
 	"go-backend-ssa/inline/inlheur"
 	"go-backend-ssa/ir"
 	"go-backend-ssa/logopt"
+	"go-backend-ssa/loopvar"
 	"go-backend-ssa/noder"
 	"go-backend-ssa/objw"
 	"go-backend-ssa/pgo"
@@ -182,7 +183,7 @@ func TestNativeSyntaxFromPublicModule(t *testing.T) {
 }
 
 func TestNativeCheckerFromPublicModule(t *testing.T) {
-	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return};func UseId(x int)int{return Id(x)};func Twice(x int)int{return Id(Id(x))};type Number int;func(n Number)M(x int)int{return int(n)+x};func Method(n Number)func(int)int{return n.M}"), nil, nil, syntax.CheckBranches)
+	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return};func UseId(x int)int{return Id(x)};func Twice(x int)int{return Id(Id(x))};type Number int;func(n Number)M(x int)int{return int(n)+x};func Method(n Number)func(int)int{return n.M};func Captures(xs []int)(out []*int){for _,v:=range xs{out=append(out,&v)};return}"), nil, nil, syntax.CheckBranches)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,6 +305,15 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	}
 	if methodWrapper == nil || !methodWrapper.Wrapper() || !methodWrapper.Needctxt() || len(methodWrapper.ClosureVars) != 1 || methodWrapper.Nname.Defn != methodWrapper {
 		t.Fatal("public native wrapper generation failed")
+	}
+
+	capture := loopvar.NewContext(tc, writer.Inline.Log)
+	var transformed []loopvar.VarAndLoop
+	for _, fn := range result.Funcs {
+		transformed = append(transformed, capture.ForCapture(fn)...)
+	}
+	if len(transformed) != 1 || transformed[0].Name.Curfn.Sym().Name != "Captures" || transformed[0].Loop.Op() != ir.ORANGE || graph.CurFunc != nil {
+		t.Fatal("public loop capture rewrite failed", transformed)
 	}
 
 }

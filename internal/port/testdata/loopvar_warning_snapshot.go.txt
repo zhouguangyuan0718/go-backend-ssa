@@ -1,0 +1,8 @@
+// Read-only observer compiled only into the temporary reference overlay.
+package base
+import "strings"
+func SyncgoLoopWarnings()[]string{
+ var out []string
+ for _,e:=range errorMsgs{out=append(out,strings.TrimSuffix(e.msg,"\n"))}
+ return out
+}

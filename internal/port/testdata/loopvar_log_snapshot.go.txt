@@ -1,0 +1,8 @@
+// Read-only observer compiled only into the temporary reference overlay.
+package logopt
+import("fmt";"cmd/internal/obj")
+func SyncgoLoopRows(link *obj.Link)[]string{
+ var out []string
+ for _,e:=range loggedOpts{out=append(out,fmt.Sprintf("event:%v:%v:%s:%s:%s:%v",link.PosTable.Pos(e.pos),link.PosTable.Pos(e.lastPos),e.compilerPass,e.functionName,e.what,e.target))}
+ return out
+}

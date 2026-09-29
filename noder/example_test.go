@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go-backend-ssa/gcbridge"
 	"go-backend-ssa/ir"
+	"go-backend-ssa/loopvar"
 	"go-backend-ssa/noder"
 	"go-backend-ssa/objw"
 	"go-backend-ssa/reflectdata"
@@ -80,6 +81,10 @@ func ExampleNewContext() {
 	writer.Flag.LowerL = 1
 	writer.Interleaved.DevirtualizeAndInlinePackage(target, nil)
 	writer.MakeWrappers(target)
+	capture := loopvar.NewContext(tc, writer.Inline.Log)
+	for _, fn := range target.Funcs {
+		capture.ForCapture(fn)
+	}
 	sum, err := writer.LookupFunc("example/p.Sum")
 	if err != nil {
 		panic(err)

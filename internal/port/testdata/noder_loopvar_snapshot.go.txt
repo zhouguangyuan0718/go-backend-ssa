@@ -1,0 +1,49 @@
+package noder
+import("bytes";"fmt";"encoding/json";"encoding/binary";"os";"strings";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_PKGBITS";"IMPORT_LOOPVAR";"IMPORT_LOGOPT";WRAPPER_IMPORT EXPAND_RUNTIME DRIVER_INLINE_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.SplitN(os.Getenv("SYNCGO_TARGET"),"-",2)[0],8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ EXPERIMENT.NewInliner=strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-newinline")
+ RD_FLAG.LowerL=1;RD_FLAG.GenDwarfInl=2;ND_DEBUG.InlFuncsWithClosures=1
+ LINK.DwFixups=obj.NewDwarfFixupTable(LINK)
+ EXPAND_BIND
+ TC.HaveInlineBody=UP.unifiedHaveInlineBody
+ data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
+ pr:=UP.newPkgReader(pkgbits.NewPkgDecoder("example/p",string(data)));UP.localPkgReader=pr;UP.readPackage(pr,TY.LocalPkg,true)
+ pr.newReader(pkgbits.SectionMeta,pkgbits.PrivateRootIdx,pkgbits.SyncPrivate).pkgInit(TY.LocalPkg,TC.Target)
+ UP.readBodies(TC.Target,false,nil)
+
+ DRIVER.DevirtualizeAndInlinePackage(TC.Target,nil)
+ UP.MakeWrappers(TC.Target)
+ LOOP_CONTEXT
+ ND_DEBUG.LoopVar=4
+ pattern:=""
+ switch {case strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-hash0"):pattern="0";case strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-hash1"):pattern="1";case strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-exclude"):pattern="n";case strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-force"):ND_DEBUG.LoopVar=11}
+ var trace bytes.Buffer
+ LOOP_BASE.LoopVarHash=LOOP_BASE.NewHashDebug("loopvarhash",pattern,&trace)
+ var transformed []loopvar.VarAndLoop
+ var out []string
+ for _,fn:=range TC.Target.Funcs{records:=LOOPVAR.ForCapture(fn);out=append(out,fmt.Sprintf("transformed:%v:%d",fn.Sym(),len(records)));transformed=append(transformed,records...)}
+ for i,r:=range transformed{
+ out=append(out,fmt.Sprintf("record:%v:%v:%v:%v:%v",r.Name,r.Name.Curfn.Sym(),r.Loop.Op(),LINK.PosTable.Pos(r.Name.Pos()),LINK.PosTable.Pos(r.LastPos)))
+ // Deliberate logger input, not an escape-analysis result.
+ if i%2==0{r.Name.SetEsc(ir.EscHeap)}else{r.Name.SetEsc(ir.EscNone)}
+ }
+ LOOP_LOG_SETUP
+ LOOPVAR.LogTransformations(transformed)
+ LOOP_LOG_ROWS
+ LOOP_WARNINGS
+ out=append(out,"hash:"+trace.String())
+ for _,fn:=range TC.Target.Funcs{
+ if fn.Pos()==(src.XPos{}){t.Fatal("missing function position")}
+ out=append(out,fmt.Sprintf("func:%v:%v:%d",fn.Sym(),fn.Type(),len(fn.Body)))
+ ir.Visit(fn,func(n ir.Node){
+ out=append(out,fmt.Sprintf("node:%s:%d:%v:%s:%v",n.Op(),n.Typecheck(),n.Type(),LINK.PosTable.Pos(n.Pos()),n))
+ switch n:=n.(type){case *ir.ForStmt:out=append(out,fmt.Sprintf("for:%t:%v:%v:%v",n.DistinctVars,n.Label,n.Cond,n.Post));case *ir.RangeStmt:out=append(out,fmt.Sprintf("range:%t:%t:%v:%v",n.DistinctVars,n.Def,n.Key,n.Value));case *ir.BranchStmt:out=append(out,fmt.Sprintf("branch:%v:%v",n.Op(),n.Label))}
+ })
+ for _,d:=range fn.Dcl{out=append(out,fmt.Sprintf("local:%v:%v:%d:%t:%t:%t",d.Sym(),d.Type(),d.Class,d.InlFormal(),d.InlLocal(),d.Curfn==fn))}
+ for _,d:=range fn.ClosureVars{out=append(out,fmt.Sprintf("capture:%v:%v:%v:%t:%t",d.Sym(),d.Type(),d.Canonical().Curfn.Sym(),d.Curfn==fn,d.Byval()))}
+ }
+ out=append(out,fmt.Sprintf("state:%d:%d:%d:%t",UP.inlgen,len(UP.todoBodies),len(UP.todoDicts),GRAPH.CurFunc==nil))
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

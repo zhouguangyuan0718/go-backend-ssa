@@ -190,6 +190,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, inlineMigration()...)
 	plan.Units = append(plan.Units, devirtualizeMigration()...)
 	plan.Units = append(plan.Units, interleavedMigration()...)
+	plan.Units = append(plan.Units, loopvarMigration()...)
 	plan.Units = append(plan.Units, types2Migration()...)
 	plan.Units = append(plan.Units, pkgbitsMigration()...)
 	plan.Units = append(plan.Units, rangefuncMigration()...)
