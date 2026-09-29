@@ -17,27 +17,6 @@ import (
 	"testing"
 )
 
-// This test drives individual native reader operations. The production package
-// driver and its inlining phase have not been migrated yet.
-func drainTestBodies(c *Context) {
-	for len(c.todoDicts) > 0 || len(c.todoBodies) > 0 {
-		if len(c.todoDicts) > 0 {
-			i := len(c.todoDicts) - 1
-			f := c.todoDicts[i]
-			c.todoDicts = c.todoDicts[:i]
-			f()
-			continue
-		}
-		i := len(c.todoBodies) - 1
-		fn := c.todoBodies[i]
-		c.todoBodies = c.todoBodies[:i]
-		pri := c.bodyReader[fn]
-		pri.funcBody(c, fn)
-		if fn.OClosure == nil && len(pri.dict.targs) != 0 {
-			c.Typecheck.Target.Funcs = append(c.Typecheck.Target.Funcs, fn)
-		}
-	}
-}
 func bodyContext(t *testing.T) *Context {
 	c := writerContext(t)
 	c.Ctxt.Arch.ByteOrder = binary.LittleEndian
@@ -52,6 +31,9 @@ func bodyContext(t *testing.T) *Context {
 	return c
 }
 func readTestSource(t *testing.T, c *Context, source string, names ...string) map[string]*ir.Name {
+	return readTestSourceMode(t, c, source, false, names...)
+}
+func readTestSourceMode(t *testing.T, c *Context, source string, duringInlining bool, names ...string) map[string]*ir.Name {
 	t.Helper()
 	pkg, info, files := checked(t, c.Checker, source)
 	closures, err := c.RewriteRangeFuncs(pkg, info, files)
@@ -85,7 +67,7 @@ func readTestSource(t *testing.T, c *Context, source string, names ...string) ma
 	if len(found) != len(names) {
 		t.Fatal("missing declarations", found, names)
 	}
-	drainTestBodies(c)
+	c.ReadBodies(duringInlining, nil)
 	if c.Diagnostics.HasErrors() {
 		t.Fatal(c.Diagnostics.Diagnostics())
 	}
@@ -219,7 +201,7 @@ func initializeTestPackage(t *testing.T, c *Context, source string) {
 	r := pr.newReader(pkgbits.SectionMeta, pkgbits.PrivateRootIdx, pkgbits.SyncPrivate)
 	target := c.Typecheck.Target
 	r.pkgInit(c.Types.LocalPkg, target)
-	drainTestBodies(c)
+	c.ReadBodies(false, nil)
 
 }
 

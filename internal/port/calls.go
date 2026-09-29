@@ -75,12 +75,27 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 			}
 		}
 		found := map[string]bool{}
+		reused := map[string]bool{}
+		if previous := importer.packages[pkgPath]; previous != nil {
+			for name := range selected[source] {
+				if obj, ok := previous.Scope().Lookup(name).(*types.Func); ok && importer.sources[obj] == source {
+					reused[name] = true
+					found[name] = true
+				}
+			}
+			for name := range variables[source] {
+				if obj, ok := previous.Scope().Lookup(name).(*types.Var); ok && importer.sources[obj] == source {
+					reused[name] = true
+					found[name] = true
+				}
+			}
+		}
 		typeDecls := map[string]*ast.TypeSpec{}
 		var decls []ast.Decl
 		for _, declaration := range f.Decls {
 			switch d := declaration.(type) {
 			case *ast.FuncDecl:
-				if d.Recv == nil && selected[source][d.Name.Name] {
+				if d.Recv == nil && selected[source][d.Name.Name] && !reused[d.Name.Name] {
 					d.Body = nil
 					decls = append(decls, d)
 					found[d.Name.Name] = true
@@ -89,7 +104,9 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 				if d.Tok == token.TYPE {
 					for _, spec := range d.Specs {
 						t := spec.(*ast.TypeSpec)
-						typeDecls[t.Name.Name] = t
+						if prev := importer.packages[pkgPath]; prev == nil || prev.Scope().Lookup(t.Name.Name) == nil {
+							typeDecls[t.Name.Name] = t
+						}
 					}
 					continue
 				}
@@ -104,7 +121,7 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 				for _, spec := range d.Specs {
 					v := spec.(*ast.ValueSpec)
 					for _, name := range v.Names {
-						if variables[source][name.Name] {
+						if variables[source][name.Name] && !reused[name.Name] {
 							if len(v.Names) != 1 {
 								return nil, fmt.Errorf("external state requires a single declaration: %s", name.Name)
 							}
@@ -164,18 +181,23 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 		packages[pkg] = append(packages[pkg], f)
 	}
 	for _, pkg := range sortedKeys(packages) {
-		checked, _, err := checkTypes(fs, pkg, packages[pkg], importer)
-		if err != nil {
-			return nil, fmt.Errorf("upstream adapter signatures: %w", err)
-		}
-		// Preserve previously checked declarations (for example base.EnableTrace).
+		checked := types.NewPackage(pkg, packages[pkg][0].Name.Name)
 		if previous := importer.packages[pkg]; previous != nil {
 			for _, name := range previous.Scope().Names() {
-				if checked.Scope().Lookup(name) == nil {
-					checked.Scope().Insert(previous.Scope().Lookup(name))
-				}
+				checked.Scope().Insert(previous.Scope().Lookup(name))
 			}
 		}
+		info := &types.Info{Defs: map[*ast.Ident]types.Object{}}
+		config := types.Config{Importer: importer, GoVersion: "go1.27"}
+		if err := types.NewChecker(&config, fs, checked, info).Files(packages[pkg]); err != nil {
+			return nil, fmt.Errorf("upstream adapter signatures: %w", err)
+		}
+		for _, obj := range info.Defs {
+			if obj != nil && obj.Parent() == checked.Scope() {
+				importer.sources[obj] = fs.Position(obj.Pos()).Filename
+			}
+		}
+
 		importer.packages[pkg] = checked
 	}
 	return hashes, nil

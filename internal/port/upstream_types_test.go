@@ -31,6 +31,15 @@ func testUpstreamSSAState(t *testing.T, source *Source, rendered *Rendered, root
 	referenceImports["cmd/compile/internal/base"] = "go-backend-ssa/internal/reference/base"
 	referenceImports["cmd/internal/src"] = "go-backend-ssa/internal/reference/src"
 	referenceImports["internal/buildcfg"] = "go-backend-ssa/internal/reference/buildcfg"
+	referenceImports["cmd/internal/objabi"] = "go-backend-ssa/internal/reference/objabi"
+	// Retain the reference's original package tables and global OnceValue cache.
+	for _, name := range []string{"path.go", "pkgspecial.go"} {
+		data, err := source.Read("src/cmd/internal/objabi/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeTestFile(t, dir, "internal/reference/objabi/"+name, string(data))
+	}
 	for _, name := range []string{"pos.go", "xpos.go"} {
 		data, err := source.Read("src/cmd/internal/src/" + name)
 		if err != nil {

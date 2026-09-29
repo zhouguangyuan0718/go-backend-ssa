@@ -7,6 +7,7 @@ import (
 	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/internal/base"
 	"go-backend-ssa/internal/cmd/obj"
+	"go-backend-ssa/internal/cmd/objabi"
 	"go-backend-ssa/internal/cmd/src"
 	"go-backend-ssa/internal/go/buildcfg"
 	"go-backend-ssa/internal/go/types/errors"
@@ -18,6 +19,7 @@ import (
 // Universe owns one compilation's mutable type and package graph. Its zero value
 // is invalid. Except for InternString, calls within a Universe are serialized.
 type Universe struct {
+	pkgSpecials                                    *objabi.Context
 	typepkgmu                                      sync.Mutex
 	typepkg                                        *Pkg
 	links                                          *base.LinkContext
@@ -85,6 +87,7 @@ func NewUniverseWithPositions(ptrSize, regSize int, maxWidth int64, positions *s
 		panic("invalid target layout")
 	}
 	u := newUniverse()
+	u.pkgSpecials = objabi.NewContext()
 	u.PosTable = positions
 	u.ptrSize, u.regSize, u.maxWidth = ptrSize, regSize, maxWidth
 	u.BuiltinPkg = u.NewPkg("go.builtin", "")

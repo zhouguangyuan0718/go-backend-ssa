@@ -123,3 +123,41 @@ func TestLocalDriverBindings(t *testing.T) {
 		t.Fatalf("local signature drift: %v", err)
 	}
 }
+
+func TestAdditionalDriverSignaturesPreserveTypes(t *testing.T) {
+	const model = `package model;type Item struct{N int};func Known(i *Item)int{return i.N};func Host(i *Item)int{panic("host")}`
+	const source = `package p;import "cmd/compile/internal/model";func Run(i *model.Item)int{return model.Known(i)+model.Host(i)}`
+	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", "src/cmd/compile/internal/model/model.go": model, "src/cmd/compile/internal/p/p.go": source})
+	s, err := OpenSource(context.Background(), repo, pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{
+		{Source: "src/cmd/compile/internal/model/model.go", Declarations: []string{"Item"}, Functions: []string{"Known"}},
+		{Source: "src/cmd/compile/internal/p/p.go", WholeFile: true, Context: &ContextRule{Type: "Context", Constructor: "NewContext", Adapter: "adapter_context.go"}, Calls: []CallRule{
+			{Source: "src/cmd/compile/internal/model/model.go", Function: "Known", Method: "known"},
+			{Source: "src/cmd/compile/internal/model/model.go", Function: "Host", Method: "host"},
+		}},
+	}}
+	dir := t.TempDir()
+	writeTestFile(t, dir, "internal/p/adapter_context.go", `package p;import "go-backend-ssa/internal/model";type Context struct{};func(c *Context)known(i *model.Item)int{return model.Known(i)};func(c *Context)host(i *model.Item)int{return 2*i.N}`)
+	r, err := Render(s, plan, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(dir, r); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
+	writeTestFile(t, dir, "internal/p/context_test.go", `package p;import("testing";"go-backend-ssa/internal/model");func TestBind(t *testing.T){if NewContext().Run(&model.Item{N:3})!=9{t.Fatal("binding")}}`)
+	cmd := exec.Command("go", "test", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.27.1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	s.cache[plan.Units[0].Source] = []byte(strings.Replace(model, "Host(i *Item)int", "Host(i *Item)bool", 1))
+	if _, err := Render(s, plan, dir); err == nil {
+		t.Fatal("signature drift accepted")
+	}
+}

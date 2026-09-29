@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"go-backend-ssa/diagnostic"
 	errors "go-backend-ssa/internal/go/types/errors"
+	"go-backend-ssa/internal/inline"
+	"go-backend-ssa/internal/inline/inlheur"
 	"go-backend-ssa/internal/ir"
+	"go-backend-ssa/internal/logopt"
+	"go-backend-ssa/internal/pgoir"
 	"go-backend-ssa/internal/rangefunc"
 	"go-backend-ssa/internal/reflectdata"
 	"go-backend-ssa/internal/staticinit"
@@ -24,6 +28,7 @@ import (
 // Context owns the formerly process-wide inputs used by the selected noder
 // algorithms. The supplied Link and its position table belong to this instance.
 type Context struct {
+	Inline                                           *inline.Context
 	StaticInit                                       *staticinit.Context
 	ReflectData                                      *reflectdata.Context
 	ptrSize, renameinitgen, inlgen                   int
@@ -58,7 +63,7 @@ type Context struct {
 }
 
 func (c *Context) absFile(dir, file, rewrites string) string {
-	paths := objabi.PathContext{GOROOT: c.GOROOT}
+	paths := objabi.Context{GOROOT: c.GOROOT}
 	return paths.AbsFile(dir, file, rewrites)
 }
 
@@ -136,6 +141,8 @@ func NewContext(checker *types2.Context, tc *typecheck.Context) (*Context, error
 	c.ptrSize = u.PointerSize()
 	c.initContext()
 	tc.HaveInlineBody = c.unifiedHaveInlineBody
+	c.Inline = inline.NewContext(tc, inlheur.NewContext(tc, pgoir.NewContext(tc)), logopt.NewContext())
+	c.Inline.PGO.PostLookupCleanup = c.PostLookupCleanup
 	return c, nil
 }
 func (c *Context) checkShape(targ *types.Type, basic bool) {
@@ -259,4 +266,14 @@ func scopeReaderContext(r *reader) *Context {
 
 func (c *Context) warnfAt(pos src.XPos, format string, args ...any) {
 	c.Diagnostics.Add(diagnostic.Warning, "", c.Ctxt.PosTable.Pos(pos), fmt.Sprintf(format, args...))
+}
+
+// ReadBodies runs the native pending dictionary/body driver for this package.
+// During inlining, imported generic functions are analyzed for inlinability and
+// their bodies released using the upstream policy; linkshared methods are kept.
+func (c *Context) ReadBodies(duringInlining bool, profile *pgoir.Profile) {
+	if profile != nil && !c.Inline.PGO.OwnsProfile(profile) {
+		panic("body profile belongs to another compilation")
+	}
+	c.readBodies(c.Typecheck.Target, duringInlining, profile)
 }

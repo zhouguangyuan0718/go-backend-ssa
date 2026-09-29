@@ -35,6 +35,7 @@ type Fingerprint = goobj.FingerprintType
 type CmdFlags = base.CmdFlags
 type CountFlag = base.CountFlag
 type DebugFlags = base.DebugFlags
+type HashDebug = base.HashDebug
 
 // Native ABI tags remain usable by an external backend and compiler host.
 type ABI = obj.ABI

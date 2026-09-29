@@ -76,3 +76,6 @@ func (c *Context) traceWriter() io.Writer {
 func (c *Context) tracePrintf(f string, a ...any) (int, error) {
 	return fmt.Fprintf(c.traceWriter(), f, a...)
 }
+
+// OwnsProfile reports whether the attributed IR graph belongs to this instance.
+func (c *Context) OwnsProfile(p *Profile) bool { return p != nil && p.compilation == c }

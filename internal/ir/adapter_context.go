@@ -147,3 +147,21 @@ func (c *Context) checkOracleNode(n Node) {
 		panic("oracle node belongs to another compilation")
 	}
 }
+
+// AstDump writes the native textual IR dump to this compilation's trace sink.
+// File naming, HTML reports, and opening files belong to the host driver.
+func (c *Context) AstDump(fn *Func, why string) {
+	if nodeContext(fn) != c {
+		panic("AST dump belongs to another compilation")
+	}
+	FDump(c.traceWriter(), why, fn)
+}
+
+// OwnsNode checks the existing native node's compilation owner.
+func (c *Context) OwnsNode(n Node) bool {
+	if n == nil {
+		return false
+	}
+	owner, ok := n.(interface{ compilationContext() *Context })
+	return ok && owner.compilationContext() == c
+}

@@ -59,7 +59,7 @@ func prepareUpstreamWriter(t *testing.T, s *Source, dir string) {
 			continue
 		}
 		if path.Base(u.Source) == "unified.go" {
-			u.Functions = append(u.Functions, "freePackage")
+			u.Functions = []string{"writePkgStub", "freePackage"}
 		}
 		data, err := s.Read(u.Source)
 		if err != nil {

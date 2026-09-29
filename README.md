@@ -51,6 +51,7 @@
 34. [M3 原生静态初始化调度](docs/m3-staticinit.md)：包初始化读取、静态/动态调度、map 分离和 R_KEEP。
 35. [M3 原生调用图](docs/m3-callgraph.md)：函数强连通分量、实例 profile 归属和原生流格式。
 36. [M3 原生内联启发式](docs/m3-inline-heuristics.md)：局部重赋值分析、函数属性、调用点评分及实例日志。
+37. [M3 原生可内联判定与函数体驱动](docs/m3-native-inlining.md)：真实成本/PGO 决策、hash 状态解耦和生产 readBodies。
 
 ## 当前可运行的工具
 
@@ -95,7 +96,7 @@ go test -race ./...
 
 ## 当前公开基础设施
 
-`inline/inlheur` 提供原生函数属性与调用点评分，`logopt` 提供实例优化日志记录与读取；`pgo` 暴露原生预处理 profile 流格式，`pgoir` 提供已有 IR 图的 profile 归属（生产 noder 查找绑定尚未接通）；`position` 暴露上游位置对象，`diagnostic` 提供实例诊断收集，`target` 提供显式布局输入；`ir` 提供原生节点和实例构造入口，`typecheck` 提供原生 IR 检查与改写，`objw` 提供原生符号数据和重定位写入，`staticdata` 提供原生静态数据和函数值符号，`staticinit` 提供原生静态初始化调度及 map 初始化分离，`rttype` 提供目标运行时布局和原生写入游标，`reflectdata` 提供原生类型描述符、ITab、运行时类型引用、map 布局、GC 位图写入和相等函数选择，`bitvec/typebits` 提供原生位图及类型指针槽扫描，`types` 提供 Universe 和包符号查找，`gcbridge` 共用位置及 Type/Pkg/Sym 对象。见 [独立 consumer 示例](testdata/consumer/consumer_test.go)。每次编译需独立创建位置表和 base；XPos 必须用原表解码。同一实例的可变操作由调用方串行。
+`inline` 提供原生可内联判定与成本/PGO 政策，`noder.Context.ReadBodies`运行实例函数体队列驱动，`inline/inlheur` 提供原生函数属性与调用点评分，`logopt` 提供实例优化日志记录与读取；`pgo` 暴露原生预处理 profile 流格式，`pgoir` 提供已有 IR 图的 profile 归属（生产 noder 的任意导入函数查找绑定尚未接通）；`position` 暴露上游位置对象，`diagnostic` 提供实例诊断收集，`target` 提供显式布局输入；`ir` 提供原生节点和实例构造入口，`typecheck` 提供原生 IR 检查与改写，`objw` 提供原生符号数据和重定位写入，`staticdata` 提供原生静态数据和函数值符号，`staticinit` 提供原生静态初始化调度及 map 初始化分离，`rttype` 提供目标运行时布局和原生写入游标，`reflectdata` 提供原生类型描述符、ITab、运行时类型引用、map 布局、GC 位图写入和相等函数选择，`bitvec/typebits` 提供原生位图及类型指针槽扫描，`types` 提供 Universe 和包符号查找，`gcbridge` 共用位置及 Type/Pkg/Sym 对象。见 [独立 consumer 示例](testdata/consumer/consumer_test.go)。每次编译需独立创建位置表和 base；XPos 必须用原表解码。同一实例的可变操作由调用方串行。
 
 后端当前可直接使用实例中的上游 SSA 类型和构造函数：
 

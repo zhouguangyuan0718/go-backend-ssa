@@ -25,13 +25,14 @@ func noderMigration() []Unit {
 			c.Fields = map[string]string{"basics": "basics", "dirs": "dirs"}
 			return c
 		}()},
-		{Source: "src/cmd/compile/internal/noder/unified.go", Declarations: []string{"uirVersion"}, Functions: []string{"writePkgStub"}, Context: func() *ContextRule {
+		{Source: "src/cmd/compile/internal/noder/unified.go", Declarations: []string{"uirVersion"}, Functions: []string{"writePkgStub", "readBodies", "PostLookupCleanup"}, Context: func() *ContextRule {
 			c := context()
 			c.Fields = map[string]string{"localPkgReader": "localPkgReader"}
 			return c
 		}(), Calls: []CallRule{
 			{Source: "src/cmd/compile/internal/noder/irgen.go", Function: "checkFiles", Method: "checkedFiles"},
 			{Source: "src/cmd/compile/internal/noder/unified.go", Function: "freePackage", Method: "retainCheckedPackage"},
+			{Source: "src/cmd/compile/internal/inline/inl.go", Function: "CanInlineFuncs", Method: "Inline.CanInlineFuncs"},
 		}},
 		{Source: "src/cmd/compile/internal/noder/writer.go", WholeFile: true,
 			Context: func() *ContextRule {

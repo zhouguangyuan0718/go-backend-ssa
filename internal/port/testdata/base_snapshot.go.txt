@@ -1,0 +1,21 @@
+package base
+import("bytes";"encoding/json";"fmt";"testing";"IMPORT_OBJ";"IMPORT_SRC")
+func TestSyncgoNativeSnapshot(t *testing.T) {
+ SETUP
+ outer:=src.NewFileBase("outer.go","/src/outer.go")
+ at:=HASH_LINK.PosTable.XPos(src.MakePos(outer,7,2))
+ idx:=HASH_LINK.InlTree.Add(-1,at,&obj.LSym{Name:"p.Inner"},"Inner")
+ inner:=src.NewInliningBase(src.NewFileBase("inner.go","/src/inner.go"),idx)
+ pos:=HASH_LINK.PosTable.XPos(src.MakePos(inner,11,4))
+ var out []string
+ for _,pattern:=range []string{"","y","n","vy","vn","01","0/1","-0/","-1/0/1","01/10"} {
+  var log bytes.Buffer
+  h:=UP.NewHashDebug("pgohash",pattern,&log)
+  out=append(out,fmt.Sprintf("%s:%t:%t:%t",pattern,h.MatchPkgFunc("p","F",func()string{return "package"}),h.MatchPos(pos,func()string{return "position"}),h.MatchPosWithInfo(pos,"inline",func()string{return "info"})))
+  if h!=nil {h.SetInlineSuffixOnly(true);h.fileSuffixOnly=true;out=append(out,fmt.Sprintf("suffix:%t",h.MatchPosWithInfo(pos,"inline",nil)))}
+  out=append(out,log.String())
+  UP.hashDebug=h
+  out=append(out,fmt.Sprintf("default:%t:%t:%t",UP.HasDebugHash(),UP.DebugHashMatchPkgFunc("p","F"),UP.DebugHashMatchPos(pos)))
+ }
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

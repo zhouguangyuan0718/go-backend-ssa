@@ -49,15 +49,18 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		return nil, nil, fmt.Errorf("selected package %s: %w", sourcePkg, err)
 	}
 	before.packages[sourcePkg] = pkg
-	for i, f := range original {
+	for _, f := range checkedFiles {
 		ast.Inspect(f, func(n ast.Node) bool {
 			if id, ok := n.(*ast.Ident); ok {
 				if obj := info.Defs[id]; obj != nil && obj.Parent() == pkg.Scope() {
-					before.sources[obj] = units[i].Source
+					before.sources[obj] = fs.PositionFor(id.Pos(), false).Filename
 				}
 			}
 			return true
 		})
+	}
+	if err := removeAdapterMethods(original, units); err != nil {
+		return nil, nil, err
 	}
 	if err := replaceZeroValues(fs, original, units, info); err != nil {
 		return nil, nil, err
@@ -114,6 +117,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			prov.Rule = "whole-file-and-zero-values-v1"
 			prov.Declarations = append(append([]string{"*"}, u.ZeroValues...), u.ReadTables...)
 		}
+		for _, name := range u.AdapterMethods {
+			prov.Declarations = append(prov.Declarations, "adapter-method:"+name)
+		}
 		if state := u.ReceiverState; state != nil {
 			prov.Rule = "package-state-to-existing-receiver-v1"
 			prov.Declarations = append(prov.Declarations, sortedKeys(state.Fields)...)
@@ -152,6 +158,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	outpkg, outinfo, err := checkTypes(outfs, dest, output, after)
 	if err != nil {
 		return nil, nil, fmt.Errorf("transformed package %s: %w", dest, err)
+	}
+	if err := checkAdapterMethods(units, pkg, outpkg, imports, outfs); err != nil {
+		return nil, nil, err
 	}
 	if err := auditOutput(outpkg, output, outinfo); err != nil {
 		return nil, nil, err

@@ -1,6 +1,11 @@
 package objabi
 
-// PathContext supplies the one host setting read by the native AbsFile
-// algorithm. Working directory and rewrites are already explicit parameters.
-// Paths retain the native build host's filepath semantics.
-type PathContext struct{ GOROOT string }
+// Context supplies the native path setting and owns the lazy package-property
+// cache. Package classifications still come from the upstream tables.
+type Context struct {
+	GOROOT                                                              string
+	runtimePkgs, extraNoInstrumentPkgs, noRaceFuncPkgs, allowAsmABIPkgs []string
+	pkgSpecialsOnce                                                     func() map[string]PkgSpecial
+}
+
+func NewContext() *Context { return newContext() }

@@ -1,0 +1,38 @@
+package inline
+import("encoding/json";"fmt";"testing";"io";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_IR";"IMPORT_TYPES";"IMPORT_TYPECHECK";"IMPORT_PGOIR";POLICY_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ SETUP
+ var out []string
+ file:=src.NewFileBase("inl.go","/src/inl.go")
+ pos:=LINK.PosTable.XPos(src.MakePos(file,10,1))
+ sig:=TY.NewSignature(nil,nil,nil)
+ caller:=GRAPH.NewFunc(pos,pos,TY.LocalPkg.Lookup("Caller"),sig)
+ callee:=GRAPH.NewFunc(pos,pos,TY.LocalPkg.Lookup("Callee"),sig)
+ caller.Nname.Defn=caller;callee.Nname.Defn=callee
+ call:=GRAPH.NewCallExpr(pos,ir.OCALLFUNC,callee.Nname,nil)
+ csi:=pgoir.CallSiteInfo{LineOffset:POLICY_PGO.NodeLineOffset(call,caller),Caller:caller}
+ POLICY_BASE.Flag.LowerL=1
+ for _,cost:=range []int32{20,21,80,81,160,161,800,801,2000,2001}{
+  callee.Inl=&ir.Inline{Cost:cost}
+  for _,hot:=range []bool{false,true}{
+   if hot{UP.candHotEdgeMap[csi]=struct{}{}}else{delete(UP.candHotEdgeMap,csi)}
+   for _,pattern:=range []string{"","n","y"}{
+    POLICY_BASE.PGOHash=POLICY_BASE.NewHashDebug("pgohash",pattern,io.Discard)
+    for _,big:=range []bool{false,true}{
+     ok,max,score,h:=UP.inlineCostOK(call,caller,callee,big,false)
+     out=append(out,fmt.Sprintf("cost:%d:%t:%s:%t=>%t:%d:%d:%t",cost,hot,pattern,big,ok,max,score,h))
+    }
+   }
+  }
+ }
+ callee.Inl=&ir.Inline{Cost:1};POLICY_BASE.PGOHash=nil
+ for _,pkg:=range []string{"runtime","internal/runtime/maps","internal/bytealg","runtime/race","sync","reflect","example/p"}{
+  callee.Nname.SetSym(TY.NewPkg(pkg,"").Lookup("F"))
+  for _,mode:=range []int{0,1,2,3}{
+   POLICY_BASE.Flag.Cfg.Instrumenting=mode==1;POLICY_BASE.Flag.Race=mode==2;POLICY_DEBUG.Checkptr=0;if mode==3{POLICY_DEBUG.Checkptr=1}
+   ok,score,hot:=UP.canInlineCallExpr(caller,call,callee,false,false,false)
+   out=append(out,fmt.Sprintf("instrument:%s:%d:%t:%d:%t",pkg,mode,ok,score,hot))
+  }
+ }
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(data))
+}

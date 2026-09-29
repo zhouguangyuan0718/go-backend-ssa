@@ -1,5 +1,7 @@
 # M3 原生内联启发式与优化日志状态
 
+后续进展：生产 CanInlineFuncs/readBodies 已在[下一批](m3-native-inlining.md)接通。下文保留本批完成时的边界和验证记录。
+
 本批继续推进 readBodies 的内联依赖，迁入原生 ReassignOracle、函数属性分析、调用点评分和优化日志记录。完整 CanInlineFuncs、内联 IR 展开、生产 readBodies 和包编译入口仍待接通，尚未形成源码到 SSA 或上游替换能力。
 
 ## 状态归属与接口

@@ -11,15 +11,24 @@ func TestSyncgoNativeSnapshot(t *testing.T){
  for i:=range pr.NumElems(pkgbits.SectionName){r:=pr.newReader(pkgbits.SectionName,index(i),pkgbits.SyncObject1);_,sym:=r.qualifiedIdent();tag:=pkgbits.CodeObj(r.Code(pkgbits.SyncCodeObj));if tag==pkgbits.ObjStub||sym.Pkg!=TY.LocalPkg||!wanted[sym.Name]{continue};n:=pr.objIdx(index(i),nil,nil,false).(*ir.Name);delete(wanted,sym.Name);out=append(out,fmt.Sprintf("decl:%v:%v:%v:%v:%t",n.Sym(),n.Op(),n.Type(),n.Val(),n.Alias()));if sym.Name!="init"&&pr.objIdx(index(i),nil,nil,false)!=n{t.Fatal("object cache identity")}}
  if len(wanted)!=0{t.Fatal("missing",wanted)}
  pr.newReader(pkgbits.SectionMeta,pkgbits.PrivateRootIdx,pkgbits.SyncPrivate).pkgInit(TY.LocalPkg,TC.Target)
- BODY_DRAIN
  HEUR_SETUP
- // Supply identical precomputed inlinability metadata to isolate the native
- // heuristics pass. This fixture does not replace production CanInlineFuncs.
- markInline:=func(fn *ir.Func){fn.Inl=&ir.Inline{Cost:50};fn.SetInlinabilityChecked(true)}
- for _,fn:=range TC.Target.Funcs{markInline(fn)}
- for _,fn:=range TC.Target.Funcs{HEUR.AnalyzeFunc(fn,markInline,func(*ir.Func)int32{return 2000},80)}
+ duringInlining:=strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"inline")&&!strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"newinline")
+ LINK.Flag_linkshared=strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"sharedinline")
+ EXPERIMENT.NewInliner=strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"newinline")
+ RD_FLAG.LowerL=1;RD_FLAG.LowerM=2
+ BODY_DRAIN
+ if RD_FLAG.LowerM!=2{t.Fatal("readBodies did not restore diagnostics")};RD_FLAG.LowerM=0
+ var pending []string
+ for fn,pri:=range UP.bodyReader{if fn.OClosure==nil&&len(pri.dict.targs)!=0{
+  cost:=int32(-1);if fn.Inl!=nil{cost=fn.Inl.Cost}
+  pending=append(pending,fmt.Sprintf("generic:%v:%d:%t:%d",fn.Sym(),len(fn.Body),fn.InlinabilityChecked(),cost))
+ }}
+ sort.Strings(pending);out=append(out,pending...)
+
+ INLINE_ANALYZE
  for _,fn:=range TC.Target.Funcs{
-  if fn.Inl!=nil{out=append(out,fmt.Sprintf("properties:%v:%x:%s",fn.Sym(),fn.Inl.Properties,inlheur.DeserializeFromString(fn.Inl.Properties)))}
+  out=append(out,fmt.Sprintf("inlinable:%v:%t:%t",fn.Sym(),fn.InlinabilityChecked(),fn.Inl!=nil))
+  if fn.Inl!=nil{out=append(out,fmt.Sprintf("cost:%v:%d:%d:%t:%t",fn.Sym(),fn.Inl.Cost,len(fn.Inl.Dcl),fn.Inl.HaveDcl,fn.Inl.CanDelayResults));out=append(out,fmt.Sprintf("properties:%v:%x:%s",fn.Sym(),fn.Inl.Properties,inlheur.DeserializeFromString(fn.Inl.Properties)))}
   HEUR.ScoreCalls(fn)
   ir.VisitList(fn.Body,func(n ir.Node){if call,ok:=n.(*ir.CallExpr);ok{score,found:=HEUR.GetCallSiteScore(fn,call);out=append(out,fmt.Sprintf("score:%v:%v:%d:%t",fn.Sym(),LINK.PosTable.Pos(call.Pos()),score,found))}})
   HEUR.ScoreCallsCleanup()

@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v11"
+const ToolVersion = "syncgo-m3-v12"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -39,6 +39,10 @@ type Plan struct {
 type ContextSource struct{ Argument, Resolver string }
 
 type Unit struct {
+	// AdapterMethods are selected native receiver methods implemented in this
+	// unit's handwritten adapter, with exactly the original receiver/signature.
+	AdapterMethods []string
+
 	ContextFrom    map[string]ContextSource
 	Source         string
 	Functions      []string
@@ -162,6 +166,25 @@ func (p Plan) Validate() error {
 				}
 				seen[field] = true
 			}
+		}
+
+		seenAdapters := map[string]bool{}
+		for _, name := range u.AdapterMethods {
+			receiver, method, ok := strings.Cut(name, ".")
+			selected := u.WholeFile
+			for _, decl := range u.Declarations {
+				selected = selected || decl == name
+			}
+			if u.Context == nil || u.Context.Adapter == "" || !selected || !ok || !token.IsIdentifier(receiver) || !token.IsIdentifier(method) || seenAdapters[name] {
+				return fmt.Errorf("invalid adapter method: %s", name)
+			}
+			if _, ok := u.ContextFrom[name]; ok {
+				return fmt.Errorf("adapter method cannot also derive context: %s", name)
+			}
+			if _, ok := u.Checks[name]; ok {
+				return fmt.Errorf("adapter method owns its entry checks: %s", name)
+			}
+			seenAdapters[name] = true
 		}
 		for name, binding := range u.ContextFrom {
 			if u.Context == nil || !memberPath(name) || !token.IsIdentifier(binding.Argument) || binding.Argument == "_" || !token.IsIdentifier(binding.Resolver) || binding.Resolver == "_" {
