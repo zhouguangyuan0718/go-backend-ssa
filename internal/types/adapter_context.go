@@ -5,6 +5,8 @@ package types
 import (
 	"fmt"
 	"go-backend-ssa/diagnostic"
+	"go-backend-ssa/internal/base"
+	"go-backend-ssa/internal/cmd/obj"
 	"go-backend-ssa/internal/cmd/src"
 	"go-backend-ssa/internal/go/buildcfg"
 	"go-backend-ssa/internal/go/types/errors"
@@ -16,6 +18,7 @@ import (
 // Universe owns one compilation's mutable type and package graph. Its zero value
 // is invalid. Except for InternString, calls within a Universe are serialized.
 type Universe struct {
+	links                     *base.LinkContext
 	initialized               bool
 	ComparableType, recvType  *Type
 	ShapePkg                  *Pkg
@@ -216,3 +219,28 @@ func (u *Universe) checkNamed(obj Object) {
 		panic("type name belongs to another or uninitialized compilation")
 	}
 }
+
+// BindLink binds the compiler symbol namespace once. Existing symbols must not
+// be reinterpreted in another Link; independent compilations need a new Universe.
+func (u *Universe) BindLink(link *obj.Link) {
+	if u == nil || link == nil {
+		panic("symbol binding requires Universe and Link")
+	}
+	if u.links != nil {
+		if u.links.Ctxt != link {
+			panic("Universe already bound to another Link")
+		}
+		return
+	}
+	u.links = base.NewLinkContext(link)
+}
+func symbolUniverse(sym *Sym) *Universe {
+	u := sym.Universe()
+	if u == nil || u.links == nil {
+		panic("symbol has no bound compiler Link")
+	}
+	return u
+}
+
+// LinkContext returns the explicitly bound native compiler symbol inputs.
+func (u *Universe) LinkContext() *base.LinkContext { return u.links }

@@ -41,6 +41,7 @@ import (
 	"go-backend-ssa/internal/cmd/sys"
 
 	"sync"
+	"sync/atomic"
 )
 
 // An Addr is an argument to an instruction.
@@ -308,8 +309,185 @@ type LSym struct {
 	SymIdx int32
 }
 
+//go:generate stringer -type ABI
+
+// ABI is the calling convention of a text symbol.
+type ABI uint8
+
+const (
+	// ABI0 is the stable stack-based ABI. It's important that the
+	// value of this is "0": we can't distinguish between
+	// references to data and ABI0 text symbols in assembly code,
+	// and hence this doesn't distinguish between symbols without
+	// an ABI and text symbols with ABI0.
+	ABI0 ABI = iota
+
+	// ABIInternal is the internal ABI that may change between Go
+	// versions. All Go functions use the internal ABI and the
+	// compiler generates wrappers for calls to and from other
+	// ABIs.
+	ABIInternal
+
+	ABICount
+)
+
+// ParseABI converts from a string representation in 'abistr' to the
+// corresponding ABI value. Second return value is TRUE if the
+// abi string is recognized, FALSE otherwise.
+func ParseABI(abistr string) (ABI, bool) {
+	switch abistr {
+	default:
+		return ABI0, false
+	case "ABI0":
+		return ABI0, true
+	case "ABIInternal":
+		return ABIInternal, true
+	}
+}
+
+// ABISet is a bit set of ABI values.
+type ABISet uint8
+
+const (
+	// ABISetCallable is the set of all ABIs any function could
+	// potentially be called using.
+	ABISetCallable ABISet = (1 << ABI0) | (1 << ABIInternal)
+)
+
+func ABISetOf(abi ABI) ABISet {
+	return 1 << abi
+}
+
+func (a *ABISet) Set(abi ABI, value bool) {
+	if value {
+		*a |= 1 << abi
+	} else {
+		*a &^= 1 << abi
+	}
+}
+
+func (a *ABISet) Get(abi ABI) bool {
+	return (*a>>abi)&1 != 0
+}
+
+func (a ABISet) String() string {
+	s := "{"
+	for i := ABI(0); a != 0; i++ {
+		if a&(1<<i) != 0 {
+			if s != "{" {
+				s += ","
+			}
+			s += i.String()
+			a &^= 1 << i
+		}
+	}
+	return s + "}"
+}
+
 // Attribute is a set of symbol attributes.
 type Attribute uint32
+
+const (
+	AttrDuplicateOK Attribute = 1 << iota
+	AttrCFunc
+	AttrNoSplit
+	AttrLeaf
+	AttrWrapper
+	AttrNeedCtxt
+	AttrNoFrame
+	AttrOnList
+	AttrStatic
+
+	// MakeTypelink means that the type should have an entry in the typelink table.
+	AttrMakeTypelink
+
+	// ReflectMethod means the function may call reflect.Type.Method or
+	// reflect.Type.MethodByName. Matching is imprecise (as reflect.Type
+	// can be used through a custom interface), so ReflectMethod may be
+	// set in some cases when the reflect package is not called.
+	//
+	// Used by the linker to determine what methods can be pruned.
+	AttrReflectMethod
+
+	// Local means make the symbol local even when compiling Go code to reference Go
+	// symbols in other shared libraries, as in this mode symbols are global by
+	// default. "local" here means in the sense of the dynamic linker, i.e. not
+	// visible outside of the module (shared library or executable) that contains its
+	// definition. (When not compiling to support Go shared libraries, all symbols are
+	// local in this sense unless there is a cgo_export_* directive).
+	AttrLocal
+
+	// For function symbols; indicates that the specified function was the
+	// target of an inline during compilation
+	AttrWasInlined
+
+	// Indexed indicates this symbol has been assigned with an index (when using the
+	// new object file format).
+	AttrIndexed
+
+	// Only applied on type descriptor symbols, UsedInIface indicates this type is
+	// converted to an interface.
+	//
+	// Used by the linker to determine what methods can be pruned.
+	AttrUsedInIface
+
+	// ContentAddressable indicates this is a content-addressable symbol.
+	AttrContentAddressable
+
+	// ABI wrapper is set for compiler-generated text symbols that
+	// convert between ABI0 and ABIInternal calling conventions.
+	AttrABIWrapper
+
+	// IsPcdata indicates this is a pcdata symbol.
+	AttrPcdata
+
+	// PkgInit indicates this is a compiler-generated package init func.
+	AttrPkgInit
+
+	// Linkname indicates this is a go:linkname'd symbol.
+	AttrLinkname
+
+	// LinknameStd indicates this is a go:linknamestd'd symbol.
+	AttrLinknameStd
+
+	// attrABIBase is the value at which the ABI is encoded in
+	// Attribute. This must be last; all bits after this are
+	// assumed to be an ABI value.
+	//
+	// MUST BE LAST since all bits above this comprise the ABI.
+	attrABIBase
+)
+
+func (a *Attribute) load() Attribute { return Attribute(atomic.LoadUint32((*uint32)(a))) }
+
+func (a *Attribute) Static() bool { return a.load()&AttrStatic != 0 }
+
+func (a *Attribute) Set(flag Attribute, value bool) {
+	for {
+		v0 := a.load()
+		v := v0
+		if value {
+			v |= flag
+		} else {
+			v &^= flag
+		}
+		if atomic.CompareAndSwapUint32((*uint32)(a), uint32(v0), uint32(v)) {
+			break
+		}
+	}
+}
+
+func (a *Attribute) ABI() ABI { return ABI(a.load() / attrABIBase) }
+func (a *Attribute) SetABI(abi ABI) {
+	const mask = 1 // Only one ABI bit for now.
+	for {
+		v0 := a.load()
+		v := (v0 &^ (mask * attrABIBase)) | Attribute(abi)*attrABIBase
+		if atomic.CompareAndSwapUint32((*uint32)(a), uint32(v0), uint32(v)) {
+			break
+		}
+	}
+}
 
 type Reloc struct {
 	Off  int32
@@ -390,6 +568,13 @@ type Link struct {
 	nonpkgrefs   []*LSym // list of referenced non-package symbols
 
 	Fingerprint goobj.FingerprintType // fingerprint of symbol indices, to catch index mismatch
+}
+
+// symOnce is a "marker" value for our sync.Maps. We insert it on lookup and
+// use the atomic value to check whether initialization has been completed.
+type symOnce struct {
+	sym    LSym
+	inited atomic.Bool
 }
 
 // LinkArch is the definition of a single architecture.

@@ -20,6 +20,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	first := -1
 	states := map[types.Object]string{}
 	functions := map[types.Object]string{}
+	selective := map[types.Object]bool{}
 	external := map[types.Object]string{}
 	var owners []*OwnerRule
 	for i, u := range units {
@@ -69,6 +70,11 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 					}
 					external[obj] = call.Method
 				}
+			}
+		}
+		for _, d := range files[i].Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok {
+				selective[info.Defs[fn.Name]] = c.Selective
 			}
 		}
 		renamed := map[string]bool{}
@@ -125,7 +131,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	if err != nil {
 		return err
 	}
-	if context.Selective {
+	{
 		candidates := map[types.Object]string{}
 		for obj, name := range functions {
 			candidates[obj] = name
@@ -135,7 +141,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		}
 		needed := statefulFunctions(files, info, candidates, states, external, owners, units)
 		for obj := range functions {
-			if needed[obj] == "" {
+			if selective[obj] && needed[obj] == "" {
 				if functions[obj] != obj.Name() {
 					return fmt.Errorf("renamed function does not need context: %s", obj.Name())
 				}
@@ -143,7 +149,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			}
 		}
 		for obj := range parameterMethods {
-			if needed[obj] == "" {
+			if selective[obj] && needed[obj] == "" {
 				delete(parameterMethods, obj)
 			}
 		}
@@ -365,7 +371,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				decls = append(decls, d)
 				continue
 			}
-			if context.Selective && fn.Recv == nil && fn.Name.Name != "init" && functions[info.Defs[fn.Name]] == "" && derived[info.Defs[fn.Name]].Resolver == "" {
+			if units[i].Context.Selective && fn.Recv == nil && fn.Name.Name != "init" && functions[info.Defs[fn.Name]] == "" && derived[info.Defs[fn.Name]].Resolver == "" {
 				decls = append(decls, d)
 				continue
 			}

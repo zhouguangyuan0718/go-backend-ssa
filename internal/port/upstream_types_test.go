@@ -82,6 +82,28 @@ func Fatalf(format string, args ...any) { panic(fmt.Errorf(format, args...)) }
 		}
 		writeTestFile(t, dir, "internal/reference/types/"+filepath.Base(u.Source), string(raw))
 	}
+	// Keep native symbol qualification and linkname algorithms in the reference,
+	// including their global Ctxt and ReservedImports. Only imports are relocated.
+	for _, u := range linkMigration() {
+		if u.Source != "src/cmd/compile/internal/base/link.go" {
+			continue
+		}
+		data, err := source.Read(u.Source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fs := token.NewFileSet()
+		f, err := selectFile(fs, u.Source, data, u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := transform(fs, f, nil, Unit{Source: u.Source}, referenceImports)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeTestFile(t, dir, "internal/reference/base/link.go", string(raw))
+	}
+	writeLinkSnapshots(t, dir)
 	snapshot := `package types
 import ("fmt";"SOURCE_POS")
 type snapshotName struct {sym *Sym;typ *Type}

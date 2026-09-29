@@ -243,3 +243,26 @@ func TestSyntaxToNativePosition(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestCompilerLinkSymbols(t *testing.T) {
+	layout, _ := target.NewLayout("linux", "amd64")
+	u, err := types.NewUniverse(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := &gcbridge.Link{}
+	u.BindLink(link)
+	name := u.NewPkg("example/p", "p").Lookup("F")
+	name.SetFunc(true)
+	var symbol *gcbridge.LinkSymbol = name.Linksym()
+	if symbol != link.LookupABI("example/p.F", gcbridge.ABIInternal) || symbol.Pkg != "example/p" {
+		t.Fatal("native symbol namespace")
+	}
+	pos := link.PosTable.XPos(position.Make(position.NewFile("caller.go", "/src/caller.go"), 10, 2))
+	i := link.InlTree.Add(-1, pos, symbol, "F")
+	callee := position.NewInlining(position.NewFile("callee.go", "/src/callee.go"), i)
+	inlined := link.PosTable.XPos(position.Make(callee, 20, 3))
+	if link.OutermostPos(inlined).Line() != 10 || link.InnermostPos(inlined).Line() != 20 {
+		t.Fatal("native inline position API")
+	}
+}

@@ -33,6 +33,7 @@
 16. [M3 noder 位置映射](docs/m3-noder.md)：syntax.Pos 到原生 Link.PosTable、路径输入及上游差分。
 17. [M3 原生 writer](docs/m3-writer.md)：已检查 AST 到 Unified IR stub、类型缓存解耦及双版本完整字节对照。
 18. [M3 rangefunc 重写](docs/m3-rangefunc.md)：原生函数迭代 lowering、实例 helper 包和完整编码对照。
+19. [M3 原生符号与内联位置](docs/m3-link.md)：ABI 符号身份、Link 显式绑定和内联位置还原。
 
 ## 当前可运行的工具
 

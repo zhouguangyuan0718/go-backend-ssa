@@ -6,6 +6,7 @@
 package types
 
 import (
+	"go-backend-ssa/internal/cmd/obj"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -64,6 +65,36 @@ func (sym *Sym) SetFunc(b bool)         { sym.flags.set(symFunc, b) }
 
 func (sym *Sym) IsBlank() bool {
 	return sym != nil && sym.Name == "_"
+}
+
+// Deprecated: This method should not be used directly. Instead, use a
+// higher-level abstraction that directly returns the linker symbol
+// for a named object. For example, reflectdata.TypeLinksym(t) instead
+// of reflectdata.TypeSym(t).Linksym().
+func (sym *Sym) Linksym() *obj.LSym {
+	abi := obj.ABI0
+	if sym.Func() {
+		abi = obj.ABIInternal
+	}
+	return sym.LinksymABI(abi)
+}
+
+// Deprecated: This method should not be used directly. Instead, use a
+// higher-level abstraction that directly returns the linker symbol
+// for a named object. For example, (*ir.Name).LinksymABI(abi) instead
+// of (*ir.Name).Sym().LinksymABI(abi).
+func (sym *Sym) LinksymABI(abi obj.ABI) *obj.LSym {
+	syncgoCtx := symbolUniverse(sym)
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if sym == nil {
+		syncgoCtx.fatalf("nil symbol")
+	}
+	if sym.Linkname != "" {
+		return syncgoCtx.links.Linkname(sym.Linkname, abi)
+	}
+	return syncgoCtx.links.PkgLinksym(sym.Pkg.Prefix, sym.Name, abi)
 }
 
 // CompareSyms return the ordering of a and b, as for [cmp.Compare].

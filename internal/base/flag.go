@@ -123,3 +123,9 @@ type CmdFlags struct {
 		Instrumenting bool
 	}
 }
+
+func newLinkContext() *LinkContext {
+	syncgoCtx := &LinkContext{}
+	syncgoCtx.syncgoInitVars0()
+	return syncgoCtx
+}

@@ -40,6 +40,7 @@ func TestEmbeddedOwnerConstructionAndCopies(t *testing.T) {
 		return &ContextRule{Type: "Context", Constructor: "NewContext", Adapter: "adapter_context.go", Selective: true}
 	}
 	bc := ctx()
+	bc.Selective = false // Other files in the same instance may retain reviewed free helpers.
 	bc.Fields = map[string]string{"calls": "calls"}
 	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{
 		{Source: "src/cmd/compile/internal/p/base.go", WholeFile: true, Context: bc, Owner: &OwnerRule{Types: []string{"miniNode"}, Context: "Context", Field: "compilation"}},

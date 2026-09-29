@@ -1,5 +1,7 @@
 package port
 
+import "strings"
+
 // Baseline pins the official https://go.googlesource.com/go source.
 // Return fresh values so upgrade tests can change the pin without shared state.
 func Baseline() Pin {
@@ -56,7 +58,7 @@ func Migration() Plan {
 				State:   []StateRule{{Source: "src/internal/buildcfg/cfg.go", Variable: "GOROOT", Field: "GOROOT"}}},
 			{Source: "src/cmd/internal/objabi/symkind.go", Declarations: []string{"SymKind", "Sxxx"}},
 			{Source: "src/cmd/internal/objabi/reloctype.go", Declarations: []string{"RelocType"}},
-			{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Addr", "AddrName", "AddrPos", "AddrType", "As", "Attribute", "Func", "LSym", "Link", "LinkArch", "OperandPos", "Prog", "Reloc"}},
+			{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Addr", "AddrName", "AddrPos", "AddrType", "As", "Attribute", "Func", "LSym", "Link", "LinkArch", "OperandPos", "Prog", "Reloc", "ABI", "ABI0", "ABISet", "ABISetCallable", "AttrDuplicateOK", "symOnce", "Attribute.load", "Attribute.Set", "Attribute.ABI", "Attribute.SetABI", "Attribute.Static", "ABISet.Set", "ABISet.Get", "ABISet.String"}, Functions: []string{"ABISetOf", "ParseABI"}},
 			{
 				Source:    "src/cmd/compile/internal/ir/func.go",
 				Functions: []string{"ParseLinkFuncName", "splitPkg", "escapedImportPathOK", "modPathOK"},
@@ -139,8 +141,12 @@ func Migration() Plan {
 				Calls: []CallRule{{Source: "src/cmd/compile/internal/base/print.go", Function: "Fatalf", Method: "fatalf"}, {Source: "src/cmd/compile/internal/base/print.go", Function: "Errorf", Method: "errorf"}, {Source: "src/cmd/compile/internal/base/print.go", Function: "ErrorfAt", Method: "errorfAt"}},
 				State: []StateRule{{Source: "src/cmd/compile/internal/base/print.go", Variable: "Pos", Field: "Pos"}, {Source: "src/internal/buildcfg/exp.go", Variable: "Experiment", Field: "Experiment"}},
 			},
-			{Source: "src/cmd/compile/internal/types/sym.go", Functions: []string{"IsExported", "CompareSyms"},
-				Declarations: []string{"Sym", "symOnExportList", "Sym.IsBlank", "Sym.OnExportList", "Sym.Uniq", "Sym.Siggen", "Sym.Asm", "Sym.Func", "Sym.SetOnExportList", "Sym.SetUniq", "Sym.SetSiggen", "Sym.SetAsm", "Sym.SetFunc"},
+			{Source: "src/cmd/compile/internal/types/sym.go",
+				Context:      &ContextRule{Type: "Universe", Constructor: "newUniverse", Adapter: "adapter_context.go", Selective: true},
+				ContextFrom:  map[string]ContextSource{"Sym.LinksymABI": {Argument: "sym", Resolver: "symbolUniverse"}},
+				Calls:        []CallRule{{Source: "src/cmd/compile/internal/base/print.go", Function: "Fatalf", Method: "fatalf"}, {Source: "src/cmd/compile/internal/base/link.go", Function: "Linkname", Method: "links.Linkname"}, {Source: "src/cmd/compile/internal/base/link.go", Function: "PkgLinksym", Method: "links.PkgLinksym"}},
+				Functions:    []string{"IsExported", "CompareSyms"},
+				Declarations: []string{"Sym", "symOnExportList", "Sym.IsBlank", "Sym.OnExportList", "Sym.Uniq", "Sym.Siggen", "Sym.Asm", "Sym.Func", "Sym.SetOnExportList", "Sym.SetUniq", "Sym.SetSiggen", "Sym.SetAsm", "Sym.SetFunc", "Sym.Linksym", "Sym.LinksymABI"},
 			},
 			{
 				Source:       "src/cmd/compile/internal/types/pkg.go",
@@ -168,9 +174,28 @@ func Migration() Plan {
 			break
 		}
 	}
+	plan.Units = append(plan.Units, linkMigration()...)
 	plan.Units = append(plan.Units, types2Migration()...)
 	plan.Units = append(plan.Units, pkgbitsMigration()...)
 	plan.Units = append(plan.Units, rangefuncMigration()...)
 	plan.Units = append(plan.Units, noderMigration()...)
+	// base's symbol helpers now consume the native obj package. Keep their
+	// entire package after obj/buildcfg and before the compiler types package.
+	var baseUnits, units []Unit
+	for _, u := range plan.Units {
+		if strings.HasPrefix(u.Source, "src/cmd/compile/internal/base/") {
+			baseUnits = append(baseUnits, u)
+		}
+	}
+	for _, u := range plan.Units {
+		if strings.HasPrefix(u.Source, "src/cmd/compile/internal/base/") {
+			continue
+		}
+		if u.Source == "src/cmd/compile/internal/types/utils.go" {
+			units = append(units, baseUnits...)
+		}
+		units = append(units, u)
+	}
+	plan.Units = units
 	return plan
 }

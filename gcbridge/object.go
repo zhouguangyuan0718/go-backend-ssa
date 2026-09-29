@@ -35,3 +35,13 @@ type Fingerprint = goobj.FingerprintType
 type CmdFlags = base.CmdFlags
 type CountFlag = base.CountFlag
 type DebugFlags = base.DebugFlags
+
+// Native ABI tags remain usable by an external backend and compiler host.
+type ABI = obj.ABI
+type ABISet = obj.ABISet
+
+const (
+	ABI0           = obj.ABI0
+	ABIInternal    = obj.ABIInternal
+	ABISetCallable = obj.ABISetCallable
+)

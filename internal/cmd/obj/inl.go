@@ -54,3 +54,88 @@ type InlinedCall struct {
 	Name     string   // bare name of the function (w/o package prefix)
 	ParentPC int32    // PC of instruction just before inlined body. Only valid in local trees.
 }
+
+// Add adds a new call to the tree, returning its index.
+func (tree *InlTree) Add(parent int, pos src.XPos, func_ *LSym, name string) int {
+	r := len(tree.nodes)
+	call := InlinedCall{
+		Parent: parent,
+		Pos:    pos,
+		Func:   func_,
+		Name:   name,
+	}
+	tree.nodes = append(tree.nodes, call)
+	return r
+}
+
+// AllParents invokes do on each InlinedCall in the inlining call
+// stack, from outermost to innermost.
+//
+// That is, if inlIndex corresponds to f inlining g inlining h,
+// AllParents invokes do with the call for inlining g into f, and then
+// inlining h into g.
+func (tree *InlTree) AllParents(inlIndex int, do func(InlinedCall)) {
+	if inlIndex >= 0 {
+		call := tree.nodes[inlIndex]
+		tree.AllParents(call.Parent, do)
+		do(call)
+	}
+}
+
+func (tree *InlTree) Parent(inlIndex int) int {
+	return tree.nodes[inlIndex].Parent
+}
+
+func (tree *InlTree) InlinedFunction(inlIndex int) *LSym {
+	return tree.nodes[inlIndex].Func
+}
+
+func (tree *InlTree) InlinedFuncName(inlIndex int) string {
+	return tree.nodes[inlIndex].Name
+}
+
+func (tree *InlTree) InlinedFuncPkg(inlIndex int) string {
+	return tree.nodes[inlIndex].Func.Pkg
+}
+
+func (tree *InlTree) CallPos(inlIndex int) src.XPos {
+	return tree.nodes[inlIndex].Pos
+}
+
+// OutermostPos returns the outermost position corresponding to xpos,
+// which is where xpos was ultimately inlined to. In the example for
+// InlTree, main() contains inlined AST nodes from h(), but the
+// outermost position for those nodes is line 2.
+func (ctxt *Link) OutermostPos(xpos src.XPos) src.Pos {
+	pos := ctxt.InnermostPos(xpos)
+
+	outerxpos := xpos
+	for ix := pos.Base().InliningIndex(); ix >= 0; {
+		call := ctxt.InlTree.nodes[ix]
+		ix = call.Parent
+		outerxpos = call.Pos
+	}
+	return ctxt.PosTable.Pos(outerxpos)
+}
+
+// InnermostPos returns the innermost position corresponding to xpos,
+// that is, the code that is inlined and that inlines nothing else.
+// In the example for InlTree above, the code for println within h
+// would have an innermost position with line number 12, whether
+// h was not inlined, inlined into g, g-then-f, or g-then-f-then-main.
+// This corresponds to what someone debugging main, f, g, or h might
+// expect to see while single-stepping.
+func (ctxt *Link) InnermostPos(xpos src.XPos) src.Pos {
+	return ctxt.PosTable.Pos(xpos)
+}
+
+// AllPos invokes do with every position in the inlining call stack for xpos,
+// from outermost to innermost. That is, xpos corresponds to f inlining g inlining h,
+// AllPos invokes do with the position in f, then the position in g, then the position in h.
+func (ctxt *Link) AllPos(xpos src.XPos, do func(src.Pos)) {
+	pos := ctxt.InnermostPos(xpos)
+	ctxt.InlTree.AllParents(pos.Base().InliningIndex(), func(call InlinedCall) {
+		do(ctxt.InnermostPos(call.Pos))
+	})
+	do(pos)
+}

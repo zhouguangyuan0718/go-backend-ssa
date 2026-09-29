@@ -255,7 +255,7 @@ func (p Plan) Validate() error {
 				return fmt.Errorf("trace redirection requires an adapter")
 			}
 			if previous := contexts[pkg]; previous != nil {
-				if previous.Initialize != c.Initialize || previous.Type != c.Type || previous.Constructor != c.Constructor || previous.Adapter != c.Adapter || previous.Existing != c.Existing || previous.Selective != c.Selective || previous.Embed != c.Embed || previous.RedirectTrace != c.RedirectTrace || previous.RedirectExit != c.RedirectExit || previous.PreserveNilArgs != c.PreserveNilArgs {
+				if previous.Initialize != c.Initialize || previous.Type != c.Type || previous.Constructor != c.Constructor || previous.Adapter != c.Adapter || previous.Existing != c.Existing || previous.Embed != c.Embed || previous.RedirectTrace != c.RedirectTrace || previous.RedirectExit != c.RedirectExit || previous.PreserveNilArgs != c.PreserveNilArgs {
 					return fmt.Errorf("inconsistent package context: %s", pkg)
 				}
 			} else {
