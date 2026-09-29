@@ -165,3 +165,10 @@ func (c *Context) OwnsNode(n Node) bool {
 	owner, ok := n.(interface{ compilationContext() *Context })
 	return ok && owner.compilationContext() == c
 }
+
+// Validate the graph before native symbol initialization mutates either owner.
+func (c *Context) checkInitLSym(f *Func, hasBody bool) {
+	if !c.OwnsNode(f) {
+		panic("function symbol belongs to another compilation")
+	}
+}

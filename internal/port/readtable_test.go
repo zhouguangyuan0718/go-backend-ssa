@@ -12,6 +12,10 @@ func TestReadTableLocalizationAndRejections(t *testing.T) {
 	source := `package p
 var index=[...]uint8{0,3,8}
 var names=[]string{"invalid","int","string"}
+var ids=map[string]int{"normal":0,"wrapper":9}
+func ID(s string)(int,bool){id,ok:=ids[s];return id,ok}
+func IDCount()int{return len(ids)}
+func IDSum()int{n:=0;for _,v:=range ids{n+=v};return n}
 type Kind int
 func(k Kind)String()string{if k<0||int(k)>=len(names){return "unknown"};return names[k]}
 func Read(i int)uint8{return index[i]}
@@ -25,7 +29,7 @@ func Shadow()int{index:=[]int{7};return index[0]}
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{{Source: "src/cmd/compile/internal/p/p.go", WholeFile: true, ReadTables: []string{"index", "names"}}}}
+	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{{Source: "src/cmd/compile/internal/p/p.go", WholeFile: true, ReadTables: []string{"index", "names", "ids"}}}}
 	dir := t.TempDir()
 	r, err := Render(s, plan, dir)
 	if err != nil {
@@ -37,7 +41,7 @@ func Shadow()int{index:=[]int{7};return index[0]}
 	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
 	writeTestFile(t, dir, "internal/p/adapter_test.go", `package p
 import "testing"
-func TestRead(t *testing.T){if Sum()!=30||Read(1)!=3||Count()!=3||Closure()()!=8||Shadow()!=7||Kind(2).String()!="string"||Kind(-1).String()!="unknown"{t.Fatal("read semantics changed")}}
+func TestRead(t *testing.T){if v,ok:=ID("wrapper");v!=9||!ok{t.Fatal(v,ok)};if v,ok:=ID("absent");v!=0||ok{t.Fatal(v,ok)};if IDCount()!=2||IDSum()!=9{t.Fatal("map semantics changed")};if Sum()!=30||Read(1)!=3||Count()!=3||Closure()()!=8||Shadow()!=7||Kind(2).String()!="string"||Kind(-1).String()!="unknown"{t.Fatal("read semantics changed")}}
 `)
 	cmd := exec.Command("go", "test", "-race", "./...")
 	cmd.Dir = dir
@@ -46,6 +50,11 @@ func TestRead(t *testing.T){if Sum()!=30||Read(1)!=3||Count()!=3||Closure()()!=8
 		t.Fatalf("%v\n%s", err, out)
 	}
 	for name, extra := range map[string]string{
+		"map write":         "func Bad(){ids[\"wrapper\"]=2}",
+		"map delete":        "func Bad(){delete(ids,\"wrapper\")}",
+		"map clear":         "func Bad(){clear(ids)}",
+		"map escape":        "func Bad()map[string]int{return ids}",
+		"map increment":     "func Bad(){ids[\"wrapper\"]++}",
 		"range key write":   "func Bad(){for index[0] = range uint8(1) {}}",
 		"range value write": "func Bad(){for _, index[0] = range index {}}",
 		"slice escape":      "func Bad()[]string{return names}",

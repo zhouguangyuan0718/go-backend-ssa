@@ -31,6 +31,7 @@ func Migration() Plan {
 			"cmd/compile/internal/ssa",
 		},
 		Units: []Unit{
+			{Source: "src/internal/abi/symtab.go", WholeFile: true},
 			{Source: "src/cmd/internal/src/pos.go", WholeFile: true, ZeroValues: []string{"NoPos", "noPos"}},
 			{Source: "src/cmd/internal/src/xpos.go", WholeFile: true, ZeroValues: []string{"NoXPos"}},
 			{Source: "src/cmd/compile/internal/syntax/pos.go", WholeFile: true},
@@ -62,7 +63,7 @@ func Migration() Plan {
 			{Source: "src/cmd/internal/objabi/util.go", Declarations: []string{"GlobalDictPrefix"}},
 			{Source: "src/cmd/internal/objabi/symkind.go", WholeFile: true},
 			{Source: "src/cmd/internal/objabi/reloctype.go", WholeFile: true},
-			{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Addr", "AddrName", "AddrPos", "AddrType", "As", "Attribute", "Func", "LSym", "Link", "LinkArch", "OperandPos", "Prog", "Reloc", "ABI", "ABI0", "ABISet", "ABISetCallable", "AttrDuplicateOK", "symOnce", "Attribute.load", "Attribute.Set", "Attribute.ABI", "Attribute.SetABI", "Attribute.Static", "ABISet.Set", "ABISet.Get", "ABISet.String", "Link.Diag", "Attribute.OnList", "Attribute.DuplicateOK", "Attribute.Local", "LSym.String", "LSym.NewTypeInfo", "LSym.TypeInfo", "LSym.NewItabInfo", "LSym.ItabInfo", "TypeInfo", "ItabInfo"}, Functions: []string{"ABISetOf", "ParseABI"}, Context: objectDataContext()},
+			{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Addr", "AddrName", "AddrPos", "AddrType", "As", "Attribute", "Func", "LSym", "Link", "LinkArch", "OperandPos", "Prog", "Reloc", "ABI", "ABI0", "ABISet", "ABISetCallable", "AttrDuplicateOK", "symOnce", "Attribute.load", "Attribute.Set", "Attribute.ABI", "Attribute.SetABI", "Attribute.Static", "ABISet.Set", "ABISet.Get", "ABISet.String", "Link.Diag", "Attribute.OnList", "Attribute.DuplicateOK", "Attribute.Local", "LSym.String", "LSym.NewTypeInfo", "LSym.TypeInfo", "LSym.NewItabInfo", "LSym.ItabInfo", "TypeInfo", "ItabInfo", "FuncInfo", "LSym.NewFuncInfo", "LSym.Func", "Pcln", "InlMark", "RegSpill", "JumpTable", "WasmImport", "WasmExport", "WasmFuncType", "WasmField", "WasmFieldType", "Attribute.WasInlined", "Link.Logf"}, Functions: []string{"ABISetOf", "ParseABI"}, Context: objectDataContext()},
 			{Source: "src/internal/goexperiment/flags.go", Declarations: []string{"Flags"}},
 			{Source: "src/internal/buildcfg/exp.go", Declarations: []string{"ExperimentFlags"}},
 			{Source: "src/internal/types/errors/codes.go", WholeFile: true},

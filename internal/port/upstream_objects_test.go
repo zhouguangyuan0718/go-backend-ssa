@@ -22,7 +22,7 @@ func testUpstreamObjectDeclarations(t *testing.T, s *Source, r *Rendered) {
 	units = append(units, Unit{Source: "src/cmd/compile/internal/reflectdata/alg.go", Declarations: []string{"eqSigBuilder"}})
 	units = append(units, Unit{Source: "src/cmd/compile/internal/bitvec/bv.go", Declarations: []string{"BitVec", "Bulk"}})
 	units = append(units, Unit{Source: "src/cmd/compile/internal/ir/node.go", Declarations: []string{"Op", "PragmaFlag"}})
-	units = append(units, Unit{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Link", "LinkArch", "Prog", "LSym", "Addr"}})
+	units = append(units, Unit{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Link", "LinkArch", "Prog", "LSym", "Addr", "FuncInfo", "Pcln", "InlMark", "RegSpill", "JumpTable", "WasmImport", "WasmExport", "WasmFuncType", "WasmField", "WasmFieldType"}})
 	imports := Migration().importMap(s.Pin.TargetModule)
 	for _, u := range units {
 		data, err := s.Read(u.Source)
@@ -147,7 +147,7 @@ func testUpstreamObjectMethods(t *testing.T, s *Source, r *Rendered) {
 		}
 		original, ported := parse(raw), parse(r.Files[portPath(source)])
 		for name, body := range original {
-			original[name] = strings.ReplaceAll(body, "src.NoXPos", "(src.XPos{})")
+			original[name] = strings.NewReplacer("src.NoXPos", "(src.XPos{})", "src.NoPos", "(src.Pos{})").Replace(body)
 		}
 		for _, name := range names {
 			if original[name] == "" || ported[name] != original[name] {

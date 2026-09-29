@@ -25,6 +25,12 @@ type NativeFunc = obj.Func
 type InlTree = obj.InlTree
 type InlinedCall = obj.InlinedCall
 type DwarfFixupTable = obj.DwarfFixupTable
+type FuncInfo = obj.FuncInfo
+type DWARFVar = dwarf.Var
+
+// NewDwarfFixupTable binds native inline debug references to this Link.
+func NewDwarfFixupTable(link *Link) *DwarfFixupTable { return obj.NewDwarfFixupTable(link) }
+
 type Arch = sys.Arch
 type ArchFamily = sys.ArchFamily
 type HeadType = objabi.HeadType

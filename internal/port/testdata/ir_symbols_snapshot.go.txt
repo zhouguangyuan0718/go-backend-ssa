@@ -1,0 +1,62 @@
+package ir
+import("fmt";"encoding/json";"encoding/binary";"testing";"IMPORT_TYPES";"IMPORT_OBJ";"IMPORT_OBJABI";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_DWARF";IMPORT_BASE SYMBOL_IMPORT)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ SETUP
+ LINK.Arch=&obj.LinkArch{Arch:&sys.Arch{Name:"amd64",PtrSize:8,RegSize:8,ByteOrder:binary.LittleEndian}}
+ SYMBOL_TARGET
+ LINK.Pkgpath="example/p"
+ LINK.DwFixups=obj.NewDwarfFixupTable(LINK)
+ var out []string
+ LINK.DiagFunc=func(format string,args ...any){out=append(out,"diagnostic:"+fmt.Sprintf(format,args...))}
+ TY.InitTypes(func(s *types.Sym,typ *types.Type)types.Object{n:=UP.NewDeclNameAt(src.XPos{},OTYPE,s);n.SetType(typ);n.SetTypecheck(1);s.Def=n;return n})
+ basepos:=src.MakePos(src.NewFileBase("symbols.go","/src/symbols.go"),5,1)
+ pos:=LINK.PosTable.XPos(src.MakePos(src.NewLinePragmaBase(basepos,"adjusted.go","/src/adjusted.go",90,1),7,2))
+ // Every combination of the text flags consumed by InitTextSym.
+ flags:=[]int{obj.DUPOK,obj.NOSPLIT,obj.WRAPPER,obj.ABIWRAPPER,obj.NEEDCTXT,obj.NOFRAME,obj.PKGINIT,obj.REFLECTMETHOD,obj.TOPFRAME}
+ for bits:=0;bits<1<<len(flags);bits++{flag:=0;for i,f:=range flags{if bits&(1<<i)!=0{flag|=f}}
+  for _,asm:=range []bool{false,true}{LINK.IsAsm=asm;s:=LINK.LookupABI(fmt.Sprintf("example/p.Flags%d_%t",bits,asm),obj.ABIInternal);LINK.InitTextSym(s,flag,pos);out=append(out,fmt.Sprintf("text:%s:%d:%d:%d:%d:%d",s.Name,s.Attribute,s.Type,s.Func().FuncID,s.Func().FuncFlag,s.Func().StartLine))}
+ }
+ LINK.IsAsm=false
+ for i,tc:=range []struct{pkg,name string;body bool;pragma PragmaFlag;wrapper,abiwrapper,dupok,ctxt,init bool}{
+  {"example/p","Plain",true,0,false,false,false,false,false},
+  {"example/p","External",false,Systemstack,false,false,false,false,false},
+  {"example/p","All",true,Systemstack|Nosplit,true,true,true,true,true},
+  {"runtime","reflectcall",true,0,false,false,false,false,false},
+  {"reflect","callReflect",true,0,false,false,false,false,false},
+  {"reflect","callMethod",true,0,false,false,false,false,false},
+  {"reflect","ordinary",true,0,false,false,false,false,false},
+  {"example/p","_",true,0,false,false,false,false,false},
+ }{
+  LINK.Pkgpath=tc.pkg
+  fn:=UP.NewFunc(pos,pos,TY.NewPkg(tc.pkg,"p").Lookup(tc.name),TY.NewSignature(nil,nil,nil));fn.Pragma=tc.pragma;fn.SetWrapper(tc.wrapper);fn.SetABIWrapper(tc.abiwrapper);fn.SetDupok(tc.dupok);fn.SetNeedctxt(tc.ctxt);fn.SetIsPackageInit(tc.init)
+  UP.InitLSym(fn,tc.body)
+  if fn.LSym==nil{out=append(out,"blank");continue}
+  out=append(out,fmt.Sprintf("ir:%d:%s:%d:%d:%t",i,fn.LSym.Name,fn.LSym.Attribute,fn.LSym.Type,fn.LSym.Func()!=nil))
+ }
+ for _,name:=range []string{"abort","asmcgocall","asyncPreempt","cgocallback","corostart","debugCallV2","gcBgMarkWorker","rt0_go","goexit","gogo","gopanic","handleAsyncEvent","main","mcall","morestack","mstart","panicwrap","runFinalizers","runCleanups","sigpanic","systemstack_switch","systemstack","deferreturn","unknown"}{
+  for _,prefix:=range []string{"runtime.","other."}{for _,wrapper:=range []bool{false,true}{out=append(out,fmt.Sprintf("id:%s:%t:%d",prefix+name,wrapper,objabi.GetFuncID(prefix+name,wrapper)))}}
+ }
+ // Late and early precursor registration, delayed and immediate child fixups,
+ // and native Finalize's missing-definition callback.
+ LINK.Pkgpath="example/p"
+ for _,early:=range []bool{false,true}{
+  LINK.DwFixups=obj.NewDwarfFixupTable(LINK)
+  fn:=UP.NewFunc(pos,pos,TY.LocalPkg.Lookup(fmt.Sprintf("Inlined%t",early)),TY.NewSignature(nil,nil,nil));sym:=fn.Nname.LinksymABI(fn.ABI)
+  if early{LINK.DwFixups.SetPrecursorFunc(sym,fn);sym.Set(obj.AttrWasInlined,true)}
+  UP.InitLSym(fn,true)
+  if !early{LINK.DwFixups.SetPrecursorFunc(sym,fn);sym.Set(obj.AttrWasInlined,true)}
+  abs:=LINK.DwFixups.AbsFuncDwarfSym(sym)
+  ref:=&obj.LSym{R:[]obj.Reloc{{Add:3},{Add:5}}}
+  LINK.DwFixups.ReferenceChildDIE(ref,0,abs,7,0)
+  LINK.GenAbstractFunc=func(s *obj.LSym){out=append(out,"generate:"+s.Name);LINK.DwFixups.RegisterChildDIEOffsets(LINK.DwFixups.AbsFuncDwarfSym(s),[]*dwarf.Var{{ChildIndex:7}},[]int32{29})}
+  LINK.DwFixups.Finalize("example/p",false)
+  LINK.DwFixups.ReferenceChildDIE(ref,1,abs,7,0)
+  out=append(out,fmt.Sprintf("dwarf:%t:%s:%d:%d:%t:%t:%d:%d",early,abs.Name,abs.Type,abs.Attribute,LINK.DwFixups.GetPrecursorFunc(sym)==fn,LINK.Lookup(abs.Name)==abs,ref.R[0].Add,ref.R[1].Add))
+ }
+ // Native duplicate, on-list, and unqualified-name diagnostics.
+ LINK.InitTextSym(LINK.Text[0],0,pos)
+ bad:=LINK.Lookup("example/p.Bad");bad.Set(obj.AttrOnList,true);LINK.InitTextSym(bad,0,pos)
+ LINK.InitTextSym(LINK.Lookup(`"".Unqualified`),0,pos)
+ out=append(out,fmt.Sprintf("counts:%d:%d:%d",len(LINK.Text),len(LINK.Data),LINK.Errors))
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

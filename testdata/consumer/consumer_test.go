@@ -249,6 +249,12 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	}
 	graph.Base.Flag.LowerL = 1
 	writer.Inline.CanInlineFuncs(result.Funcs, nil)
+	link.DwFixups = gcbridge.NewDwarfFixupTable(link)
+	graph.InitLSym(sum, true)
+	link.DwFixups.SetPrecursorFunc(sum.LSym, sum)
+	if sum.LSym.Func() == nil || link.DwFixups.GetPrecursorFunc(sum.LSym) != sum {
+		t.Fatal("native function symbol or DWARF precursor lost")
+	}
 
 }
 

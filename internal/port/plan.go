@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v12"
+const ToolVersion = "syncgo-m3-v13"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -50,7 +50,7 @@ type Unit struct {
 	Owner          *OwnerRule
 	WholeFile      bool     // Preserve types, constants and existing receivers.
 	ZeroValues     []string // Reviewed zero-valued struct globals replaced by fresh values.
-	ReadTables     []string // Constant array/slice lookups localized in their consuming functions.
+	ReadTables     []string // Constant array/slice/map lookups localized in their consuming functions.
 	State          []StateRule
 	ReceiverState  *ReceiverStateRule
 	Context        *ContextRule

@@ -3,6 +3,7 @@ package port
 func irMigration() []Unit {
 	units := []Unit{
 		{Source: "src/cmd/compile/internal/ir/dump.go", Functions: []string{"MatchAstDump", "matchForDump", "MatchPkgFn"}},
+		{Source: "src/cmd/compile/internal/ir/abi.go", WholeFile: true, Checks: map[string]string{"InitLSym": "checkInitLSym"}},
 		{Source: "src/cmd/compile/internal/ir/reassignment.go", WholeFile: true, Checks: map[string]string{"ReassignOracle.StaticValue": "checkOracleNode"}, ContextFrom: map[string]ContextSource{
 			"ReassignOracle.Init":            {Argument: "fn", Resolver: "nodeContext"},
 			"ReassignOracle.StaticValue":     {Argument: "ro", Resolver: "oracleContext"},
