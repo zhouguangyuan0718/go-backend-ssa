@@ -47,10 +47,11 @@ flowchart TD
 
 ```text
 build.go, request.go, result.go       根包：公开编译入口（待实现）
-ssa/ types/                          公开对象别名、访问与验证接口（待实现）
+ssa/                                 公开 SSA 接口（待实现）
+types/                               初步 Universe 和类型/包/符号别名
 position/ target/ diagnostic/        首批公开基础设施（已实现）
 symbol/                              公共符号接口（待实现）
-gcbridge/                            位置接入已实现；完整原生回接待实现
+gcbridge/                            位置和类型对象接入；原生算法待接回
 internal/
   syntax/ types2/ noder/ ir/          保留 src/cmd/compile/ 以下结构
   types/ typecheck/ inline/           保留上游包名和文件名

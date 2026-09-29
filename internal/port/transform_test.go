@@ -82,7 +82,7 @@ func TestRewriteRejectsUnknownShapes(t *testing.T) {
 		{"unselected dependency", "package p; var n int; func F() int{return n}", []string{"F"}, nil, "undefined: n"},
 		{"tuple init", "package p; var a,b = 1,2; func F() int{return a+b}", []string{"F"}, map[string]string{"a": "a", "b": "b"}, "unsupported state"},
 		{"generic", "package p; func F[T any](x T) T{return x}", []string{"F"}, nil, "unsupported function shape"},
-		{"receiver", "package p; type T int; func (T) F() int{return 1}", []string{"F"}, nil, "unsupported function shape"},
+		{"receiver", "package p; type T int; func (T) F() int{return 1}", []string{"F"}, nil, "selected declaration not found"},
 		{"collision", "package p; var n int; func F(syncgoCtx int) int{return n+syncgoCtx}", []string{"F"}, map[string]string{"n": "n"}, "collision"},
 		{"package init", "package p; var n int; func init(){n=9}; func F() int{return n}", []string{"F"}, map[string]string{"n": "n"}, "package init requires"},
 	} {

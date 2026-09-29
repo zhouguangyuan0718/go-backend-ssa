@@ -7,7 +7,7 @@ import (
 )
 
 func TestContextOwnershipAndInputLifetime(t *testing.T) {
-	a, b := NewContext(), NewContext()
+	a, b := NewUniverse(8, 8, 1<<50), NewUniverse(8, 8, 1<<50)
 	input := []byte("alpha")
 	old := a.InternString(input)
 	input[0] = 'z'
@@ -18,7 +18,7 @@ func TestContextOwnershipAndInputLifetime(t *testing.T) {
 		t.Fatal("shared state")
 	}
 	for i := 0; i < 100; i++ {
-		NewContext().InternString([]byte("other"))
+		NewUniverse(8, 8, 1<<50).InternString([]byte("other"))
 	}
 	if old != "alpha" || a.InternString([]byte("alpha")) != old {
 		t.Fatal("old result invalidated")
@@ -35,7 +35,7 @@ func TestConcurrentIndependentContexts(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			c := NewContext()
+			c := NewUniverse(8, 8, 1<<50)
 			for j := 0; j < 100; j++ {
 				want := fmt.Sprintf("%d/%d", i, j)
 				if got := c.InternString([]byte(want)); got != want {

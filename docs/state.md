@@ -55,7 +55,7 @@ func (c *Context) makePointer(t *types.Type) *types.Type {
 
 ## 类型环境
 
-Type 保留上游布局和缓存算法。M2 已确定下一批为 Type/Pkg 添加私有 Universe owner，并通过显式入口检查跨 Universe 输入；该结构改造尚未实现，详见 [M2 设计](m2.md)。无论形式如何，Size/Alignment/NewPtr/PtrTo 等路径都不得回到包级目标状态。
+Type 保留上游布局和缓存算法。M2 已确定下一批为 Type/Pkg 添加私有 Universe owner，并通过显式入口检查跨 Universe 输入；该结构改造及初步受控工厂已实现，完整布局/构造路径仍待移植，详见 [第二批记录](m2-universe.md)。无论形式如何，Size/Alignment/NewPtr/PtrTo 等路径都不得回到包级目标状态。
 
 同一个源码类型在两个目标或两次调用中是不同可变对象。不同 Universe 的 Type 混用需在构造/验证边界报错；类型等价应使用语义比较，不能跨调用比较指针。
 
@@ -85,4 +85,4 @@ Build 成功后，库不在后台修改结果。公共读取方法如触发 lazy
 
 静态审计并不等于完备证明：配合并发 race、相同包路径不同源码、32/64 位布局、交错调用、失败恢复和旧结果保活试验。宿主 runtime/标准库正常内部状态不属于“编译会话状态”；但不能利用它们实现隐藏的会话单例。
 
-当前已实现位置和诊断的实例隔离。XPos 保持原始布局，不含 owner；必须连同生成它的 PosTable 使用，不能从 index 推断归属。完整类型图的 owner 检查仍是下一批任务。
+当前已实现位置和诊断的实例隔离。XPos 保持原始布局，不含 owner；必须连同生成它的 PosTable 使用，不能从 index 推断归属。当前受控工厂检查 owner，完整类型图的验证仍待后续补齐。

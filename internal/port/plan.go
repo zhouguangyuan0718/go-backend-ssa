@@ -3,12 +3,13 @@ package port
 
 import (
 	"fmt"
+	"go/token"
 	"path"
 	"regexp"
 	"strings"
 )
 
-const ToolVersion = "syncgo-m2-v1"
+const ToolVersion = "syncgo-m2-v2"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -33,11 +34,18 @@ type Plan struct {
 }
 
 type Unit struct {
-	Source     string
-	Functions  []string
-	WholeFile  bool     // Preserve types, constants and existing receivers.
-	ZeroValues []string // Reviewed zero-valued struct globals replaced by fresh values.
-	Context    *ContextRule
+	Source       string
+	Functions    []string
+	Declarations []string // Types, complete constant groups, and Receiver.Method names.
+	Owner        *OwnerRule
+	WholeFile    bool     // Preserve types, constants and existing receivers.
+	ZeroValues   []string // Reviewed zero-valued struct globals replaced by fresh values.
+	Context      *ContextRule
+}
+
+type OwnerRule struct {
+	Types          []string
+	Context, Field string
 }
 
 type ContextRule struct {
@@ -93,13 +101,28 @@ func (p Plan) Validate() error {
 	contexts := map[string]bool{}
 	for _, u := range p.Units {
 		output := u.output()
-		if !safePath(u.Source) || !ownedPath(output) || path.Ext(output) != ".go" || (!u.WholeFile && len(u.Functions) == 0) || outputs[output] {
+		if !safePath(u.Source) || !ownedPath(output) || path.Ext(output) != ".go" || (!u.WholeFile && len(u.Functions)+len(u.Declarations) == 0) || outputs[output] {
 			return fmt.Errorf("invalid migration source: %s", u.Source)
 		}
 		pkg := path.Dir(output)
 		outputs[output] = true
-		if u.WholeFile && (len(u.Functions) != 0 || u.Context != nil) || !u.WholeFile && len(u.ZeroValues) != 0 {
+		if u.WholeFile && (len(u.Functions)+len(u.Declarations) != 0 || u.Context != nil) || !u.WholeFile && len(u.ZeroValues) != 0 {
 			return fmt.Errorf("incompatible whole-file rules: %s", u.Source)
+		}
+		if owner := u.Owner; owner != nil {
+			if len(owner.Types) == 0 || !token.IsIdentifier(owner.Context) || !token.IsIdentifier(owner.Field) || token.IsExported(owner.Field) {
+				return fmt.Errorf("invalid owner rule")
+			}
+			seen := map[string]bool{}
+			for _, name := range owner.Types {
+				if !token.IsIdentifier(name) || seen[name] {
+					return fmt.Errorf("invalid owner type %s", name)
+				}
+				seen[name] = true
+			}
+			if u.Context != nil && u.Context.Type != owner.Context {
+				return fmt.Errorf("owner/context mismatch")
+			}
 		}
 		if c := u.Context; c != nil {
 			if contexts[pkg] {

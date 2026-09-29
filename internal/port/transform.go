@@ -69,6 +69,12 @@ func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.Fil
 		}
 		want[fn] = "func"
 	}
+	for _, name := range u.Declarations {
+		if want[name] != "" {
+			return nil, fmt.Errorf("duplicate declaration %s", name)
+		}
+		want[name] = "declaration"
+	}
 	if u.Context != nil {
 		for state := range u.Context.Fields {
 			if want[state] != "" {
@@ -85,24 +91,52 @@ func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.Fil
 			if u.Context != nil && d.Name.Name == "init" {
 				return nil, fmt.Errorf("package init requires an explicit adaptation rule: %s", name)
 			}
-			if want[d.Name.Name] != "func" {
+			key := d.Name.Name
+			if d.Recv != nil {
+				key = receiverType(d) + "." + key
+			}
+			if want[key] != "func" && want[key] != "declaration" {
 				continue
 			}
-			if d.Recv != nil || d.Type.TypeParams != nil || d.Body == nil || d.Name.Name == "init" {
+			if (d.Recv != nil && want[key] != "declaration") || d.Type.TypeParams != nil || d.Body == nil || (d.Recv == nil && d.Name.Name == "init") {
 				return nil, fmt.Errorf("unsupported function shape: %s", d.Name.Name)
 			}
-			if found[d.Name.Name] {
+			if found[key] {
 				return nil, fmt.Errorf("ambiguous function: %s", d.Name.Name)
 			}
-			found[d.Name.Name] = true
+			found[key] = true
 			decls = append(decls, d)
 		case *ast.GenDecl:
 			if d.Tok == token.IMPORT {
 				decls = append(decls, d)
 				continue
 			}
+			// Keep an entire constant group so omitted expressions and iota
+			// retain their original values. A selected member anchors the group.
+			if d.Tok == token.CONST {
+				keep := false
+				for _, sp := range d.Specs {
+					for _, id := range sp.(*ast.ValueSpec).Names {
+						if want[id.Name] == "declaration" {
+							found[id.Name] = true
+							keep = true
+						}
+					}
+				}
+				if keep {
+					decls = append(decls, d)
+				}
+				continue
+			}
 			var specs []ast.Spec
 			for _, sp := range d.Specs {
+				if typ, ok := sp.(*ast.TypeSpec); ok {
+					if want[typ.Name.Name] == "declaration" {
+						found[typ.Name.Name] = true
+						specs = append(specs, sp)
+					}
+					continue
+				}
 				v, ok := sp.(*ast.ValueSpec)
 				if !ok {
 					continue
@@ -180,6 +214,14 @@ func pruneImports(f *ast.File, extra ...ast.Node) {
 
 // rewriteNodes walks AST fields only. It is not a textual identifier rewrite.
 func rewriteNodes(node ast.Node, replace map[*ast.Ident]ast.Expr) {
+	exprs := make(map[ast.Node]ast.Expr, len(replace))
+	for id, expr := range replace {
+		exprs[id] = expr
+	}
+	rewriteExprs(node, exprs)
+}
+
+func rewriteExprs(node ast.Node, replace map[ast.Node]ast.Expr) {
 	nodeType := reflect.TypeFor[ast.Node]()
 	var walk func(reflect.Value)
 	walk = func(v reflect.Value) {
@@ -190,8 +232,8 @@ func rewriteNodes(node ast.Node, replace map[*ast.Ident]ast.Expr) {
 			if v.IsNil() {
 				return
 			}
-			if id, ok := v.Interface().(*ast.Ident); ok {
-				if r := replace[id]; r != nil {
+			if n, ok := v.Interface().(ast.Node); ok {
+				if r := replace[n]; r != nil {
 					v.Set(reflect.ValueOf(r))
 					return
 				}
@@ -254,7 +296,7 @@ func transform(fset *token.FileSet, f *ast.File, info *types.Info, u Unit, mappi
 			}
 		}
 		for _, d := range f.Decls {
-			if fn, ok := d.(*ast.FuncDecl); ok {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil {
 				functions[info.Defs[fn.Name]] = fn.Name.Name
 			}
 		}
@@ -268,7 +310,45 @@ func transform(fset *token.FileSet, f *ast.File, info *types.Info, u Unit, mappi
 				replacements[id] = &ast.SelectorExpr{X: &ast.Ident{Name: recv, NamePos: id.Pos()}, Sel: &ast.Ident{Name: name, NamePos: id.Pos()}}
 			}
 		}
-		rewriteNodes(f, replacements)
+		for _, d := range f.Decls {
+			ctx := ast.Expr(ast.NewIdent(recv))
+			local := replacements
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv != nil {
+				needs := false
+				ast.Inspect(fn, func(n ast.Node) bool {
+					if id, ok := n.(*ast.Ident); ok && replacements[id] != nil {
+						needs = true
+					}
+					return true
+				})
+				if !needs && (u.Owner == nil || !ownedReceiver(u.Owner, receiverType(fn))) {
+					continue
+				}
+				if u.Owner == nil || u.Owner.Context != c.Type || !ownedReceiver(u.Owner, receiverType(fn)) || len(fn.Recv.List[0].Names) != 1 {
+					return nil, fmt.Errorf("receiver context requires an owner rule: %s", fn.Name.Name)
+				}
+				recvName := fn.Recv.List[0].Names[0].Name
+				// Explicitly reject a nil/unowned receiver. Callers needing the
+				// anonymous package use Universe.Lookup(nil, name).
+				guard, err := parser.ParseFile(token.NewFileSet(), "guard.go", "package p;func f(){if "+recvName+" == nil || "+recvName+"."+u.Owner.Field+" == nil {panic(\"receiver has no compilation owner\")}}", 0)
+				if err != nil {
+					return nil, err
+				}
+				fn.Body.List = append(guard.Decls[0].(*ast.FuncDecl).Body.List, fn.Body.List...)
+				ctx = &ast.SelectorExpr{X: ast.NewIdent(recvName), Sel: ast.NewIdent(u.Owner.Field)}
+				local = map[*ast.Ident]ast.Expr{}
+				for id, expr := range replacements {
+					sel := expr.(*ast.SelectorExpr)
+					local[id] = &ast.SelectorExpr{X: ctx, Sel: sel.Sel}
+				}
+			}
+			rewriteNodes(d, local)
+			if u.Owner != nil {
+				if err := injectOwnedAllocations(d, info, u.Owner, ctx); err != nil {
+					return nil, err
+				}
+			}
+		}
 		var init strings.Builder
 		fmt.Fprintf(&init, "\nfunc %s() *%s {\n%s := &%s{}\n", c.Constructor, c.Type, recv, c.Type)
 		for _, entry := range info.InitOrder {
@@ -279,6 +359,11 @@ func transform(fset *token.FileSet, f *ast.File, info *types.Info, u Unit, mappi
 			// expression slot has been replaced. Rewrite that slot explicitly.
 			expr := &ast.ParenExpr{X: entry.Rhs}
 			rewriteNodes(expr, replacements)
+			if u.Owner != nil {
+				if err := injectOwnedAllocations(expr, info, u.Owner, ast.NewIdent(recv)); err != nil {
+					return nil, err
+				}
+			}
 			fmt.Fprintf(&init, "%s.%s = %s\n", recv, states[entry.Lhs[0]], nodeText(fset, expr.X))
 		}
 		fmt.Fprintf(&init, "return %s\n}\n", recv)
@@ -288,7 +373,7 @@ func transform(fset *token.FileSet, f *ast.File, info *types.Info, u Unit, mappi
 			if g, ok := d.(*ast.GenDecl); ok && g.Tok == token.VAR {
 				continue
 			}
-			if fn, ok := d.(*ast.FuncDecl); ok {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil {
 				fn.Recv = &ast.FieldList{List: []*ast.Field{{Names: []*ast.Ident{ast.NewIdent(recv)}, Type: &ast.StarExpr{X: ast.NewIdent(c.Type)}}}}
 			}
 			decls = append(decls, d)
@@ -296,6 +381,11 @@ func transform(fset *token.FileSet, f *ast.File, info *types.Info, u Unit, mappi
 		cm := ast.NewCommentMap(fset, f, f.Comments)
 		f.Decls = decls
 		f.Comments = cm.Filter(f).Comments()
+	}
+	if u.Owner != nil {
+		if err := addOwnerFields(f, u.Owner); err != nil {
+			return nil, err
+		}
 	}
 	if constructor != "" {
 		cf, err := parser.ParseFile(token.NewFileSet(), "constructor.go", "package p\n"+constructor, 0)

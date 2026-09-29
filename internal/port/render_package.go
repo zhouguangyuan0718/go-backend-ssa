@@ -54,7 +54,7 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			return nil, nil, err
 		}
 		output = append(output, outf)
-		prov := Provenance{Output: u.output(), Source: u.Source, SourceSHA256: hash(sources[i]), OutputSHA256: hash(out), Rule: "select-and-relocate-v1", Declarations: append([]string(nil), u.Functions...)}
+		prov := Provenance{Output: u.output(), Source: u.Source, SourceSHA256: hash(sources[i]), OutputSHA256: hash(out), Rule: "select-and-relocate-v1", Declarations: append(append([]string(nil), u.Functions...), u.Declarations...)}
 		if u.WholeFile {
 			prov.Rule = "whole-file-and-zero-values-v1"
 			prov.Declarations = append([]string{"*"}, u.ZeroValues...)
@@ -107,7 +107,12 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 						actual = st.Field(i).Type()
 					}
 				}
-				if actual == nil || types.TypeString(actual, nil) != types.TypeString(pkg.Scope().Lookup(name).Type(), nil) {
+				if actual == nil || types.TypeString(actual, nil) != types.TypeString(pkg.Scope().Lookup(name).Type(), func(p *types.Package) string {
+					if dest := imports[p.Path()]; dest != "" {
+						return dest
+					}
+					return p.Path()
+				}) {
 					return nil, nil, fmt.Errorf("context field %s does not preserve state type of %s", field, name)
 				}
 			}

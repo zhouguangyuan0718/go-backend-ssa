@@ -1,5 +1,6 @@
 // Package gcbridge is the version-bound native compiler integration surface.
-// Currently only source position identity and conversion are implemented.
+// Source positions and selected compiler type/symbol objects are available;
+// native compilation and code generation are not yet integrated.
 package gcbridge
 
 import "go-backend-ssa/internal/cmd/src"
