@@ -55,3 +55,14 @@ func (c *Collector) HasErrors() bool {
 	}
 	return false
 }
+
+// RewriteLast refines an existing diagnostic only if it is still the last entry
+// and matches the supplied snapshot. Earlier detached snapshots remain valid.
+func (c *Collector) RewriteLast(expected Diagnostic, message string) bool {
+	i := len(c.entries) - 1
+	if i < 0 || c.entries[i] != expected {
+		return false
+	}
+	c.entries[i].Message = message
+	return true
+}

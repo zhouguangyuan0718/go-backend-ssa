@@ -301,6 +301,13 @@ func TestNativeIRPublicGraph(t *testing.T) {
 	if dup == expr || dup.X != value || dup.Y != value || fmt.Sprint(dup) != "3 + 3" {
 		t.Fatal("native copy or interface differs")
 	}
+	checked := tc.Expr(dup)
+	if checked.Type() != typ || checked.Typecheck() != 1 {
+		t.Fatal("public native expression checking")
+	}
+	if typecheck.RangeExprType(u.NewPtr(u.NewArray(typ, 2))).Kind() != types.Array {
+		t.Fatal("public range operand type")
+	}
 	count := 0
 	ir.Visit(dup, func(ir.Node) { count++ })
 	if count != 3 {

@@ -37,6 +37,7 @@
 20. [M3 原生 IR 图](docs/m3-ir.md)：节点构造/复制/遍历、真实 ir.Name 类型绑定、函数/闭包及位置归属。
 21. [M3 原生 typecheck universe](docs/m3-typecheck.md)：内建名称、常量、操作表初始化及共享函数状态。
 22. [M3 原生 runtime 声明](docs/m3-runtime.md)：隐藏声明、类型参数替换、ABI 符号与实例计时。
+23. [M3 原生 IR 检查](docs/m3-typecheck-ir.md)：表达式/语句改写、函数声明、嵌入成员和闭包捕获布局。
 
 ## 当前可运行的工具
 
@@ -56,7 +57,7 @@ go test -race ./...
 
 设定 `GO_SSA_SOURCE_REPO` 时，测试额外验证官方 go1.27.1 再生成、两版上游位置/符号回归与 SSA 类型切片差分测试、源码树未变以及 go1.27.0 → go1.27.1 升级；仓库需包含两个 tag。不设置该变量时仅跳过这项集成测试，其他测试照常执行。
 
-编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造，以及 types/objabi 的结构和算法切片；源码到 IR 的 reader 和完整编译流程尚未实现。
+编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造与完整 typecheck 生产包，以及 types/objabi 的结构和算法切片；源码到 IR 的 reader 和完整编译流程尚未实现。
 
 移植后的源码直接保存在本项目，和手写适配、转换规则一起纳入版本管理。使用本库时不需要先运行移植工具；维护者更新上游版本时再重新生成。
 
@@ -75,12 +76,13 @@ go test -race ./...
 | [internal/noder/writer.go](internal/noder/writer.go) | 原生 Unified IR 声明/类型/函数体写入，独立缓存与既有 checker 绑定 |
 | [internal/noder/posmap.go](internal/noder/posmap.go) | 原生 syntax.Pos 到 Link.PosTable 映射、line pragma 与实例位置缓存 |
 | [internal/ir/node.go](internal/ir/node.go)、[expr.go](internal/ir/expr.go)、[func.go](internal/ir/func.go) | 原生 IR 节点、构造/复制/遍历、名称、函数/闭包、常量及格式化 |
+| [internal/typecheck/typecheck.go](internal/typecheck/typecheck.go)、[expr.go](internal/typecheck/expr.go)、[stmt.go](internal/typecheck/stmt.go) | 原生 IR 表达式/语句检查与改写、声明和内建调用 |
 
 手写适配示例为 [internal/types/adapter_context.go](internal/types/adapter_context.go)，生成来源和哈希记录在 [sync/generated.json](sync/generated.json)。
 
 ## 当前公开基础设施
 
-`position` 暴露上游位置对象，`diagnostic` 提供实例诊断收集，`target` 提供显式布局输入；`ir` 提供原生节点和实例构造入口，`types` 提供 Universe 和包符号查找，`gcbridge` 共用位置及 Type/Pkg/Sym 对象。见 [独立 consumer 示例](testdata/consumer/consumer_test.go)。每次编译需独立创建位置表和 base；XPos 必须用原表解码。同一实例的可变操作由调用方串行。
+`position` 暴露上游位置对象，`diagnostic` 提供实例诊断收集，`target` 提供显式布局输入；`ir` 提供原生节点和实例构造入口，`typecheck` 提供原生 IR 检查与改写，`types` 提供 Universe 和包符号查找，`gcbridge` 共用位置及 Type/Pkg/Sym 对象。见 [独立 consumer 示例](testdata/consumer/consumer_test.go)。每次编译需独立创建位置表和 base；XPos 必须用原表解码。同一实例的可变操作由调用方串行。
 
 后端当前可直接使用实例中的上游 SSA 类型和构造函数：
 

@@ -34,6 +34,6 @@ _ = appendName.BuiltinOp // ir.OAPPEND
 
 官方源码差分对比所有 opcode 的操作表、完整分类 flags、内建与 unsafe 函数、类型/常量/blank/nil 身份、表引用关系、函数标签/位置和参数复制。参考代码来自固定 Git blob，以临时 overlay 编译；不复用迁移后的算法作为预期。两版升级使用相同规则。
 
-当前提供的是原生 IR typecheck 的 universe 和这些辅助函数；尚无完整 Expr/Stmt 类型检查，[隐藏 runtime/coverage 声明](m3-runtime.md) 已接入，但尚未接通 noder reader。此前的 `types2.Config.Check` 继续负责源码层检查，两者不是同一阶段。下一步迁入 reader 所需的完整 IR 检查能力。
+本批提供原生 IR typecheck 的 universe 和这些辅助函数；后续已接入 [隐藏 runtime/coverage 声明](m3-runtime.md) 和 [完整 typecheck 生产包及 Expr/Stmt 入口](m3-typecheck-ir.md)，尚未接通 noder reader。此前的 `types2.Config.Check` 继续负责源码层检查，两者不是同一阶段。
 
 本批验证完成：170 份生成文件通过 `syncgo check`；带来源仓库的全量 race、独立 consumer 和 go1.27.0/go1.27.1 原生快照差分全部通过。相同规则跨补丁版本只有 1 份 Go 产物内容变化，来源工作树保持不变。日志：`_work/m3-typecheck-tests.log`。这些结果尚不能证明源码到 IR/SSA 或原生编译器替换完成。

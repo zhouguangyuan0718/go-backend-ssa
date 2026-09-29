@@ -460,4 +460,6 @@ func (syncgoCtx *Context) initialize() {
 	}
 	syncgoCtx.syncgoInitVars0()
 	syncgoCtx.syncgoInitVars1()
+	syncgoCtx.syncgoInitVars2()
+	syncgoCtx.syncgoInitVars3()
 }

@@ -149,7 +149,7 @@ func (syncgoCtx *Context) InitUniverse() {
 	syncgoCtx.okfor[ir.OCAP] = syncgoCtx.okforcap[:]
 	syncgoCtx.okfor[ir.OLEN] = syncgoCtx.okforlen[:]
 }
-func (syncgoCtx *Context) syncgoInitVars1() {
+func (syncgoCtx *Context) syncgoInitVars3() {
 	syncgoCtx.builtinFuncs = [...]struct {
 		name string
 		op   ir.Op

@@ -42,5 +42,56 @@ func TestSyncgoNativeSnapshot(t *testing.T){
  values:=[]*types.Type{TY.Types[types.TINT],TY.Types[types.TSTRING],TY.Types[types.TUINT],TY.ByteType,TY.Types[types.TBOOL]}
  substituted:=TY.SubstAny(structure,&values);TY.CalcSize(substituted)
  out=append(out,fmt.Sprintf("structure:%v:%v:%d:%d:%t:%t:%t:%t",structure,substituted,len(values),substituted.Size(),structure.Field(0)!=substituted.Field(0),structure.Field(0).Type!=substituted.Field(0).Type,structure.Field(2).Type!=substituted.Field(2).Type,substituted.Underlying()==substituted))
+ // Build real native declarations and consume rewritten nodes.
+ sig:=TY.NewSignature(nil,[]*types.Field{TY.NewField(pos,UP.Lookup("x"),TY.Types[types.TINT])},[]*types.Field{TY.NewField(pos,nil,TY.Types[types.TINT])})
+ checkedFn:=GRAPH.NewFunc(pos,pos,UP.Lookup("Checked"),sig)
+ UP.DeclFunc(checkedFn)
+ x:=sig.Param(0).Nname.(*ir.Name)
+ tmp:=UP.TempAt(pos,checkedFn,TY.Types[types.TINT])
+ add:=UP.Expr(GRAPH.NewBinaryExpr(pos,ir.OADD,x,GRAPH.NewInt(pos,3)))
+ assign:=UP.Stmt(GRAPH.NewAssignStmt(pos,tmp,add))
+ ret:=UP.Stmt(GRAPH.NewReturnStmt(pos,[]ir.Node{tmp}))
+ checkedFn.Body=[]ir.Node{assign,ret}
+ out=append(out,fmt.Sprintf("checked:%v:%v:%d:%v:%v:%d:%v:%d:%t:%t",add,add.Type(),add.Typecheck(),assign,ret,len(checkedFn.Dcl),tmp.Sym(),tmp.Esc(),tmp.AutoTemp(),tmp.Curfn==checkedFn))
+ if add.Type()!=TY.Types[types.TINT] || add.Typecheck()!=1 || assign.Typecheck()!=1 || ret.Typecheck()!=1 {t.Fatal("native body not checked")}
+ inner:=GRAPH.NewFunc(pos,pos,UP.Lookup("Inner"),TY.NewSignature(nil,nil,nil));UP.DeclFunc(inner)
+ innerTmp:=UP.TempAt(pos,inner,TY.Types[types.TSTRING]);UP.FinishFuncBody()
+ out=append(out,fmt.Sprintf("stack:%t:%v:%d",GRAPH.CurFunc==checkedFn,innerTmp.Sym(),len(UP.Target.Funcs)))
+ UP.FinishFuncBody();UP.CheckFuncStack()
+ call:=UP.Call(pos,checkedFn.Nname,[]ir.Node{GRAPH.NewInt(pos,9)},false)
+ out=append(out,fmt.Sprintf("call:%v:%v:%v:%d:%t",call,call.Op(),call.Type(),call.Typecheck(),GRAPH.CurFunc==nil))
+ builtin:=func(name string,args ...ir.Node)ir.Node{return UP.Call(pos,TY.BuiltinPkg.Lookup(name).Def.(ir.Node),args,false)}
+ slice:=GRAPH.NewNameAt(pos,UP.Lookup("slice"),TY.NewSlice(TY.Types[types.TINT]));slice.Class=ir.PEXTERN
+ mapping:=GRAPH.NewNameAt(pos,UP.Lookup("mapping"),TY.NewMap(TY.Types[types.TSTRING],TY.Types[types.TINT]));mapping.Class=ir.PEXTERN
+ for _,expr:=range []ir.Node{
+ builtin("len",slice),builtin("cap",slice),builtin("append",slice,GRAPH.NewInt(pos,5)),
+ builtin("make",GRAPH.TypeNode(slice.Type()),GRAPH.NewInt(pos,4)),builtin("new",GRAPH.TypeNode(TY.Types[types.TINT])),
+ UP.Expr(GRAPH.NewIndexExpr(pos,mapping,GRAPH.NewString(pos,"key"))),
+ UP.Expr(GRAPH.NewIndexExpr(pos,slice,GRAPH.NewInt(pos,1))),
+ UP.AssignConv(GRAPH.NewInt(pos,7),TY.Types[types.TINTER],"interface assignment"),
+ UP.DefaultLit(GRAPH.NewInt(pos,8),TY.Types[types.TINT32]),
+ }{out=append(out,fmt.Sprintf("expr:%v:%v:%v:%d",expr,expr.Op(),expr.Type(),expr.Typecheck()))}
+ tmp.SetByval(true);innerTmp.SetByval(false)
+ iter:=UP.NewClosureStructIter([]*ir.Name{tmp,innerTmp})
+ for {n,typ,offset:=iter.Next();if n==nil{break};out=append(out,fmt.Sprintf("capture:%v:%v:%d",n.Sym(),typ,offset))}
+ UP.SetBaseTypeIndex(TY.Types[types.TINT],17,18)
+ out=append(out,fmt.Sprintf("index:%d:%d:%d",UP.BaseTypeIndex(TY.Types[types.TINT]),UP.BaseTypeIndex(TY.NewPtr(TY.Types[types.TINT])),UP.BaseTypeIndex(TY.Types[types.TSTRING])) )
+
+ {
+ obj:=GRAPH.NewDeclNameAt(pos,ir.OTYPE,UP.Lookup("Embedded"))
+ embedded:=TY.NewNamed(obj);obj.SetType(embedded);obj.SetTypecheck(1)
+ member:=TY.NewField(pos,UP.Lookup("Member"),TY.Types[types.TINT])
+ embedded.SetUnderlying(TY.NewStruct([]*types.Field{member}))
+ method:=TY.NewField(pos,UP.Lookup("Method"),TY.NewSignature(TY.NewField(pos,UP.Lookup("recv"),embedded),nil,nil))
+ embedded.SetMethods([]*types.Field{method})
+ outerObj:=GRAPH.NewDeclNameAt(pos,ir.OTYPE,UP.Lookup("Outer"))
+ outer:=TY.NewNamed(outerObj);outerObj.SetType(outer);outerObj.SetTypecheck(1)
+ field:=TY.NewField(pos,obj.Sym(),embedded);field.Embedded=1
+ outer.SetUnderlying(TY.NewStruct([]*types.Field{field}))
+ n:=GRAPH.NewNameAt(pos,UP.Lookup("outer"),outer);n.Class=ir.PEXTERN
+ dot:=UP.Expr(UP.AddImplicitDots(GRAPH.NewSelectorExpr(pos,ir.ODOT,n,member.Sym))).(*ir.SelectorExpr)
+ UP.CalcMethods(outer)
+ out=append(out,fmt.Sprintf("embedding:%v:%v:%t:%t:%v:%v:%d",dot,dot.Type(),dot.Selection==member,dot.X.(*ir.SelectorExpr).Selection==field,outer.AllMethods()[0].Sym,outer.AllMethods()[0].Type,outer.AllMethods()[0].Embedded))
+ }
  b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
 }

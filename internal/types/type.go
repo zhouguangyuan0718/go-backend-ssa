@@ -1149,6 +1149,11 @@ func (t *Type) IsUnsafePtr() bool {
 	return t.kind == TUNSAFEPTR
 }
 
+// IsUintptr reports whether t is a uintptr.
+func (t *Type) IsUintptr() bool {
+	return t.kind == TUINTPTR
+}
+
 // IsPtrShaped reports whether t is represented by a single machine pointer.
 // In addition to regular Go pointer types, this includes map, channel, and
 // function types and unsafe.Pointer. It does not include array or struct types
@@ -1522,6 +1527,88 @@ func (syncgoCtx *Universe) NewStruct(fields []*Field) *Type {
 	return t
 }
 
+// IsInterfaceMethod reports whether (field) m is
+// an interface method. Such methods have the
+// special receiver type types.FakeRecvType().
+func (syncgoCtx *Universe) IsInterfaceMethod(f *Type) bool {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if syncgoCtx == nil || f == nil || f.universe != syncgoCtx {
+		panic("argument belongs to another or uninitialized compilation")
+	}
+	return f.Recv().Type == syncgoCtx.FakeRecvType()
+}
+
+// IsMethodApplicable reports whether method m can be called on a
+// value of type t. This is necessary because we compute a single
+// method set for both T and *T, but some *T methods are not
+// applicable to T receivers.
+func (syncgoCtx *Universe) IsMethodApplicable(t *Type, m *Field) bool {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if syncgoCtx == nil || t == nil || t.universe != syncgoCtx {
+		panic("argument belongs to another or uninitialized compilation")
+	}
+	return t.IsPtr() || !m.Type.Recv().Type.IsPtr() || syncgoCtx.IsInterfaceMethod(m.Type) || m.Embedded == 2
+}
+
+// RuntimeSymName returns the name of s if it's in package "runtime"; otherwise
+// it returns "".
+func (syncgoCtx *Universe) RuntimeSymName(s *Sym) string {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if s.Pkg.Path == "runtime" {
+		return s.Name
+	}
+	return ""
+}
+
+// ReceiverBaseType returns the underlying type, if any,
+// that owns methods with receiver parameter t.
+// The result is either a named type or an anonymous struct.
+func (syncgoCtx *Universe) ReceiverBaseType(t *Type) *Type {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if t != nil {
+		if syncgoCtx == nil || t == nil || t.universe != syncgoCtx {
+			panic("argument belongs to another or uninitialized compilation")
+		}
+	}
+	if t == nil {
+		return nil
+	}
+
+	// Strip away pointer if it's there.
+	if t.IsPtr() {
+		if t.Sym() != nil {
+			return nil
+		}
+		t = t.Elem()
+		if t == nil {
+			return nil
+		}
+	}
+
+	// Must be a named type or anonymous struct.
+	if t.Sym() == nil && !t.IsStruct() {
+		return nil
+	}
+
+	// Check types.
+	if syncgoCtx.IsSimple[t.Kind()] {
+		return t
+	}
+	switch t.Kind() {
+	case TARRAY, TCHAN, TFUNC, TMAP, TSLICE, TSTRING, TSTRUCT:
+		return t
+	}
+	return nil
+}
+
 func (syncgoCtx *Universe) FloatForComplex(t *Type) *Type {
 	if syncgoCtx == nil {
 		panic("uninitialized compilation")
@@ -1534,6 +1621,23 @@ func (syncgoCtx *Universe) FloatForComplex(t *Type) *Type {
 		return syncgoCtx.Types[TFLOAT32]
 	case TCOMPLEX128:
 		return syncgoCtx.Types[TFLOAT64]
+	}
+	syncgoCtx.fatalf("unexpected type: %v", t)
+	return nil
+}
+
+func (syncgoCtx *Universe) ComplexForFloat(t *Type) *Type {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if syncgoCtx == nil || t == nil || t.universe != syncgoCtx {
+		panic("argument belongs to another or uninitialized compilation")
+	}
+	switch t.Kind() {
+	case TFLOAT32:
+		return syncgoCtx.Types[TCOMPLEX64]
+	case TFLOAT64:
+		return syncgoCtx.Types[TCOMPLEX128]
 	}
 	syncgoCtx.fatalf("unexpected type: %v", t)
 	return nil

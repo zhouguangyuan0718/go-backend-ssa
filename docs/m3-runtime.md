@@ -38,6 +38,6 @@ runtime/coverage 的声明数组归 typecheck.Context 所有。`importfunc/impor
 - 12 个 32/64 位实例并发初始化并保留类型和符号；独立 consumer 通过公共 API 使用真实 runtime 声明。
 - 两版官方源码差分比较完整有效路径；原生计时方法另有完整签名/函数体对照。无效参数的 panic 行为由库回归验证，官方 Fatalf 的进程退出不被表述为可恢复失败。
 
-完整 IR 表达式/语句检查、reader、walk、SSA 构造、原生后端与工具链替换尚未完成。下一步继续迁入 typecheck 算法与 reader 的必要依赖。
+后续的 [原生 IR 检查](m3-typecheck-ir.md) 已补齐 typecheck 生产包；reader、walk、SSA 构造、原生后端与工具链替换仍未完成。
 
 本批验证完成：174 份产物通过 `syncgo check`；带来源仓库的全量 race、独立 consumer、两版原生 IR/typecheck/runtime 快照和计时方法对照全部通过。相同规则跨 go1.27.0/go1.27.1 只有 1 份 Go 产物内容变化，来源工作树未改变。日志：`_work/m3-runtime-tests.log`。这些结果不代表已经执行 runtime 调用、生成 SSA 或完成原生编译器替换。
