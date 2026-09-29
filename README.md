@@ -54,6 +54,7 @@
 37. [M3 原生可内联判定与函数体驱动](docs/m3-native-inlining.md)：真实成本/PGO 决策、hash 状态解耦和生产 readBodies。
 38. [M3 原生包注册与读取](docs/m3-package-reader.md)：导入函数/方法查找、真实 PGO 绑定及本地包 IR 读取入口。
 39. [M3 原生函数符号](docs/m3-text-symbols.md)：InitLSym、文本属性、FuncID 及 DWARF 内联引用修正。
+40. [M3 原生内联调用展开](docs/m3-inline-expansion.md)：真实 InlinedCallExpr、导入函数体、闭包、副作用及实例回调绑定。
 
 ## 当前可运行的工具
 

@@ -14,6 +14,7 @@ import (
 // Context owns the native inlining policy and hot-call maps. Its dependencies
 // share one compiler graph; separate graphs can be analyzed concurrently.
 type Context struct {
+	InlineCall                           func(callerfn *ir.Func, call *ir.CallExpr, fn *ir.Func, inlIndex int, profile *pgoir.Profile) *ir.InlinedCallExpr
 	Typecheck                            *typecheck.Context
 	PGO                                  *pgoir.Context
 	Heuristics                           *inlheur.Context
@@ -74,3 +75,7 @@ func (c *Context) tracePrintf(f string, a ...any) (int, error) {
 	return fmt.Fprintf(c.traceWriter(), f, a...)
 }
 func (c *Context) tracePrintln(a ...any) (int, error) { return fmt.Fprintln(c.traceWriter(), a...) }
+
+func (c *Context) checkTryInlineCall(fn *ir.Func, call *ir.CallExpr, bigCaller bool, p *pgoir.Profile, closureCalledOnce bool) {
+	c.checkCallProfile(fn, call, p)
+}

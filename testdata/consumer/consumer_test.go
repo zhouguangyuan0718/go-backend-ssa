@@ -182,7 +182,7 @@ func TestNativeSyntaxFromPublicModule(t *testing.T) {
 }
 
 func TestNativeCheckerFromPublicModule(t *testing.T) {
-	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return}"), nil, nil, syntax.CheckBranches)
+	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return};func UseId(x int)int{return Id(x)}"), nil, nil, syntax.CheckBranches)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,6 +255,25 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	if sum.LSym.Func() == nil || link.DwFixups.GetPrecursorFunc(sum.LSym) != sum {
 		t.Fatal("native function symbol or DWARF precursor lost")
 	}
+	caller, err := writer.LookupFunc("example/p.UseId")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var call *ir.CallExpr
+	ir.VisitList(caller.Body, func(n ir.Node) {
+		if v, ok := n.(*ir.CallExpr); ok {
+			call = v
+		}
+	})
+	if call == nil {
+		t.Fatal("public source call missing")
+	}
+	graph.WithFunc(caller, func() {
+		expanded := writer.Inline.TryInlineCall(caller, call, false, nil, false)
+		if expanded == nil || expanded.Type() != call.Type() || len(expanded.Body) == 0 {
+			t.Fatal("public native inline expansion failed")
+		}
+	})
 
 }
 

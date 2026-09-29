@@ -1,0 +1,54 @@
+package noder
+import("fmt";"encoding/json";"encoding/binary";"os";"strings";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_PKGBITS";EXPAND_RUNTIME EXPAND_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.SplitN(os.Getenv("SYNCGO_TARGET"),"-",2)[0],8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ EXPERIMENT.NewInliner=strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-newinline")
+ RD_FLAG.LowerL=1;RD_FLAG.GenDwarfInl=2;ND_DEBUG.InlFuncsWithClosures=1
+ LINK.DwFixups=obj.NewDwarfFixupTable(LINK)
+ EXPAND_BIND
+ TC.HaveInlineBody=UP.unifiedHaveInlineBody
+ data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
+ pr:=UP.newPkgReader(pkgbits.NewPkgDecoder("example/p",string(data)));UP.localPkgReader=pr;UP.readPackage(pr,TY.LocalPkg,true)
+ pr.newReader(pkgbits.SectionMeta,pkgbits.PrivateRootIdx,pkgbits.SyncPrivate).pkgInit(TY.LocalPkg,TC.Target)
+ UP.readBodies(TC.Target,false,nil)
+ INLINE.CanInlineFuncs(TC.Target.Funcs,nil)
+ var out []string
+ snapshot:=func(fn *ir.Func,n ir.Node){
+  ir.Visit(n,func(n ir.Node){out=append(out,fmt.Sprintf("node:%s:%d:%v:%s:%v",n.Op(),n.Typecheck(),n.Type(),LINK.PosTable.Pos(n.Pos()),n))})
+  for _,d:=range fn.Dcl{out=append(out,fmt.Sprintf("local:%v:%v:%d:%t:%t:%t",d.Sym(),d.Type(),d.Class,d.InlFormal(),d.InlLocal(),d.Curfn==fn))}
+ }
+ for _,name:=range []string{"F","Multi","NamedCaller","EarlyCaller","Void","Varargs","Generic","Closure","ReturnedClosure","Rejected","Rec","Nested"}{
+  fn,err:=UP.LookupFunc("example/p."+name);if err!=nil{t.Fatal(err)}
+  if fn.Pos()==(src.XPos{}){t.Fatal("missing function position")}
+  var edit func(ir.Node)ir.Node
+  edit=func(n ir.Node)ir.Node{
+   ir.EditChildren(n,edit)
+   if call,ok:=n.(*ir.CallExpr);ok{
+    callee:=INLINE.InlineCallTarget(fn,call,nil)
+    res:=INLINE.TryInlineCall(fn,call,false,nil,true)
+    out=append(out,fmt.Sprintf("expanded:%s:%v:%t",name,call,res!=nil))
+    if res!=nil{
+     out=append(out,fmt.Sprintf("callee:%v:%t:%d:%d:%t",callee.Sym(),callee.Inl.HaveDcl,len(callee.Dcl),len(callee.Inl.Dcl),LINK.DwFixups.GetPrecursorFunc(callee.Linksym())==callee))
+     return res
+    }
+   }
+   return n
+  }
+  GRAPH.WithFunc(fn,func(){INLINE_HEUR.ScoreCalls(fn);defer INLINE_HEUR.ScoreCallsCleanup();ir.EditChildren(fn,edit)})
+  snapshot(fn,fn)
+ }
+ // Finalized native export data exercises expandInline's lazy declaration path.
+ imported,err:=os.ReadFile(BODY_IMPORT_PATH);if err!=nil{t.Fatal(err)}
+ dep:=TY.NewPkg("example/dep","");ipr:=UP.newPkgReader(pkgbits.NewPkgDecoder(dep.Path,string(imported)));UP.readPackage(ipr,dep,false)
+ callee,err:=UP.LookupFunc("example/dep.Exported");if err!=nil{t.Fatal(err)}
+ out=append(out,fmt.Sprintf("import-before:%t:%d:%d",callee.Inl.HaveDcl,len(callee.Inl.Dcl),len(callee.Body)))
+ fn,err:=UP.LookupFunc("example/p.F");if err!=nil{t.Fatal(err)}
+ GRAPH.WithFunc(fn,func(){call:=TC.Call(fn.Pos(),callee.Nname,[]ir.Node{fn.Dcl[0]},false).(*ir.CallExpr);res:=INLINE.TryInlineCall(fn,call,false,nil,false);if res==nil{t.Fatal("imported inline refused")};snapshot(fn,res)})
+ out=append(out,fmt.Sprintf("import-after:%t:%d:%d",callee.Inl.HaveDcl,len(callee.Inl.Dcl),len(callee.Body)))
+ for _,d:=range callee.Inl.Dcl{out=append(out,fmt.Sprintf("import-debug:%v:%t",d.Sym(),d.Curfn==callee))}
+ for i:=0;i<UP.inlgen;i++{out=append(out,fmt.Sprintf("tree:%d:%d:%s:%s:%s",i,LINK.InlTree.Parent(i),LINK.InlTree.InlinedFunction(i).Name,LINK.InlTree.InlinedFuncName(i),LINK.PosTable.Pos(LINK.InlTree.CallPos(i))))}
+ for _,sym:=range LINK.Data{if strings.HasSuffix(sym.Name,"$abstract"){out=append(out,fmt.Sprintf("abstract:%s:%d:%d",sym.Name,sym.Type,sym.Attribute))}}
+ out=append(out,fmt.Sprintf("state:%d:%d:%d:%t",UP.inlgen,len(UP.todoBodies),len(UP.todoDicts),GRAPH.CurFunc==nil))
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

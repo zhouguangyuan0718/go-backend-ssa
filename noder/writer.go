@@ -11,7 +11,8 @@ import (
 // support concurrent and nested calls without process-wide compiler state.
 // WritePackage consumes checked/prepared ASTs and returns the native package
 // stub bitstream. RegisterPackage and ReadLocalPackage expose the native reader
-// stages and return the existing package IR. The complete compiler pipeline,
+// stages and return the existing package IR. Inline is bound to the native
+// function-body reader for call-site expansion. The complete compiler pipeline,
 // including wrapper generation and SSA construction, is not yet integrated.
 type Context = compiler.Context
 

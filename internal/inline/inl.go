@@ -38,6 +38,7 @@ import (
 
 	"go-backend-ssa/internal/pgoir"
 
+	"go-backend-ssa/internal/cmd/obj"
 	"go-backend-ssa/internal/cmd/pgo"
 	"go-backend-ssa/internal/cmd/src"
 )
@@ -915,6 +916,29 @@ func (syncgoCtx *Context) InlineCallTarget(callerfn *ir.Func, call *ir.CallExpr,
 	return syncgoCtx.inlCallee(callerfn, call.Fun, profile, true)
 }
 
+// TryInlineCall returns an inlined call expression for call, or nil
+// if inlining is not possible.
+func (syncgoCtx *Context) TryInlineCall(callerfn *ir.Func, call *ir.CallExpr, bigCaller bool, profile *pgoir.Profile, closureCalledOnce bool) *ir.InlinedCallExpr {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	syncgoCtx.checkTryInlineCall(callerfn, call, bigCaller, profile, closureCalledOnce)
+	mightInline, isIntrinsic := syncgoCtx.inlineCallCheck(callerfn, call)
+
+	// Preserve old logging behavior
+	if (mightInline || isIntrinsic) && syncgoCtx.Typecheck.IR.Base.Flag.LowerM > 3 {
+		syncgoCtx.tracePrintf("%v:call to func %+v\n", syncgoCtx.Typecheck.IR.Line(call), call.Fun)
+	}
+	if !mightInline {
+		return nil
+	}
+
+	if fn := syncgoCtx.inlCallee(callerfn, call.Fun, profile, false); fn != nil && syncgoCtx.Typecheck.HaveInlineBody(fn) {
+		return syncgoCtx.mkinlcall(callerfn, call, fn, bigCaller, closureCalledOnce, profile)
+	}
+	return nil
+}
+
 // inlCallee takes a function-typed expression and returns the underlying function ONAME
 // that it refers to if statically known. Otherwise, it returns nil.
 // resolveOnly skips cost-based inlineability checks for closures; the result may not actually be inlineable.
@@ -1145,6 +1169,141 @@ func (syncgoCtx *Context) canInlineCallExpr(callerfn *ir.Func, n *ir.CallExpr, c
 	return true, callSiteScore, hot
 }
 
+// mkinlcall returns an OINLCALL node that can replace OCALLFUNC n, or
+// nil if it cannot be inlined. callerfn is the function that contains
+// n, and fn is the function being called.
+//
+// The result of mkinlcall MUST be assigned back to n, e.g.
+//
+//	n.Left = mkinlcall(n.Left, fn, isddd)
+func (syncgoCtx *Context) mkinlcall(callerfn *ir.Func, n *ir.CallExpr, fn *ir.Func, bigCaller, closureCalledOnce bool, profile *pgoir.Profile) *ir.InlinedCallExpr {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	ok, score, hot := syncgoCtx.canInlineCallExpr(callerfn, n, fn, bigCaller, closureCalledOnce, true)
+	if !ok {
+		return nil
+	}
+	if hot {
+		syncgoCtx.hasHotCall[callerfn] = struct{}{}
+	}
+	syncgoCtx.Typecheck.AssertFixedCall(n)
+
+	parent := syncgoCtx.Typecheck.IR.Base.Ctxt.PosTable.Pos(n.Pos()).Base().InliningIndex()
+	sym := fn.Linksym()
+	inlIndex := syncgoCtx.Typecheck.IR.Base.Ctxt.InlTree.Add(parent, n.Pos(), sym, ir.FuncName(fn))
+
+	closureInitLSym := func(n *ir.CallExpr, fn *ir.Func) {
+		// The linker needs FuncInfo metadata for all inlined
+		// functions. This is typically handled by gc.enqueueFunc
+		// calling ir.InitLSym for all function declarations in
+		// typecheck.Target.Decls (ir.UseClosure adds all closures to
+		// Decls).
+		//
+		// However, closures in Decls are ignored, and are
+		// instead enqueued when walk of the calling function
+		// discovers them.
+		//
+		// This presents a problem for direct calls to closures.
+		// Inlining will replace the entire closure definition with its
+		// body, which hides the closure from walk and thus suppresses
+		// symbol creation.
+		//
+		// Explicitly create a symbol early in this edge case to ensure
+		// we keep this metadata.
+		//
+		// TODO: Refactor to keep a reference so this can all be done
+		// by enqueueFunc.
+
+		if n.Op() != ir.OCALLFUNC {
+			// Not a standard call.
+			return
+		}
+
+		var nf = n.Fun
+		// Skips ir.OCONVNOPs, see issue #73716.
+		for nf.Op() == ir.OCONVNOP {
+			nf = nf.(*ir.ConvExpr).X
+		}
+		if nf.Op() != ir.OCLOSURE {
+			// Not a direct closure call or one with type conversion.
+			return
+		}
+
+		clo := nf.(*ir.ClosureExpr)
+		if !clo.Func.IsClosure() {
+			// enqueueFunc will handle non closures anyways.
+			return
+		}
+
+		syncgoCtx.Typecheck.IR.InitLSym(fn, true)
+	}
+
+	closureInitLSym(n, fn)
+
+	if syncgoCtx.Typecheck.IR.Base.Flag.GenDwarfInl > 0 {
+		if !sym.WasInlined() {
+			syncgoCtx.Typecheck.IR.Base.Ctxt.DwFixups.SetPrecursorFunc(sym, fn)
+			sym.Set(obj.AttrWasInlined, true)
+		}
+	}
+
+	if syncgoCtx.Typecheck.IR.Base.Flag.LowerM != 0 {
+		if syncgoCtx.Typecheck.IR.Types.Experiment.NewInliner {
+			syncgoCtx.tracePrintf("%v: inlining call to %v with score %d\n",
+				syncgoCtx.Typecheck.IR.Line(n), fn.Nname.DiagName(), score)
+		} else {
+			syncgoCtx.tracePrintf("%v: inlining call to %v\n", syncgoCtx.Typecheck.IR.Line(n), fn.Nname.DiagName())
+		}
+	}
+	if syncgoCtx.Typecheck.IR.Base.Flag.LowerM > 2 {
+		syncgoCtx.tracePrintf("%v: Before inlining: %+v\n", syncgoCtx.Typecheck.IR.Line(n), n)
+	}
+
+	res := syncgoCtx.InlineCall(callerfn, n, fn, inlIndex, profile)
+
+	if res == nil {
+		syncgoCtx.fatalfAt(n.Pos(), "inlining call to %v failed", fn.Nname.DiagName())
+	}
+
+	if syncgoCtx.Typecheck.IR.Base.Flag.LowerM > 2 {
+		syncgoCtx.tracePrintf("%v: After inlining %+v\n\n", syncgoCtx.Typecheck.IR.Line(res), res)
+	}
+
+	if syncgoCtx.Heuristics.Enabled() {
+		syncgoCtx.Heuristics.UpdateCallsiteTable(callerfn, n, res)
+	}
+
+	return res
+}
+
+// CalleeEffects appends any side effects from evaluating callee to init.
+func (syncgoCtx *Context) CalleeEffects(init *ir.Nodes, callee ir.Node) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	for {
+		init.Append(ir.TakeInit(callee)...)
+
+		switch callee.Op() {
+		case ir.ONAME, ir.OCLOSURE, ir.OMETHEXPR:
+			return // done
+
+		case ir.OCONVNOP:
+			conv := callee.(*ir.ConvExpr)
+			callee = conv.X
+
+		case ir.OINLCALL:
+			ic := callee.(*ir.InlinedCallExpr)
+			init.Append(ic.Body.Take()...)
+			callee = ic.SingleResult()
+
+		default:
+			syncgoCtx.fatalfAt(callee.Pos(), "unexpected callee expression: %v", callee)
+		}
+	}
+}
+
 func (syncgoCtx *Context) pruneUnusedAutos(ll []*ir.Name, vis *hairyVisitor) []*ir.Name {
 	if syncgoCtx == nil {
 		panic("uninitialized compilation")
@@ -1251,6 +1410,10 @@ func (syncgoCtx *Context) syncgoInitVars0() {
 	syncgoCtx.candHotEdgeMap = make(map[pgoir.CallSiteInfo]struct{})
 	syncgoCtx.inlineCDFHotCallSiteThresholdPercent = float64(99)
 	syncgoCtx.inlineHotMaxBudget = 2000
+	syncgoCtx.InlineCall = func(callerfn *ir.Func, call *ir.CallExpr, fn *ir.Func, inlIndex int, profile *pgoir.Profile) *ir.InlinedCallExpr {
+		syncgoCtx.fatalf("inline.InlineCall not overridden")
+		panic("unreachable")
+	}
 }
 
 func newContext() *Context {

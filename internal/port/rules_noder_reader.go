@@ -26,7 +26,7 @@ func noderReaderMigration(context *ContextRule) Unit {
 			{Source: "src/cmd/compile/internal/base/print.go", Function: "Warn", Method: "warn"},
 		}}
 
-	u.Functions = []string{"newPkgReader", "setType", "setValue", "Shapify", "bodyReaderFor", "block", "syntheticSig", "shapedMethodExpr", "unifiedHaveInlineBody", "setBasePos", "shapeSig"}
+	u.Functions = []string{"newPkgReader", "setType", "setValue", "Shapify", "bodyReaderFor", "block", "syntheticSig", "shapedMethodExpr", "unifiedHaveInlineBody", "setBasePos", "shapeSig", "unifiedInlineCall", "expandInline"}
 	u.ContextFrom = map[string]ContextSource{"reader.openScope": {Argument: "r", Resolver: "scopeReaderContext"}}
 	u.Declarations = []string{
 		"reader.pkgInit", "reader.pkgInitOrder",
@@ -171,6 +171,7 @@ func noderReaderMigration(context *ContextRule) Unit {
 		StateRule{Source: "src/cmd/compile/internal/types/type.go", Variable: "UntypedString", Field: "Types.UntypedString"},
 	)
 	u.Calls = append(u.Calls,
+		CallRule{Source: "src/cmd/compile/internal/inline/inl.go", Function: "CalleeEffects", Method: "Inline.CalleeEffects"},
 		CallRule{Source: "src/cmd/compile/internal/staticinit/sched.go", Function: "OutlineMapInits", Method: "StaticInit.OutlineMapInits"},
 		CallRule{Source: "src/cmd/compile/internal/base/print.go", Function: "WarnfAt", Method: "warnfAt"},
 		CallRule{Source: "src/cmd/compile/internal/ir/const.go", Function: "NewInt", Method: "Typecheck.IR.NewInt"},

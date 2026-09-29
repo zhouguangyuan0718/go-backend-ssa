@@ -145,6 +145,7 @@ func NewContext(checker *types2.Context, tc *typecheck.Context) (*Context, error
 	c.Inline = inline.NewContext(tc, inlheur.NewContext(tc, pgoir.NewContext(tc)), logopt.NewContext())
 	c.Inline.PGO.PostLookupCleanup = c.PostLookupCleanup
 	c.Inline.PGO.LookupFunc = c.LookupFunc
+	c.Inline.InlineCall = c.unifiedInlineCall
 	return c, nil
 }
 func (c *Context) checkShape(targ *types.Type, basic bool) {

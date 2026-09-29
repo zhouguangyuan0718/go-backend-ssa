@@ -1,5 +1,7 @@
 # M3 原生包注册、导入查找与本地包读取
 
+这是该批次的历史记录；后续内联调用展开见 [M3 原生内联调用展开](m3-inline-expansion.md)。
+
 本批迁入 `noder.readPackage`、`LookupFunc`、`lookupFunction` 和 `lookupMethod`，把原生对象注册表、导入内联体索引与现有 reader 接通。外部 Go module 现在可以把已检查源码写成 stub，再读取为原生 `ir.Package`，无需访问 internal 或编写函数体排空循环。这是前端读取阶段的 IR；完整 unified 驱动、wrapper 生成、内联展开、优化、walk 和 SSA 仍待接入。
 
 ## 接口与状态

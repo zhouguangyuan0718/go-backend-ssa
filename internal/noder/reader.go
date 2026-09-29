@@ -18,6 +18,8 @@ import (
 
 	"go-backend-ssa/internal/ir"
 
+	"go-backend-ssa/internal/pgoir"
+
 	"go-backend-ssa/internal/cmd/hash"
 	"go-backend-ssa/internal/cmd/obj"
 	"go-backend-ssa/internal/cmd/objabi"
@@ -3904,6 +3906,169 @@ func (syncgoCtx *Context) unifiedHaveInlineBody(fn *ir.Func) bool {
 	return ok
 }
 
+// unifiedInlineCall implements inline.NewInline by re-reading the function
+// body from its Unified IR export data.
+func (syncgoCtx *Context) unifiedInlineCall(callerfn *ir.Func, call *ir.CallExpr, fn *ir.Func, inlIndex int, profile *pgoir.Profile) *ir.InlinedCallExpr {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	pri, ok := syncgoCtx.bodyReaderFor(fn)
+	if !ok {
+		syncgoCtx.fatalfAt(call.Pos(), "cannot inline call to %v: missing inline body", fn)
+	}
+
+	if !fn.Inl.HaveDcl {
+		syncgoCtx.expandInline(fn, pri)
+	}
+
+	r := pri.asReader(syncgoCtx, pkgbits.SectionBody, pkgbits.SyncFuncBody)
+
+	tmpfn := syncgoCtx.Typecheck.IR.NewFunc(fn.Pos(), fn.Nname.Pos(), callerfn.Sym(), fn.Type())
+
+	r.curfn = tmpfn
+
+	r.inlCaller = callerfn
+	r.inlCall = call
+	r.inlFunc = fn
+	r.inlTreeIndex = inlIndex
+	r.inlPosBases = make(map[*src.PosBase]*src.PosBase)
+	r.funarghack = true
+
+	r.closureVars = make([]*ir.Name, len(r.inlFunc.ClosureVars))
+	for i, cv := range r.inlFunc.ClosureVars {
+		// TODO(mdempsky): It should be possible to support this case, but
+		// for now we rely on the inliner avoiding it.
+		if cv.Outer.Curfn != callerfn {
+			syncgoCtx.fatalfAt(call.Pos(), "inlining closure call across frames")
+		}
+		r.closureVars[i] = cv.Outer
+	}
+	if len(r.closureVars) != 0 && r.hasTypeParams() {
+		r.dictParam = r.closureVars[len(r.closureVars)-1] // dictParam is last; see reader.funcLit
+	}
+
+	r.declareParams()
+
+	var inlvars, retvars []*ir.Name
+	{
+		sig := r.curfn.Type()
+		endParams := sig.NumRecvs() + sig.NumParams()
+		endResults := endParams + sig.NumResults()
+
+		inlvars = r.curfn.Dcl[:endParams]
+		retvars = r.curfn.Dcl[endParams:endResults]
+	}
+
+	r.delayResults = fn.Inl.CanDelayResults
+
+	r.retlabel = syncgoCtx.Typecheck.AutoLabel(".i")
+	syncgoCtx.inlgen++
+
+	init := ir.TakeInit(call)
+
+	// For normal function calls, the function callee expression
+	// may contain side effects. Make sure to preserve these,
+	// if necessary (#42703).
+	if call.Op() == ir.OCALLFUNC {
+		syncgoCtx.Inline.CalleeEffects(&init, call.Fun)
+	}
+
+	var args ir.Nodes
+	if call.Op() == ir.OCALLMETH {
+		syncgoCtx.fatalfAt(call.Pos(), "OCALLMETH missed by typecheck")
+	}
+	args.Append(call.Args...)
+
+	// Create assignment to declare and initialize inlvars.
+	as2 := syncgoCtx.Typecheck.IR.NewAssignListStmt(call.Pos(), ir.OAS2, ir.ToNodes(inlvars), args)
+	as2.Def = true
+	var as2init ir.Nodes
+	for _, name := range inlvars {
+		if ir.IsBlank(name) {
+			continue
+		}
+		// TODO(mdempsky): Use inlined position of name.Pos() instead?
+		as2init.Append(syncgoCtx.Typecheck.IR.NewDecl(call.Pos(), ir.ODCL, name))
+		name.Defn = as2
+	}
+	as2.SetInit(as2init)
+	init.Append(syncgoCtx.Typecheck.Stmt(as2))
+
+	if !r.delayResults {
+		// If not delaying retvars, declare and zero initialize the
+		// result variables now.
+		for _, name := range retvars {
+			// TODO(mdempsky): Use inlined position of name.Pos() instead?
+			init.Append(syncgoCtx.Typecheck.IR.NewDecl(call.Pos(), ir.ODCL, name))
+			ras := syncgoCtx.Typecheck.IR.NewAssignStmt(call.Pos(), name, nil)
+			init.Append(syncgoCtx.Typecheck.Stmt(ras))
+		}
+	}
+
+	// Add an inline mark just before the inlined body.
+	// This mark is inline in the code so that it's a reasonable spot
+	// to put a breakpoint. Not sure if that's really necessary or not
+	// (in which case it could go at the end of the function instead).
+	// Note issue 28603.
+	init.Append(syncgoCtx.Typecheck.IR.NewInlineMarkStmt(call.Pos().WithIsStmt(), int64(r.inlTreeIndex)))
+
+	syncgoCtx.Typecheck.IR.WithFunc(r.curfn, func() {
+		if !r.syntheticBody(call.Pos()) {
+			syncgoCtx.assert(r.Bool()) // have body
+
+			r.curfn.Body = r.stmts()
+			r.curfn.Endlineno = r.pos()
+		}
+
+		// TODO(mdempsky): This shouldn't be necessary. Inlining might
+		// read in new function/method declarations, which could
+		// potentially be recursively inlined themselves; but we shouldn't
+		// need to read in the non-inlined bodies for the declarations
+		// themselves. But currently it's an easy fix to #50552.
+		syncgoCtx.readBodies(syncgoCtx.Typecheck.Target, true, profile)
+
+		// Replace any "return" statements within the function body.
+		var edit func(ir.Node) ir.Node
+		edit = func(n ir.Node) ir.Node {
+			if ret, ok := n.(*ir.ReturnStmt); ok {
+				n = syncgoCtx.Typecheck.Stmt(r.inlReturn(ret, retvars))
+			}
+			ir.EditChildren(n, edit)
+			return n
+		}
+		edit(r.curfn)
+	})
+
+	body := r.curfn.Body
+
+	// Reparent any declarations into the caller function.
+	for _, name := range r.curfn.Dcl {
+		name.Curfn = callerfn
+
+		if name.Class != ir.PAUTO {
+			name.SetPos(r.inlPos(name.Pos()))
+			name.SetInlFormal(true)
+			name.Class = ir.PAUTO
+		} else {
+			name.SetInlLocal(true)
+		}
+	}
+	callerfn.Dcl = append(callerfn.Dcl, r.curfn.Dcl...)
+
+	body.Append(syncgoCtx.Typecheck.IR.NewLabelStmt(call.Pos(), r.retlabel))
+
+	res := syncgoCtx.Typecheck.IR.NewInlinedCallExpr(call.Pos(), body, ir.ToNodes(retvars))
+	res.SetInit(init)
+	res.SetType(call.Type())
+	res.SetTypecheck(1)
+	res.Reshape = call.Reshape
+
+	// Inlining shouldn't add any functions to todoBodies.
+	syncgoCtx.assert(len(syncgoCtx.todoBodies) == 0)
+
+	return res
+}
+
 // inlReturn returns a statement that can substitute for the given
 // return statement when inlining.
 func (r *reader) inlReturn(ret *ir.ReturnStmt, retvars []*ir.Name) *ir.BlockStmt {
@@ -3932,6 +4097,48 @@ func (r *reader) inlReturn(ret *ir.ReturnStmt, retvars []*ir.Name) *ir.BlockStmt
 
 	block.Append(r.compilation.Typecheck.IR.NewBranchStmt(pos, ir.OGOTO, r.retlabel))
 	return r.compilation.Typecheck.IR.NewBlockStmt(pos, block)
+}
+
+// expandInline reads in an extra copy of IR to populate
+// fn.Inl.Dcl.
+func (syncgoCtx *Context) expandInline(fn *ir.Func, pri pkgReaderIndex) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	// TODO(mdempsky): Remove this function. It's currently needed by
+	// dwarfgen/dwarf.go:preInliningDcls, which requires fn.Inl.Dcl to
+	// create abstract function DIEs. But we should be able to provide it
+	// with the same information some other way.
+
+	fndcls := len(fn.Dcl)
+	topdcls := len(syncgoCtx.Typecheck.Target.Funcs)
+
+	tmpfn := syncgoCtx.Typecheck.IR.NewFunc(fn.Pos(), fn.Nname.Pos(), fn.Sym(), fn.Type())
+	tmpfn.ClosureVars = fn.ClosureVars
+
+	{
+		r := pri.asReader(syncgoCtx, pkgbits.SectionBody, pkgbits.SyncFuncBody)
+
+		// Don't change parameter's Sym/Nname fields.
+		r.funarghack = true
+
+		r.funcBody(tmpfn)
+	}
+
+	// Move tmpfn's params to fn.Inl.Dcl, and reparent under fn.
+	for _, name := range tmpfn.Dcl {
+		name.Curfn = fn
+	}
+	fn.Inl.Dcl = tmpfn.Dcl
+	fn.Inl.HaveDcl = true
+
+	// Double check that we didn't change fn.Dcl by accident.
+	syncgoCtx.assert(fndcls == len(fn.Dcl))
+
+	// typecheck.Stmts may have added function literals to
+	// typecheck.Target.Decls. Remove them again so we don't risk trying
+	// to compile them multiple times.
+	syncgoCtx.Typecheck.Target.Funcs = syncgoCtx.Typecheck.Target.Funcs[:topdcls]
 }
 
 type methodValueWrapper struct {

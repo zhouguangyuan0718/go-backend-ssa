@@ -1,5 +1,7 @@
 # M3 原生函数符号与 DWARF 内联修正
 
+这是该批次的历史记录；后续内联调用展开见 [M3 原生内联调用展开](m3-inline-expansion.md)。
+
 本批补齐实际内联展开依赖的 `ir.InitLSym` 和 `setupTextLSym`，并迁入它们调用的 `obj.Link.InitTextSym`、原生 FuncInfo、DWARF 符号初始化和 DwarfFixupTable 全部方法。尚未接入 `unifiedInlineCall`、整包内联驱动或机器码/DWARF 输出，不能据此认为完整编译器后端已可用。
 
 ## 迁入实现与状态归属

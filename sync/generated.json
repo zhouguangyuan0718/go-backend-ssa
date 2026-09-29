@@ -2,7 +2,7 @@
   "schema_version": 1,
   "tool": "syncgo-m3-v13",
   "commit": "862c888e612ac346c7c4d99c9392bdfd265f33b0",
-  "plan_sha256": "8d3384c9fa64a321e044972d7b2a2d84726610f9f000b7958f0e6861cd8b43b3",
+  "plan_sha256": "ea1254005e94589f84d16775c819ff10c6b2246ce14978b812c823898d681c2d",
   "files": [
     {
       "output": "internal/go/abi/compiletype.go",
@@ -2208,7 +2208,7 @@
       "output": "internal/inline/inl.go",
       "source": "src/cmd/compile/internal/inline/inl.go",
       "source_sha256": "0b3ddc7a5934b270f90bca4d533828e5b704cb0a281297d2ae1ba83d839fe7b3",
-      "output_sha256": "b25bd46c836d6e699b277d859382709d1a6ca4c44a4e577041dcbb597b5addd6",
+      "output_sha256": "e9f88968b1df8d497b63c98605516cee8efd08f5ed47bc14cf0e82f2d0a0233c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "IsPgoHotFunc",
@@ -2226,6 +2226,9 @@
         "IsBigFunc",
         "inlineCallCheck",
         "InlineCallTarget",
+        "TryInlineCall",
+        "mkinlcall",
+        "CalleeEffects",
         "inlCallee",
         "inlineCostOK",
         "parsePos",
@@ -2240,6 +2243,7 @@
         "hairyVisitor",
         "hairyVisitor.tooHairy",
         "hairyVisitor.doNode",
+        "InlineCall",
         "candHotCalleeMap",
         "candHotEdgeMap",
         "hasHotCall",
@@ -2247,7 +2251,7 @@
         "inlineHotCallSiteThresholdPercent",
         "inlineHotMaxBudget"
       ],
-      "adapter_sha256": "cab8eb02c8a5e32a022b45321fafa45e950324e0bc8c94c1cebc5613ccdf81dd",
+      "adapter_sha256": "42005ff215b2820468d3854778177a6fd59a97540d83386e4a1b9489cba13ae2",
       "signature_sources": {
         "src/cmd/compile/internal/base/debug.go": "993de7fcc9bf1d1ae39e99277df18dbc04113aba450c155609a02238ea9050ab",
         "src/cmd/compile/internal/base/flag.go": "4a0fa18857d702ea677247cc6c562795c780f4ae6a669e1a2e2352febdcb660a",
@@ -2255,7 +2259,9 @@
         "src/cmd/compile/internal/base/link.go": "316af57f6117869dae6d8762325773c582a8fc7e8fc8638cb69f8d0381b111f8",
         "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264",
         "src/cmd/compile/internal/inline/inlheur/analyze.go": "bc0ac6dffdb4f919fc5b633c719890d43d3edd0b14e4dc2742ba969092eeb6da",
+        "src/cmd/compile/internal/inline/inlheur/analyze_func_callsites.go": "0b45a073c2446f2f5d93f13a1383cb776fadba3672efe63cfc6626f3b749bc8f",
         "src/cmd/compile/internal/inline/inlheur/scoring.go": "5795709f111ba8b2b21525d3485a4aad63a963a5cfa2d59e02352a9a6815fd34",
+        "src/cmd/compile/internal/ir/abi.go": "5f72383e776e0b7c4d3780f867788d05515eabc9bd51bdb0d1d872574775645b",
         "src/cmd/compile/internal/ir/dump.go": "14f8abb7bb236b46c6cd6dd258214fb5acb48282b6de1157fcabbe0ad0b21290",
         "src/cmd/compile/internal/ir/expr.go": "2bbf3953f62dff808fdc7deaeffad85111666d7e474b58da897d8a9aa0197b5c",
         "src/cmd/compile/internal/ir/node.go": "c3a15411b58f5d820724f7e488aea6693ec382dfdd84fea73a107a11388194c8",
@@ -2263,9 +2269,11 @@
         "src/cmd/compile/internal/ir/val.go": "3be3539da1eb2e0683b7e4efe225b31242e77fd3cb7dd8e77086e4a5fd5dab45",
         "src/cmd/compile/internal/logopt/log_opts.go": "7ece6484332d1c00a2c984629baee5b04c04b877e346952657dafbc1ab9ab5c6",
         "src/cmd/compile/internal/pgoir/irgraph.go": "60a8228fe7bfedc0ce1dc1e4017bb1a0878bf79448612967c10ec5fc4ac4fb5a",
+        "src/cmd/compile/internal/typecheck/func.go": "0e28cf2bff691dc146240eb144e00cf693831e342b2c144a3b5c75b8a80d9257",
         "src/cmd/compile/internal/typecheck/iimport.go": "c30a6b9b75d2d758160ba4796b192d1039ae0775fc5cace6807ef770e8b712db",
         "src/cmd/compile/internal/types/identity.go": "7efb500cfaecf7a9872dd4650295a1d50d53621abe04351252cd22672289ee1a",
-        "src/cmd/compile/internal/types/type.go": "50e7b9332dd700aebbd6999f9a5d1bc17e8d24e3f21b06b3c30a628ea751e696"
+        "src/cmd/compile/internal/types/type.go": "50e7b9332dd700aebbd6999f9a5d1bc17e8d24e3f21b06b3c30a628ea751e696",
+        "src/internal/buildcfg/exp.go": "5825d40b47471bca28a00c0c19215930efef22b758120b6d972da1a955f21fa0"
       }
     },
     {
@@ -3646,7 +3654,7 @@
       "declarations": [
         "*"
       ],
-      "adapter_sha256": "6e07797e98402ae8b7284908ff641506066a05364cdd9043f61249a5e9754156"
+      "adapter_sha256": "9572ae818324046a571676267c74893911de99c952cd6503a2362e4bf77015fe"
     },
     {
       "output": "internal/noder/lex.go",
@@ -3680,7 +3688,7 @@
         "renameinitgen",
         "unOps"
       ],
-      "adapter_sha256": "6e07797e98402ae8b7284908ff641506066a05364cdd9043f61249a5e9754156",
+      "adapter_sha256": "9572ae818324046a571676267c74893911de99c952cd6503a2362e4bf77015fe",
       "signature_sources": {
         "src/cmd/compile/internal/base/flag.go": "4a0fa18857d702ea677247cc6c562795c780f4ae6a669e1a2e2352febdcb660a",
         "src/cmd/compile/internal/base/link.go": "316af57f6117869dae6d8762325773c582a8fc7e8fc8638cb69f8d0381b111f8",
@@ -3696,7 +3704,7 @@
       "declarations": [
         "*"
       ],
-      "adapter_sha256": "6e07797e98402ae8b7284908ff641506066a05364cdd9043f61249a5e9754156"
+      "adapter_sha256": "9572ae818324046a571676267c74893911de99c952cd6503a2362e4bf77015fe"
     },
     {
       "output": "internal/noder/quirks.go",
@@ -3708,13 +3716,13 @@
         "typeExprEndPos",
         "lastFieldType"
       ],
-      "adapter_sha256": "6e07797e98402ae8b7284908ff641506066a05364cdd9043f61249a5e9754156"
+      "adapter_sha256": "9572ae818324046a571676267c74893911de99c952cd6503a2362e4bf77015fe"
     },
     {
       "output": "internal/noder/reader.go",
       "source": "src/cmd/compile/internal/noder/reader.go",
       "source_sha256": "d141b8f59f973af2a3c3cd22f9d3d8857c802d684074e0d15131cf8f778bb7d9",
-      "output_sha256": "fc179e2a53d79dee994726cd5738fb6625c5fe807445047151db93526b3a8ddb",
+      "output_sha256": "943301ace8147ebf63656618682dedc87d3c2dbff58b97036ad4e66a9a41ee5d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "newPkgReader",
@@ -3728,6 +3736,8 @@
         "unifiedHaveInlineBody",
         "setBasePos",
         "shapeSig",
+        "unifiedInlineCall",
+        "expandInline",
         "reader.pkgInit",
         "reader.pkgInitOrder",
         "pkgReader.newReader",
@@ -3862,9 +3872,10 @@
         "pkgReaderIndex.asReader",
         "pkgReaderIndex.funcBody"
       ],
-      "adapter_sha256": "6e07797e98402ae8b7284908ff641506066a05364cdd9043f61249a5e9754156",
+      "adapter_sha256": "9572ae818324046a571676267c74893911de99c952cd6503a2362e4bf77015fe",
       "signature_sources": {
         "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264",
+        "src/cmd/compile/internal/inline/inl.go": "0b3ddc7a5934b270f90bca4d533828e5b704cb0a281297d2ae1ba83d839fe7b3",
         "src/cmd/compile/internal/ir/const.go": "a1a14d0eb4a2b9b3d443e36360463ae8a7c53944274134522934acc0d715542a",
         "src/cmd/compile/internal/ir/expr.go": "2bbf3953f62dff808fdc7deaeffad85111666d7e474b58da897d8a9aa0197b5c",
         "src/cmd/compile/internal/ir/func.go": "185b5f070932048b28c173de6d770ee7415b0490c1130623ab8b69dadd2d8387",
@@ -3904,7 +3915,7 @@
         "basics",
         "dirs"
       ],
-      "adapter_sha256": "6e07797e98402ae8b7284908ff641506066a05364cdd9043f61249a5e9754156"
+      "adapter_sha256": "9572ae818324046a571676267c74893911de99c952cd6503a2362e4bf77015fe"
     },
     {
       "output": "internal/noder/unified.go",
@@ -3923,7 +3934,7 @@
         "uirVersion",
         "localPkgReader"
       ],
-      "adapter_sha256": "6e07797e98402ae8b7284908ff641506066a05364cdd9043f61249a5e9754156",
+      "adapter_sha256": "9572ae818324046a571676267c74893911de99c952cd6503a2362e4bf77015fe",
       "signature_sources": {
         "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264",
         "src/cmd/compile/internal/inline/inl.go": "0b3ddc7a5934b270f90bca4d533828e5b704cb0a281297d2ae1ba83d839fe7b3",
@@ -3945,7 +3956,7 @@
         "runeTypeName",
         "objInfo.*"
       ],
-      "adapter_sha256": "6e07797e98402ae8b7284908ff641506066a05364cdd9043f61249a5e9754156",
+      "adapter_sha256": "9572ae818324046a571676267c74893911de99c952cd6503a2362e4bf77015fe",
       "signature_sources": {
         "src/cmd/compile/internal/base/debug.go": "993de7fcc9bf1d1ae39e99277df18dbc04113aba450c155609a02238ea9050ab",
         "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264",
