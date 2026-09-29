@@ -91,6 +91,9 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	if context == nil {
 		return nil
 	}
+	for obj := range external {
+		delete(functions, obj) // Explicit bindings take precedence over generated methods.
+	}
 	traceBindings := map[types.Object]string{}
 	if context.RedirectTrace || context.RedirectExit {
 		traceBindings = hostReferences(info, context.RedirectTrace, context.RedirectExit)
@@ -99,7 +102,10 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		}
 	}
 	binding := func(ctx ast.Expr, obj types.Object, name string, pos token.Pos) ast.Expr {
-		var result ast.Expr = &ast.SelectorExpr{X: positionedContext(ctx, pos), Sel: &ast.Ident{Name: name, NamePos: pos}}
+		var result ast.Expr = positionedContext(ctx, pos)
+		for _, part := range strings.Split(name, ".") {
+			result = &ast.SelectorExpr{X: result, Sel: &ast.Ident{Name: part, NamePos: pos}}
+		}
 		if traceBindings[obj] == "traceWriter" {
 			result = &ast.CallExpr{Fun: result}
 		}
@@ -253,6 +259,15 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	valueContext := false
 
 	for i, f := range files {
+		// Local replacements apply even when their defining file needs no context.
+		var retained []ast.Decl
+		for _, d := range f.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && external[info.Defs[fn.Name]] != "" {
+				continue
+			}
+			retained = append(retained, d)
+		}
+		f.Decls = retained
 		if units[i].Context == nil {
 			continue
 		}
@@ -414,6 +429,9 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 						return fmt.Errorf("native context receiver cannot be nullable")
 					}
 					if name == receiver {
+						if context.Initialize {
+							return fmt.Errorf("nullable receiver requires a constructor without dependent inputs: %s", key)
+						}
 						if _, ok := fn.Recv.List[0].Type.(*ast.StarExpr); !ok {
 							return fmt.Errorf("nullable receiver must be pointer: %s", key)
 						}
@@ -512,6 +530,9 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		allocate = "syncgoNewContext(" + constructorArgs + ")"
 	}
 	constructor := "\nfunc " + context.Constructor + strings.TrimPrefix(constructorType, "func") + " {\n" + recv + " := " + allocate + "\n"
+	if context.Initialize {
+		constructor = "\nfunc (" + recv + " *" + context.Type + ") " + context.Constructor + "() {\nif " + recv + " == nil { panic(\"uninitialized compilation\") }\n"
+	}
 	// Source variables exist at their zero value before any initializer runs.
 	// Bind value-typed owned state at that same point, including variables whose
 	// initializer may inspect another variable through a method call.
@@ -548,7 +569,10 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	for _, name := range calls {
 		constructor += recv + "." + name + "()\n"
 	}
-	constructor += "return " + recv + "\n}\n"
+	if !context.Initialize {
+		constructor += "return " + recv + "\n"
+	}
+	constructor += "}\n"
 	helpers[constructorFile] += constructor
 	for i, code := range helpers {
 		if code == "" {

@@ -29,4 +29,4 @@ native := link.PosTable.Pos(xpos)
 - 两套固定补丁源码各 100 组目录、文件名、重写规则和 trimmed 标志组合；使用未改写的上游 posMap/trimFilename/AbsFile 算法作参考，比较压缩位置、相对行列、line base 和 AbsFilename。参考端仅重定位 import、适配 NoXPos 零值，并显式配置测试宿主全局。
 - 独立 consumer module 只导入公共包，复用 gcbridge.Link；既有类型检查、codec、对象声明及升级检查继续通过。
 
-这是 noder 位置链路；还没有将完整 writer/reader、Unified IR 包和 compiler IR 构造暴露出来。下一步将 writer 的预声明类型缓存绑定已有 types2.Context，并按实例输入初始化，继续保留上游声明/表达式/函数体写入算法。
+位置链路之上的完整 writer 已在[第六批](m3-writer.md)接入。Unified IR reader、compiler IR 和 SSA 构造仍在后续阶段。

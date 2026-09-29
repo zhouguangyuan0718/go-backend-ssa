@@ -104,6 +104,7 @@ func TestDifferential(t *testing.T){
 }
 `
 	writeTestFile(t, dir, "internal/compare/checker_test.go", header+port+reference+tests)
+	prepareUpstreamWriter(t, s, dir)
 	cmd := exec.Command("go", "test", "-race", "./internal/compare")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.27.1")
@@ -111,5 +112,5 @@ func TestDifferential(t *testing.T){
 	if err != nil {
 		t.Fatalf("checker differential at %s: %v\n%s", s.Pin.Tag, err, output)
 	}
-	t.Logf("complete checker source/type/diagnostic differential at %s (48 cases):\n%s", s.Pin.Tag, output)
+	t.Logf("native checker (48 cases) and writer (48 byte comparisons) differential at %s:\n%s", s.Pin.Tag, output)
 }

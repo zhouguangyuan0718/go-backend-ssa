@@ -4,7 +4,7 @@
 
 库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。每次调用拥有独立编译状态，返回结果在后续调用期间仍有效。
 
-当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口，并移植 Unified IR 的 pkgbits 编码基础；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
+当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口，并提供已检查 AST 到原生 Unified IR stub 的 writer；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
 
 - 语言范围：Go 1.27；其他语言版本尚不支持。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
@@ -31,6 +31,7 @@
 14. [M3 Unified IR 编码基础](docs/m3-unified.md)：原生 codec、解码失败隔离及字节级差分。
 15. [M3 原生对象声明](docs/m3-objects.md)：Link/Prog/架构/驱动输入、公共别名及完整声明对照。
 16. [M3 noder 位置映射](docs/m3-noder.md)：syntax.Pos 到原生 Link.PosTable、路径输入及上游差分。
+17. [M3 原生 writer](docs/m3-writer.md)：已检查 AST 到 Unified IR stub、类型缓存解耦及双版本完整字节对照。
 
 ## 当前可运行的工具
 
@@ -50,7 +51,7 @@ go test -race ./...
 
 设定 `GO_SSA_SOURCE_REPO` 时，测试额外验证官方 go1.27.1 再生成、两版上游位置/符号回归与 SSA 类型切片差分测试、源码树未变以及 go1.27.0 → go1.27.1 升级；仓库需包含两个 tag。不设置该变量时仅跳过这项集成测试，其他测试照常执行。
 
-编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker 和 pkgbits codec，以及 types/ir/objabi 的结构和算法切片；完整 compiler IR 和编译流程尚未实现。
+编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec 和 noder writer，以及 types/ir/objabi 的结构和算法切片；完整 compiler IR 和编译流程尚未实现。
 
 移植后的源码直接保存在本项目，和手写适配、转换规则一起纳入版本管理。使用本库时不需要先运行移植工具；维护者更新上游版本时再重新生成。
 
@@ -65,6 +66,7 @@ go test -race ./...
 | [internal/types/size.go](internal/types/size.go)、[universe.go](internal/types/universe.go)、[identity.go](internal/types/identity.go) | 原生布局/延迟队列、预声明类型初始化及等价判断 |
 | [internal/types/pkg.go](internal/types/pkg.go) | Universe 包表、字符串驻留与 Pkg 查找方法 |
 | [internal/cmd/objabi/path.go](internal/cmd/objabi/path.go) | 符号路径编码与解码 |
+| [internal/noder/writer.go](internal/noder/writer.go) | 原生 Unified IR 声明/类型/函数体写入，独立缓存与既有 checker 绑定 |
 | [internal/noder/posmap.go](internal/noder/posmap.go) | 原生 syntax.Pos 到 Link.PosTable 映射、line pragma 与实例位置缓存 |
 | [internal/ir/func.go](internal/ir/func.go) | 链接函数名解析及辅助函数 |
 
@@ -95,4 +97,4 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 
 类型布局入口示例见 [独立消费者测试](testdata/consumer/consumer_test.go)。先创建 Universe，再调用原生 `u.InitTypes(defTypeName)`；回调为传入的 Sym/Type 提供宿主的 `types.Object`。随后可直接调用 `Type.Size/Alignment/Registers/HasPointers` 与 `u.CalcSize/PtrDataSize/AlgType/Identical`。当前不提供假 `ir.Name`；宿主绑定契约及失败处理见 M2 文档。
 
-源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。尚无 SSA 构造入口。
+源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功且无需尚未集成的前端重写/directives 时，可通过 [noder 示例](noder/example_test.go)写出原生 Unified IR stub。尚无 SSA 构造入口。

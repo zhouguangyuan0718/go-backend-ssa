@@ -174,7 +174,8 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	var native *gcbridge.CheckerContext = state
 	conf := types2.Config{Context: state, GoVersion: "go1.27", Sizes: state.SizesFor("gc", "amd64")}
 	var options *gcbridge.CheckerConfig = &conf
-	p, err := options.Check("example/p", []*syntax.File{file}, nil)
+	info := &types2.Info{StoreTypesInSyntax: true, Defs: map[*syntax.Name]types2.Object{}, Uses: map[*syntax.Name]types2.Object{}, Instances: map[*syntax.Name]types2.Instance{}, Selections: map[*syntax.SelectorExpr]*types2.Selection{}, Implicits: map[syntax.Node]types2.Object{}, Scopes: map[syntax.Node]*types2.Scope{}, FileVersions: map[*syntax.PosBase]string{}}
+	p, err := options.Check("example/p", []*syntax.File{file}, info)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,6 +183,23 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	var typ gcbridge.SourceType = pkg.Scope().Lookup("X").Type()
 	if native != state || typ != state.Typ[types2.Int] {
 		t.Fatal("checker bridge identity")
+	}
+	layout, _ := target.NewLayout("linux", "amd64")
+	universe, err := types.NewUniverse(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := &gcbridge.Link{Pathname: "/src", Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8}}}
+	writer, err := noder.NewContext(state, universe, link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := writer.WritePackage(p, info, []*syntax.File{file}, nil)
+	if err != nil || data == "" || p.Scope().Lookup("X").Type() != typ {
+		t.Fatalf("native writer/retained graph: %v", err)
+	}
+	if p.Context() != state || state.PackageScope(nil) != state.Universe {
+		t.Fatal("explicit package scope ownership")
 	}
 }
 

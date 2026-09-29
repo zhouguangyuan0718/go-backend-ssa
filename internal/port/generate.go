@@ -186,7 +186,7 @@ func auditOutput(pkg *types.Package, files []*ast.File, info *types.Info) error 
 		}
 		for _, c := range f.Comments {
 			for _, line := range c.List {
-				if strings.Contains(line.Text, "go:linkname") {
+				if words := strings.Fields(line.Text); len(words) > 0 && words[0] == "//go:linkname" {
 					return fmt.Errorf("linkname not supported")
 				}
 			}

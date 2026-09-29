@@ -39,11 +39,26 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		original = append(original, f)
 	}
 	sourcePkg := units[0].sourcePackage()
-	pkg, info, err := checkTypesImports(fs, sourcePkg, original, before, true)
+	signatures, err := localCallSignatures(s, units, fs, original)
+	if err != nil {
+		return nil, nil, err
+	}
+	checkedFiles := append(append([]*ast.File(nil), original...), signatures...)
+	pkg, info, err := checkTypesImports(fs, sourcePkg, checkedFiles, before, true)
 	if err != nil {
 		return nil, nil, fmt.Errorf("selected package %s: %w", sourcePkg, err)
 	}
 	before.packages[sourcePkg] = pkg
+	for i, f := range original {
+		ast.Inspect(f, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok {
+				if obj := info.Defs[id]; obj != nil && obj.Parent() == pkg.Scope() {
+					before.sources[obj] = units[i].Source
+				}
+			}
+			return true
+		})
+	}
 	if err := replaceZeroValues(fs, original, units, info); err != nil {
 		return nil, nil, err
 	}

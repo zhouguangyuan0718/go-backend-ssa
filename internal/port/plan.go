@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v7"
+const ToolVersion = "syncgo-m3-v8"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -56,7 +56,7 @@ type Unit struct {
 // or invented compiler declaration is emitted into the library.
 type CallRule struct{ Source, Function, Method string }
 
-// StateRule redirects an explicitly typed upstream host variable to instance state.
+// StateRule redirects a type-checked upstream host variable to instance state.
 type StateRule struct{ Source, Variable, Field string }
 
 // ReceiverStateRule keeps state in an existing private upstream receiver.
@@ -73,6 +73,7 @@ type OwnerRule struct {
 }
 
 type ContextRule struct {
+	Initialize        bool   // Emit a receiver initializer; the adapter supplies dependent instance inputs first.
 	PreserveNilArgs   bool   // Keep original nil argument semantics; still reject foreign non-nil owners.
 	Embed             string // Handwritten instance fields embedded into the original context.
 	RedirectExit      bool   // Replace process exit with a non-returning instance adapter.
@@ -170,12 +171,12 @@ func (p Plan) Validate() error {
 			parameterMethods[name] = true
 		}
 		for _, state := range u.State {
-			if u.Context == nil || !safePath(state.Source) || portPath(state.Source) == "" || !token.IsIdentifier(state.Variable) || !token.IsIdentifier(state.Field) {
+			if u.Context == nil || !safePath(state.Source) || portPath(state.Source) == "" || !token.IsIdentifier(state.Variable) || !memberPath(state.Field) {
 				return fmt.Errorf("invalid external state binding")
 			}
 		}
 		for _, call := range u.Calls {
-			if u.Context == nil || !safePath(call.Source) || portPath(call.Source) == "" || !token.IsIdentifier(call.Function) || !token.IsIdentifier(call.Method) {
+			if u.Context == nil || !safePath(call.Source) || portPath(call.Source) == "" || !token.IsIdentifier(call.Function) || !memberPath(call.Method) {
 				return fmt.Errorf("invalid external call binding")
 			}
 		}
@@ -225,6 +226,9 @@ func (p Plan) Validate() error {
 			}
 		}
 		if c := u.Context; c != nil {
+			if c.Initialize && c.Existing {
+				return fmt.Errorf("receiver initialization cannot wrap a native constructor")
+			}
 			if c.Embed != "" && (!c.Existing || c.Adapter == "" || !token.IsIdentifier(c.Embed) || c.Embed == "_") {
 				return fmt.Errorf("invalid native context embed")
 			}
@@ -232,7 +236,7 @@ func (p Plan) Validate() error {
 				return fmt.Errorf("trace redirection requires an adapter")
 			}
 			if previous := contexts[pkg]; previous != nil {
-				if previous.Type != c.Type || previous.Constructor != c.Constructor || previous.Adapter != c.Adapter || previous.Existing != c.Existing || previous.Selective != c.Selective || previous.Embed != c.Embed || previous.RedirectTrace != c.RedirectTrace || previous.RedirectExit != c.RedirectExit || previous.PreserveNilArgs != c.PreserveNilArgs {
+				if previous.Initialize != c.Initialize || previous.Type != c.Type || previous.Constructor != c.Constructor || previous.Adapter != c.Adapter || previous.Existing != c.Existing || previous.Selective != c.Selective || previous.Embed != c.Embed || previous.RedirectTrace != c.RedirectTrace || previous.RedirectExit != c.RedirectExit || previous.PreserveNilArgs != c.PreserveNilArgs {
 					return fmt.Errorf("inconsistent package context: %s", pkg)
 				}
 			} else {
@@ -254,4 +258,13 @@ func (p Plan) Validate() error {
 		}
 	}
 	return nil
+}
+
+func memberPath(s string) bool {
+	for _, name := range strings.Split(s, ".") {
+		if !token.IsIdentifier(name) || name == "_" {
+			return false
+		}
+	}
+	return true
 }

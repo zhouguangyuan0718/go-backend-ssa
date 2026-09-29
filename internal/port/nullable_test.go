@@ -44,6 +44,11 @@ func TestNullableOwnedInputsPreserveNilAndRejectForeign(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
+	plan.Units[0].Context.Initialize = true
+	if _, err := Render(s, plan, dir); err == nil || !strings.Contains(err.Error(), "nullable receiver requires a constructor") {
+		t.Fatalf("dependent initializer accepted nil receiver: %v", err)
+	}
+	plan.Units[0].Context.Initialize = false
 	plan.Units[0].Nullable["Maybe"] = []string{"renamed"}
 	if _, err := Render(s, plan, dir); err == nil || !strings.Contains(err.Error(), "nullable parameter not found") {
 		t.Fatalf("stale nullable rule accepted: %v", err)

@@ -44,9 +44,35 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 			return nil, err
 		}
 		hashes[source] = hash(data)
+		if strings.TrimPrefix(path.Dir(source), "src/") == units[0].sourcePackage() {
+			if len(variables[source]) != 0 {
+				return nil, fmt.Errorf("local state must use context fields")
+			}
+			continue // Checked with selected declarations by localCallSignatures.
+		}
 		f, err := parser.ParseFile(fs, source, data, parser.ParseComments|parser.SkipObjectResolution)
 		if err != nil {
 			return nil, err
+		}
+		// A fully migrated dependency has already been checked from these exact
+		// source declarations. Reuse those objects instead of recreating named
+		// types in a signature-only package (which would split type identity).
+		pkgPath := strings.TrimPrefix(path.Dir(source), "src/")
+		if previous := importer.packages[pkgPath]; previous != nil {
+			reuse := true
+			for name := range selected[source] {
+				obj := previous.Scope().Lookup(name)
+				_, ok := obj.(*types.Func)
+				reuse = reuse && ok && importer.sources[obj] == source
+			}
+			for name := range variables[source] {
+				obj := previous.Scope().Lookup(name)
+				_, ok := obj.(*types.Var)
+				reuse = reuse && ok && importer.sources[obj] == source
+			}
+			if reuse {
+				continue
+			}
 		}
 		found := map[string]bool{}
 		typeDecls := map[string]*ast.TypeSpec{}
@@ -164,7 +190,7 @@ func checkCallAdapters(units []Unit, before *packageImporter, out *types.Package
 			if ctx == nil {
 				return fmt.Errorf("missing adapter context")
 			}
-			adapter, _, _ := types.LookupFieldOrMethod(types.NewPointer(ctx.Type()), true, out, call.Method)
+			adapter, _, _ := lookupAdapterMember(types.NewPointer(ctx.Type()), out, call.Method)
 			if _, ok := adapter.(*types.Func); !ok {
 				return fmt.Errorf("missing adapter method %s", call.Method)
 			}
@@ -191,7 +217,7 @@ func checkStateAdapters(units []Unit, before *packageImporter, out *types.Packag
 			if ctx == nil {
 				return fmt.Errorf("missing state context")
 			}
-			adapter, _, _ := types.LookupFieldOrMethod(types.NewPointer(ctx.Type()), true, out, state.Field)
+			adapter, _, _ := lookupAdapterMember(types.NewPointer(ctx.Type()), out, state.Field)
 			field, ok := adapter.(*types.Var)
 			if !ok || !field.IsField() {
 				return fmt.Errorf("missing state field %s", state.Field)
@@ -263,4 +289,68 @@ func externalValueType(file *ast.File, spec *ast.ValueSpec, importer *packageImp
 		}
 	}
 	return nil, fmt.Errorf("initializer function signature unavailable")
+}
+
+// Resolve an explicitly configured path through native per-instance inputs.
+// Each component is checked by go/types; no textual symbol substitution occurs.
+func lookupAdapterMember(typ types.Type, pkg *types.Package, path string) (types.Object, []int, bool) {
+	var obj types.Object
+	var indices []int
+	var indirect bool
+	for _, name := range strings.Split(path, ".") {
+		obj, indices, indirect = types.LookupFieldOrMethod(typ, true, pkg, name)
+		if obj == nil {
+			return nil, nil, false
+		}
+		typ = obj.Type()
+	}
+	return obj, indices, indirect
+}
+
+func localCallSignatures(s *Source, units []Unit, fs *token.FileSet, original []*ast.File) ([]*ast.File, error) {
+	selected := map[string]map[string]bool{}
+	present := map[string]string{}
+	for _, f := range original {
+		for _, d := range f.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil {
+				present[fn.Name.Name] = fs.PositionFor(fn.Pos(), false).Filename
+			}
+		}
+	}
+	for _, u := range units {
+		for _, call := range u.Calls {
+			if strings.TrimPrefix(path.Dir(call.Source), "src/") != u.sourcePackage() {
+				continue
+			}
+			if source := present[call.Function]; source != "" {
+				if source != call.Source {
+					return nil, fmt.Errorf("local binding source mismatch for %s: %s != %s", call.Function, source, call.Source)
+				}
+			} else {
+				if selected[call.Source] == nil {
+					selected[call.Source] = map[string]bool{}
+				}
+				selected[call.Source][call.Function] = true
+			}
+		}
+	}
+	var files []*ast.File
+	for _, source := range sortedKeys(selected) {
+		data, err := s.Read(source)
+		if err != nil {
+			return nil, err
+		}
+		f, err := selectFile(fs, source, data, Unit{Source: source, Functions: sortedKeys(selected[source])})
+		if err != nil {
+			return nil, err
+		}
+		for _, decl := range f.Decls {
+			if fn, ok := decl.(*ast.FuncDecl); ok {
+				fn.Body = nil
+			}
+		}
+		pruneImports(f)
+		files = append(files, f)
+	}
+	return files, nil
 }

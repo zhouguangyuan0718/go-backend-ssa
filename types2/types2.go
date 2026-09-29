@@ -3,6 +3,8 @@
 // Create a Context and set Config.Context explicitly. Packages and imports in
 // one checking operation must belong to the same Context. Independent contexts
 // have separate predeclared types, scopes, caches, and diagnostic output.
+// For a possibly nil package, use Context.PackageScope: nil selects that
+// instance's Universe. Package.Scope itself requires a nonnil owner.
 // Set Config.Sizes for the target and Config.GoVersion for the source language.
 // A nil Context.TraceWriter discards tracing; no process output is used.
 // Callers must not mutate shared ASTs, options or result graphs during a check.
