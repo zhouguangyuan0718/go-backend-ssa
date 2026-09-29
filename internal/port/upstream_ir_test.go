@@ -16,6 +16,8 @@ import (
 func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ir")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
+	testUpstreamNativeGraph(t, s, r, root, "noder")
+	testUpstreamNativeGraph(t, s, r, root, "dwarfgen")
 }
 func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName string) {
 	t.Helper()
@@ -50,7 +52,13 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		setup = strings.Replace(setup, "c:=NewContext(u,link)", "graph:=ir.NewContext(u,link);c:=NewContext(graph)", 1)
 		position = "u.Pos"
 	}
-	ported := strings.NewReplacer("IMPORT_IR", "go-backend-ssa/internal/ir", "GRAPH.", "graph.", "IMPORT_TYPES", "go-backend-ssa/internal/types", "IMPORT_OBJ", "go-backend-ssa/internal/cmd/obj", "IMPORT_SRC", "go-backend-ssa/internal/cmd/src", "IMPORT_BASE", "", "SETUP", setup, "UP.", "c.", "TY.", "u.", "LINK", "link", "POS", position).Replace(string(template))
+	if pkgName == "noder" {
+		setup = `link:=&obj.Link{};u:=types.NewUniverseWithPositions(8,8,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");c:=&Context{Ctxt:link,Types:u,GOROOT:"/sdk/go"}`
+	}
+	if pkgName == "dwarfgen" {
+		setup = `link:=&obj.Link{};u:=types.NewUniverseWithPositions(8,8,1<<50,&link.PosTable);graph:=ir.NewContext(u,link)`
+	}
+	ported := strings.NewReplacer("IMPORT_PKGBITS", "go-backend-ssa/internal/go/pkgbits", "IMPORT_BUILDCFG", "", "MAKEMARKER", "NewScopeMarker(graph.Base)", "IMPORT_IR", "go-backend-ssa/internal/ir", "GRAPH.", "graph.", "IMPORT_TYPES", "go-backend-ssa/internal/types", "IMPORT_OBJ", "go-backend-ssa/internal/cmd/obj", "IMPORT_SRC", "go-backend-ssa/internal/cmd/src", "IMPORT_BASE", "", "SETUP", setup, "UP.", "c.", "TY.", "u.", "LINK", "link", "POS", position).Replace(string(template))
 	writeTestFile(t, dir, "internal/"+pkgName+"/adapter_snapshot_test.go", ported)
 	run := func(args ...string) []byte {
 		cmd := exec.Command("go", args...)
@@ -64,7 +72,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	goroot := strings.TrimSpace(string(run("env", "GOROOT")))
 	overlay := map[string]string{}
-	for _, pkg := range []string{"cmd/compile/internal/ir", "cmd/compile/internal/types", "cmd/compile/internal/base", "cmd/internal/obj", "cmd/compile/internal/typecheck"} {
+	for _, pkg := range []string{"cmd/compile/internal/ir", "cmd/compile/internal/types", "cmd/compile/internal/base", "cmd/internal/obj", "cmd/compile/internal/typecheck", "cmd/compile/internal/noder", "cmd/compile/internal/dwarfgen"} {
 		for _, name := range s.PackageFiles(pkg) {
 			data, err := s.Read(name)
 			if err != nil {
@@ -79,7 +87,10 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if pkgName == "typecheck" {
 		nativeSetup += `;Target=&ir.Package{};ir.Pkgs.Runtime=types.NewPkg("go.runtime","runtime");ir.Pkgs.Runtime.Prefix="runtime";ir.Pkgs.Coverage=types.NewPkg("go.coverage","runtime/coverage");ir.Pkgs.Coverage.Prefix="runtime/coverage"`
 	}
-	native := strings.NewReplacer("IMPORT_IR", "cmd/compile/internal/ir", "GRAPH.", "ir.", "IMPORT_TYPES", "cmd/compile/internal/types", "IMPORT_OBJ", "cmd/internal/obj", "IMPORT_SRC", "cmd/internal/src", "IMPORT_BASE", `"cmd/compile/internal/base"`, "SETUP", nativeSetup, "UP.", "", "TY.", "types.", "LINK", "base.Ctxt", "POS", "base.Pos").Replace(string(template))
+	if pkgName == "noder" {
+		nativeSetup += `;buildcfg.GOROOT="/sdk/go"`
+	}
+	native := strings.NewReplacer("IMPORT_PKGBITS", "internal/pkgbits", "IMPORT_BUILDCFG", `;"internal/buildcfg"`, "MAKEMARKER", "ScopeMarker{}", "IMPORT_IR", "cmd/compile/internal/ir", "GRAPH.", "ir.", "IMPORT_TYPES", "cmd/compile/internal/types", "IMPORT_OBJ", "cmd/internal/obj", "IMPORT_SRC", "cmd/internal/src", "IMPORT_BASE", `"cmd/compile/internal/base"`, "SETUP", nativeSetup, "UP.", "", "TY.", "types.", "LINK", "base.Ctxt", "POS", "base.Pos").Replace(string(template))
 	writeTestFile(t, dir, "reference/"+pkgName+"_snapshot_test.go", native)
 	overlay[filepath.Join(goroot, "src/cmd/compile/internal/"+pkgName+"/syncgo_snapshot_test.go")] = filepath.Join(dir, "reference/"+pkgName+"_snapshot_test.go")
 	data, err := json.Marshal(struct{ Replace map[string]string }{overlay})

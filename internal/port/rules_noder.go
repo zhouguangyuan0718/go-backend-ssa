@@ -5,6 +5,21 @@ func noderMigration() []Unit {
 		return &ContextRule{Type: "Context", Constructor: "initContext", Initialize: true, PreserveNilArgs: true, RedirectTrace: true, Adapter: "adapter_context.go", Selective: true}
 	}
 	return []Unit{
+		{Source: "src/cmd/compile/internal/noder/reader.go",
+			Functions: []string{"newPkgReader", "setType", "setValue"},
+			Declarations: []string{"pkgReader", "pkgReaderIndex", "reader", "readerDict", "readerMethodExprInfo",
+				"pkgReader.newReader", "pkgReader.posBaseIdx", "pkgReader.pkgIdx",
+				"reader.pos", "reader.origPos", "reader.pos0", "reader.posBase", "reader.inlPosBase", "reader.inlPos", "reader.pkg", "reader.doPkg", "reader.typInfo", "reader.objInfo", "reader.qualifiedIdent", "reader.localIdent", "reader.selector", "reader.hasTypeParams", "readerDict.hasTypeParams", "reader.pragmaFlag"},
+			Context: context(), Owner: &OwnerRule{Types: []string{"pkgReader", "reader"}, Context: "Context", Field: "compilation"},
+			State: []StateRule{
+				{Source: "src/internal/buildcfg/cfg.go", Variable: "GOROOT", Field: "GOROOT"},
+				{Source: "src/cmd/compile/internal/types/fmt.go", Variable: "BuiltinPkg", Field: "Types.BuiltinPkg"},
+				{Source: "src/cmd/compile/internal/types/fmt.go", Variable: "UnsafePkg", Field: "Types.UnsafePkg"},
+				{Source: "src/cmd/compile/internal/types/fmt.go", Variable: "LocalPkg", Field: "Types.LocalPkg"},
+			}, Calls: []CallRule{
+				{Source: "src/cmd/compile/internal/types/pkg.go", Function: "NewPkg", Method: "Types.NewPkg"},
+			}},
+
 		{Source: "src/cmd/compile/internal/noder/noder.go", Functions: []string{"trimFilename", "checkEmbed"}, Declarations: []string{"noder", "linkname", "pragmas", "pragmas.Nointerface", "WasmImport", "WasmExport", "pragmaPos", "pragmaEmbed"},
 			Context: func() *ContextRule {
 				c := context()

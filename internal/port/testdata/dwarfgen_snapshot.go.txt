@@ -1,0 +1,17 @@
+package dwarfgen
+import("fmt";"encoding/json";"testing";"IMPORT_TYPES";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_IR";IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ SETUP
+ var out []string
+ b:=src.NewFileBase("f.go","/src/f.go")
+ pos:=func(line uint)src.XPos{return LINK.PosTable.XPos(src.MakePos(b,line,1))}
+ m:=MAKEMARKER
+ fn:=&ir.Func{}
+ m.Push(pos(1));m.Push(pos(2));m.Unpush();m.Push(pos(3));m.Pop(pos(3));m.Pop(pos(4));m.WriteTo(fn)
+ snapshot:=func(fn *ir.Func){out=append(out,fmt.Sprintf("parents:%v",fn.Parents));for _,mark:=range fn.Marks{out=append(out,fmt.Sprintf("mark:%v:%d",LINK.PosTable.Pos(mark.Pos),mark.Scope))}}
+ snapshot(fn)
+ other:=&ir.Func{}
+ m.Push(pos(5));m.Pop(pos(6));m.WriteTo(other)
+ snapshot(other);snapshot(fn)
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(data))
+}

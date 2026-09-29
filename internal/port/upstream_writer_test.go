@@ -33,6 +33,12 @@ func prepareUpstreamWriter(t *testing.T, s *Source, dir string) {
 		}
 	}
 	for _, u := range noderMigration() {
+		// This harness compares writer bytes using the original types2 graph.
+		// The native reader uses compiler types/IR and is compared separately
+		// through the full-toolchain overlay in upstream_ir_test.go.
+		if path.Base(u.Source) == "reader.go" {
+			continue
+		}
 		if path.Dir(u.Source) != "src/cmd/compile/internal/noder" {
 			continue
 		}

@@ -38,6 +38,7 @@
 21. [M3 原生 typecheck universe](docs/m3-typecheck.md)：内建名称、常量、操作表初始化及共享函数状态。
 22. [M3 原生 runtime 声明](docs/m3-runtime.md)：隐藏声明、类型参数替换、ABI 符号与实例计时。
 23. [M3 原生 IR 检查](docs/m3-typecheck-ir.md)：表达式/语句改写、函数声明、嵌入成员和闭包捕获布局。
+24. [M3 reader 记录解码](docs/m3-reader-metadata.md)：原生读取结构、包/位置/引用记录、内联位置和 ScopeMarker。
 
 ## 当前可运行的工具
 
@@ -57,7 +58,7 @@ go test -race ./...
 
 设定 `GO_SSA_SOURCE_REPO` 时，测试额外验证官方 go1.27.1 再生成、两版上游位置/符号回归与 SSA 类型切片差分测试、源码树未变以及 go1.27.0 → go1.27.1 升级；仓库需包含两个 tag。不设置该变量时仅跳过这项集成测试，其他测试照常执行。
 
-编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造与完整 typecheck 生产包，以及 types/objabi 的结构和算法切片；源码到 IR 的 reader 和完整编译流程尚未实现。
+编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造与完整 typecheck 生产包，以及 types/objabi 的结构和算法切片；reader 的包/位置/引用记录解码已接入，类型实例化、函数体读取及完整编译流程尚未实现。
 
 移植后的源码直接保存在本项目，和手写适配、转换规则一起纳入版本管理。使用本库时不需要先运行移植工具；维护者更新上游版本时再重新生成。
 

@@ -1,0 +1,33 @@
+package noder
+import("fmt";"encoding/json";"testing";"strings";"IMPORT_TYPES";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_IR";"IMPORT_PKGBITS";IMPORT_BASE IMPORT_BUILDCFG)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ SETUP
+ var out []string
+ for _,frames:=range []int{-1,0}{
+ pw:=pkgbits.NewPkgEncoder(pkgbits.V4,frames)
+ packageEntry:=func(path,name string)index{w:=pw.NewEncoder(pkgbits.SectionPkg,pkgbits.SyncPkgDef);w.String(path);if path!="builtin"&&path!="unsafe"{w.String(name);w.Len(0)};return w.Flush()}
+ local:=packageEntry("","p");builtin:=packageEntry("builtin","");unsafe:=packageEntry("unsafe","");external:=packageEntry("example/other","other")
+ b:=pw.NewEncoder(pkgbits.SectionPosBase,pkgbits.SyncPosBase);b.String("$GOROOT/src/p.go");b.Bool(true);file:=b.Flush()
+ line:=pw.NewEncoder(pkgbits.SectionPosBase,pkgbits.SyncPosBase);line.String("generated.go");line.Bool(false);line.Sync(pkgbits.SyncPos);line.Bool(true);line.Reloc(pkgbits.SectionPosBase,file);line.Uint(4);line.Uint(2);line.Uint(40);line.Uint(3);pragma:=line.Flush()
+ elem:=pw.NewEncoder(pkgbits.SectionObj,pkgbits.SyncObject1)
+ elem.Sync(pkgbits.SyncPos);elem.Bool(true);elem.Reloc(pkgbits.SectionPosBase,pragma);elem.Uint(5);elem.Uint(6)
+ elem.Sync(pkgbits.SyncPkg);elem.Reloc(pkgbits.SectionPkg,local)
+ elem.Sync(pkgbits.SyncSelector);elem.Sync(pkgbits.SyncPkg);elem.Reloc(pkgbits.SectionPkg,external);elem.String("Member")
+ elem.Sync(pkgbits.SyncSelector);elem.Sync(pkgbits.SyncPkg);elem.Reloc(pkgbits.SectionPkg,external);elem.String("private")
+ elem.Sync(pkgbits.SyncType);elem.Bool(true);elem.Len(3)
+ elem.Sync(pkgbits.SyncEOF);idx:=elem.Flush()
+ var buf strings.Builder;pw.DumpTo(&buf)
+ pr:=UP.newPkgReader(pkgbits.NewPkgDecoder("example/p",buf.String()))
+ for _,idx:=range []index{local,builtin,unsafe,external}{p:=pr.pkgIdx(idx);out=append(out,fmt.Sprintf("pkg:%s:%s:%t",p.Path,p.Name,pr.pkgIdx(idx)==p))}
+ for _,idx:=range []index{file,pragma}{b:=pr.posBaseIdx(idx);out=append(out,fmt.Sprintf("base:%s:%s:%d:%d:%t",b.Filename(),b.AbsFilename(),b.Line(),b.Col(),pr.posBaseIdx(idx)==b))}
+ r:=pr.newReader(pkgbits.SectionObj,idx,pkgbits.SyncObject1)
+ p:=LINK.PosTable.Pos(r.pos());out=append(out,fmt.Sprintf("pos:%v:%s:%d:%d",p,p.RelFilename(),p.RelLine(),p.RelCol()))
+ out=append(out,fmt.Sprintf("ref:%s:%v:%v",r.pkg().Path,r.selector(),r.selector()))
+ info:=r.typInfo();out=append(out,fmt.Sprintf("typeRef:%t:%d",info.derived,info.idx));r.Sync(pkgbits.SyncEOF)
+ r.inlCall=&ir.CallExpr{};r.inlTreeIndex=9;r.inlPosBases=map[*src.PosBase]*src.PosBase{}
+ x:=LINK.PosTable.XPos(src.MakePos(pr.posBaseIdx(file),8,2));mapped:=r.inlPos(x);bp:=LINK.PosTable.Pos(mapped).Base()
+ out=append(out,fmt.Sprintf("inline:%d:%t:%t",bp.InliningIndex(),mapped==r.inlPos(x),bp!=pr.posBaseIdx(file)))
+ r.suppressInlPos=1;out=append(out,fmt.Sprintf("original:%t",r.inlPos(x)==x))
+ }
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(data))
+}
