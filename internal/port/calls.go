@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"go/types"
 	"path"
+	"strconv"
 	"strings"
 )
 
@@ -78,8 +79,15 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 					v := spec.(*ast.ValueSpec)
 					for _, name := range v.Names {
 						if variables[source][name.Name] {
-							if len(v.Names) != 1 || v.Type == nil {
-								return nil, fmt.Errorf("external state requires an explicitly typed single declaration: %s", name.Name)
+							if len(v.Names) != 1 {
+								return nil, fmt.Errorf("external state requires a single declaration: %s", name.Name)
+							}
+							if v.Type == nil {
+								typ, err := externalValueType(f, v, importer)
+								if err != nil {
+									return nil, fmt.Errorf("external state %s: %w", name.Name, err)
+								}
+								v.Type = typ
 							}
 							v.Values = nil
 							specs = append(specs, v)
@@ -200,4 +208,59 @@ func checkStateAdapters(units []Unit, before *packageImporter, out *types.Packag
 		}
 	}
 	return nil
+}
+
+// Infer a host variable's type from a direct call's declared single result.
+// Its environment-reading initializer and arguments never enter the output.
+func externalValueType(file *ast.File, spec *ast.ValueSpec, importer *packageImporter) (ast.Expr, error) {
+	if len(spec.Values) != 1 {
+		return nil, fmt.Errorf("requires an explicit type or single call initializer")
+	}
+	call, ok := spec.Values[0].(*ast.CallExpr)
+	if !ok {
+		return nil, fmt.Errorf("requires an explicit type or direct call initializer")
+	}
+	if id, ok := call.Fun.(*ast.Ident); ok {
+		for _, d := range file.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == id.Name {
+				if fn.Type.TypeParams != nil || fn.Type.Results == nil || len(fn.Type.Results.List) != 1 || len(fn.Type.Results.List[0].Names) > 1 {
+					return nil, fmt.Errorf("initializer requires a non-generic single-result function")
+				}
+				return fn.Type.Results.List[0].Type, nil
+			}
+		}
+	}
+	if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+		if id, ok := sel.X.(*ast.Ident); ok {
+			for _, im := range file.Imports {
+				p, _ := strconv.Unquote(im.Path.Value)
+				name := path.Base(p)
+				if im.Name != nil {
+					name = im.Name.Name
+				}
+				if name != id.Name {
+					continue
+				}
+				pkg, err := importer.Import(p)
+				if err != nil {
+					return nil, err
+				}
+				obj, ok := pkg.Scope().Lookup(sel.Sel.Name).(*types.Func)
+				if !ok {
+					return nil, fmt.Errorf("initializer is not a package function")
+				}
+				sig := obj.Type().(*types.Signature)
+				if sig.TypeParams().Len() != 0 || sig.Results().Len() != 1 {
+					return nil, fmt.Errorf("initializer requires a non-generic single-result function")
+				}
+				// Only basic results are needed for environment-derived host settings.
+				typ, ok := sig.Results().At(0).Type().(*types.Basic)
+				if !ok {
+					return nil, fmt.Errorf("imported initializer requires a basic result")
+				}
+				return ast.NewIdent(typ.Name()), nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("initializer function signature unavailable")
 }

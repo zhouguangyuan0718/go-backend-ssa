@@ -199,6 +199,11 @@ func auditOutput(pkg *types.Package, files []*ast.File, info *types.Info) error 
 		p := obj.Pkg().Path()
 		// These operations inspect the current stack only; they do not read or
 		// mutate process configuration. Preserve upstream sync diagnostics.
+		if p == "runtime" && obj.Name() == "GOOS" {
+			if _, ok := obj.(*types.Const); ok {
+				continue
+			} // Native host path syntax, not mutable compiler state.
+		}
 		if p == "runtime" && stackDiagnosticObject(obj) {
 			continue
 		}

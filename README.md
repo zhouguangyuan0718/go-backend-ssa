@@ -30,6 +30,7 @@
 13. [M3 类型检查迁移](docs/m3-types2.md)：源码类型检查入口、Context 隔离、显式导入/尺寸及完整上游差分。
 14. [M3 Unified IR 编码基础](docs/m3-unified.md)：原生 codec、解码失败隔离及字节级差分。
 15. [M3 原生对象声明](docs/m3-objects.md)：Link/Prog/架构/驱动输入、公共别名及完整声明对照。
+16. [M3 noder 位置映射](docs/m3-noder.md)：syntax.Pos 到原生 Link.PosTable、路径输入及上游差分。
 
 ## 当前可运行的工具
 
@@ -64,6 +65,7 @@ go test -race ./...
 | [internal/types/size.go](internal/types/size.go)、[universe.go](internal/types/universe.go)、[identity.go](internal/types/identity.go) | 原生布局/延迟队列、预声明类型初始化及等价判断 |
 | [internal/types/pkg.go](internal/types/pkg.go) | Universe 包表、字符串驻留与 Pkg 查找方法 |
 | [internal/cmd/objabi/path.go](internal/cmd/objabi/path.go) | 符号路径编码与解码 |
+| [internal/noder/posmap.go](internal/noder/posmap.go) | 原生 syntax.Pos 到 Link.PosTable 映射、line pragma 与实例位置缓存 |
 | [internal/ir/func.go](internal/ir/func.go) | 链接函数名解析及辅助函数 |
 
 手写适配示例为 [internal/types/adapter_context.go](internal/types/adapter_context.go)，生成来源和哈希记录在 [sync/generated.json](sync/generated.json)。

@@ -3,6 +3,7 @@ package consumer
 import (
 	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/gcbridge"
+	"go-backend-ssa/noder"
 	"go-backend-ssa/position"
 	"go-backend-ssa/syntax"
 	"go-backend-ssa/target"
@@ -208,5 +209,15 @@ func TestNativeObjectGraph(t *testing.T) {
 	other.Text = append(other.Text, &gcbridge.LinkSymbol{Name: symbol.Name})
 	if link.PosTable.Pos(prog.Pos).Base().Filename() != "native.go" || other.Text[0] == symbol {
 		t.Fatal("instance coupling")
+	}
+}
+
+func TestSyntaxToNativePosition(t *testing.T) {
+	link := &gcbridge.Link{Pathname: "/work/src"}
+	m := noder.NewPosMap(link, "/work=>project", "")
+	p := syntax.MakePos(syntax.NewFileBase("file.go"), 9, 3)
+	x := m.XPos(p)
+	if got := link.PosTable.Pos(x); got.Line() != 9 || got.Base().AbsFilename() != "project/src/file.go" {
+		t.Fatal(got)
 	}
 }

@@ -51,6 +51,9 @@ func Migration() Plan {
 				Source:    "src/cmd/internal/objabi/path.go",
 				Functions: []string{"PathToPrefix", "PrefixToPath"},
 			},
+			{Source: "src/cmd/internal/objabi/line.go", Functions: []string{"AbsFile", "ApplyRewrites", "applyRewrite", "hasPathPrefix"},
+				Context: &ContextRule{Type: "PathContext", Constructor: "newPathContext", Adapter: "adapter_path.go", Selective: true},
+				State:   []StateRule{{Source: "src/internal/buildcfg/cfg.go", Variable: "GOROOT", Field: "GOROOT"}}},
 			{Source: "src/cmd/internal/objabi/symkind.go", Declarations: []string{"SymKind", "Sxxx"}},
 			{Source: "src/cmd/internal/objabi/reloctype.go", Declarations: []string{"RelocType"}},
 			{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Addr", "AddrName", "AddrPos", "AddrType", "As", "Attribute", "Func", "LSym", "Link", "LinkArch", "OperandPos", "Prog", "Reloc"}},
@@ -167,5 +170,6 @@ func Migration() Plan {
 	}
 	plan.Units = append(plan.Units, types2Migration()...)
 	plan.Units = append(plan.Units, pkgbitsMigration()...)
+	plan.Units = append(plan.Units, noderPositions()...)
 	return plan
 }
