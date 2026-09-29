@@ -47,12 +47,20 @@ func checkTypes(fset *token.FileSet, pkg string, files []*ast.File, imp types.Im
 	return p, info, err
 }
 
-// selectFile selects top-level functions and single-name state declarations.
-// Missing dependencies fail the type check; no stubs are supplied.
+// selectFile either retains a whole file or selects the supported function/state
+// slice. Missing dependencies fail package type checking; no stubs are supplied.
 func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.File, error) {
 	f, err := parser.ParseFile(fset, name, data, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
 		return nil, err
+	}
+	if u.WholeFile {
+		for _, d := range f.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == "init" {
+				return nil, fmt.Errorf("package init requires an explicit adaptation rule: %s", name)
+			}
+		}
+		return f, nil
 	}
 	want := map[string]string{}
 	for _, fn := range u.Functions {

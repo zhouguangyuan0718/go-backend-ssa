@@ -1,14 +1,57 @@
 {
   "schema_version": 1,
-  "tool": "syncgo-m1-v4",
+  "tool": "syncgo-m2-v1",
   "commit": "862c888e612ac346c7c4d99c9392bdfd265f33b0",
-  "plan_sha256": "aafc5065eb2f0c49abd931b010447ce2882aa30213f0fb774db5ea0dfd029db7",
+  "plan_sha256": "7ce410ca8574f52468619fbba03756b27858b72d186f134f9df39c4e72653bae",
   "files": [
+    {
+      "output": "internal/cmd/src/pos.go",
+      "source": "src/cmd/internal/src/pos.go",
+      "source_sha256": "f04854c4dc76867b158930a81577e5af0d1ec0180da6d6f1027681aacb36dee6",
+      "output_sha256": "d675c0fcb53ee22304e7e175b7ab16e6be2c731e7243033c975e713fe70ccf1e",
+      "rule": "whole-file-and-zero-values-v1",
+      "declarations": [
+        "*",
+        "NoPos",
+        "noPos"
+      ]
+    },
+    {
+      "output": "internal/cmd/src/xpos.go",
+      "source": "src/cmd/internal/src/xpos.go",
+      "source_sha256": "7b128399215c4115fb5d7801c3217a278262a6eecbece68ea46f0d2188c915f0",
+      "output_sha256": "fa637bf308ec15a145fa59c6c5a8c5b5d94aea1ead251c1fd5443787d1657146",
+      "rule": "whole-file-and-zero-values-v1",
+      "declarations": [
+        "*",
+        "NoXPos"
+      ]
+    },
+    {
+      "output": "internal/syntax/pos.go",
+      "source": "src/cmd/compile/internal/syntax/pos.go",
+      "source_sha256": "8aef7e7e79da418db94351539889b421bc414b004820d4af7c044697d1839923",
+      "output_sha256": "90ed8409dfdc729699d0e8d4a0afc2cb76108588a72c6ed360442e113a7b2944",
+      "rule": "whole-file-and-zero-values-v1",
+      "declarations": [
+        "*"
+      ]
+    },
+    {
+      "output": "internal/syntax/source.go",
+      "source": "src/cmd/compile/internal/syntax/source.go",
+      "source_sha256": "d3696fb7dc2f63ebb9aeee224423426ce9f6cf47096029d36aed41763eea7349",
+      "output_sha256": "1bb776d6bf639be071681a10b316d5caca56f4468445506712ff03d0b1e01434",
+      "rule": "whole-file-and-zero-values-v1",
+      "declarations": [
+        "*"
+      ]
+    },
     {
       "output": "internal/cmd/objabi/path.go",
       "source": "src/cmd/internal/objabi/path.go",
       "source_sha256": "ff1e056f2f2b3aa1f757bf7be3da769f1f5241da65438e5ebb9f65a6716c8343",
-      "output_sha256": "6ecd24160530c73cd34500020457d0bd400ab4f30bdc5e7699cc8858f33d2118",
+      "output_sha256": "fdbdd7ab0ea0773f5ed983e81f2b996293ca7e8765297d908c4516c25b0a9c87",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "PathToPrefix",
@@ -19,7 +62,7 @@
       "output": "internal/ir/func.go",
       "source": "src/cmd/compile/internal/ir/func.go",
       "source_sha256": "185b5f070932048b28c173de6d770ee7415b0490c1130623ab8b69dadd2d8387",
-      "output_sha256": "9cdb45ea81d2a0fe6b3253a11c3f8fdc2e63a4ea5909f712227f9b524cdc17cb",
+      "output_sha256": "89fd7915efa2d02abbca8195f61734eb0bafb919cf7f2f77b073f9c5d6bf4c7b",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "ParseLinkFuncName",
@@ -29,10 +72,20 @@
       ]
     },
     {
+      "output": "internal/types/sym.go",
+      "source": "src/cmd/compile/internal/types/sym.go",
+      "source_sha256": "9f27e5513bbf64e4560b8a5d9c19a2089f07e61b0025376d1d42d5453131e08f",
+      "output_sha256": "2650086bbf8b7e06728a04f19292845d3939102d445a693adb797ddf42a4c257",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "IsExported"
+      ]
+    },
+    {
       "output": "internal/types/pkg.go",
       "source": "src/cmd/compile/internal/types/pkg.go",
       "source_sha256": "2ae44b87b8fdc7ad0eb80e8a25a7e4d710ae789261ede9d525b6560f96c4f785",
-      "output_sha256": "c111edec1c9012e8e369f48fd8c3158698365f93ea856f776e1912d565c0ca7a",
+      "output_sha256": "d08fe19d1e7eab04a725ef2d43fab8ca3d39de4326369093322319cd5c4cce53",
       "rule": "state-to-context-methods-v1",
       "declarations": [
         "InternString",

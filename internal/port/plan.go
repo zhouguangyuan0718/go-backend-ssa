@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m1-v4"
+const ToolVersion = "syncgo-m2-v1"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -33,9 +33,11 @@ type Plan struct {
 }
 
 type Unit struct {
-	Source    string
-	Functions []string
-	Context   *ContextRule
+	Source     string
+	Functions  []string
+	WholeFile  bool     // Preserve types, constants and existing receivers.
+	ZeroValues []string // Reviewed zero-valued struct globals replaced by fresh values.
+	Context    *ContextRule
 }
 
 type ContextRule struct {
@@ -87,18 +89,23 @@ func (p Plan) Validate() error {
 	if len(p.Units) == 0 || len(p.InspectRoots) == 0 {
 		return fmt.Errorf("empty migration plan")
 	}
-	packages := map[string]bool{}
+	outputs := map[string]bool{}
+	contexts := map[string]bool{}
 	for _, u := range p.Units {
 		output := u.output()
-		if !safePath(u.Source) || !ownedPath(output) || path.Ext(output) != ".go" || len(u.Functions) == 0 {
+		if !safePath(u.Source) || !ownedPath(output) || path.Ext(output) != ".go" || (!u.WholeFile && len(u.Functions) == 0) || outputs[output] {
 			return fmt.Errorf("invalid migration source: %s", u.Source)
 		}
 		pkg := path.Dir(output)
-		if packages[pkg] {
-			return fmt.Errorf("M1 supports one source unit per package: %s", output)
+		outputs[output] = true
+		if u.WholeFile && (len(u.Functions) != 0 || u.Context != nil) || !u.WholeFile && len(u.ZeroValues) != 0 {
+			return fmt.Errorf("incompatible whole-file rules: %s", u.Source)
 		}
-		packages[pkg] = true
 		if c := u.Context; c != nil {
+			if contexts[pkg] {
+				return fmt.Errorf("one Context source per package is supported: %s", pkg)
+			}
+			contexts[pkg] = true
 			if len(c.Fields) == 0 || !safePath(c.Adapter) || path.Base(c.Adapter) != c.Adapter || !strings.HasPrefix(c.Adapter, "adapter_") || path.Ext(c.Adapter) != ".go" || strings.HasSuffix(c.Adapter, "_test.go") {
 				return fmt.Errorf("invalid context adapter: %s", c.Adapter)
 			}

@@ -1,6 +1,6 @@
 # 公共 API 与后端契约
 
-本文件为拟议接口，不是已存在的 Go 声明。
+本文件的 Build/Package/SSA 接口仍是拟议设计。当前已实现的 position、diagnostic、target 及位置桥接接口见 [M2 记录](m2.md)；它们不构成可用的编译入口。
 
 ## 入口
 

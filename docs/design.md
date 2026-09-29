@@ -48,9 +48,9 @@ flowchart TD
 ```text
 build.go, request.go, result.go       根包：公开编译入口（待实现）
 ssa/ types/                          公开对象别名、访问与验证接口（待实现）
-position/ target/ diagnostic/        公共基础设施（待实现）
+position/ target/ diagnostic/        首批公开基础设施（已实现）
 symbol/                              公共符号接口（待实现）
-gcbridge/                            原生编译器接入面（待实现）
+gcbridge/                            位置接入已实现；完整原生回接待实现
 internal/
   syntax/ types2/ noder/ ir/          保留 src/cmd/compile/ 以下结构
   types/ typecheck/ inline/           保留上游包名和文件名
@@ -68,7 +68,7 @@ testdata/                            源码夹具与阶段期望
 
 编译器源码以 `src/cmd/compile/` 为相对根，直接映射到项目根。例如 `src/cmd/compile/internal/types/pkg.go` 对应 `internal/types/pkg.go`。不增加版本目录或 `upstream/src/cmd/compile/` 前缀，也不按抽取功能重命名上游包。辅助依赖分别放在 `internal/cmd/` 和 `internal/go/`，避免编译器 `abi` 与 Go 内部 `abi` 等包发生冲突；各自根以下结构保持不变。
 
-上图包含后续目标包；当前已移植 types/ir/objabi 的算法切片。保留目录不代表整个包已移植。原生命令入口和 gc 驱动按实际职责选择，不因路径映射而整目录复制。
+上图包含后续目标包；当前已移植位置模块、前端位置/字符读取器以及 types/ir/objabi 的算法切片，详见 [M2 记录](m2.md)。保留目录不代表整个包已移植。原生命令入口和 gc 驱动按实际职责选择，不因路径映射而整目录复制。
 
 生成文件保留上游文件名，由文件头和 `sync/generated.json` 标记归属；同包手写文件统一使用 `adapter_*.go`，例如 `internal/types/adapter_context.go`。同包适配可访问私有成员；共享基础设施可放独立包。工具拒绝与上游同名的 adapter，不能人工修改生成文件或同步覆盖手写文件。新增本库独立包时也要检查上游命名冲突。
 

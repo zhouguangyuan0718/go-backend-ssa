@@ -4,13 +4,13 @@
 
 [internal/port/rules.go](../internal/port/rules.go) 使用普通 Go 定义固定官方源码版本、抽取范围和 Context 改写规则，不使用外部配置文件。维护者提供包含该 commit 的本地 Go Git 仓库；工具读取 Git 对象，不要求或修改其工作树。默认离线、不自动更新 pin、不依赖该仓库当前 HEAD。
 
-`cmd/syncgo` 已以 Go 实现 inspect、generate、check，当前为 M1 子集。运行方式和精确限制见 [M1 记录](m1.md)。本文件其余部分同时描述完整工具的后续目标。
+`cmd/syncgo` 已以 Go 实现 inspect、generate、check，并支持 M2 的多文件/整文件移植。运行方式和精确限制见 [M2 记录](m2.md)。本文件其余部分同时描述完整工具的后续目标。
 
 - inspect：包/声明依赖、全局状态、环境访问、初始化顺序和符号映射报告。
 - generate：在临时目录重建移植文件、验证后替换工具拥有的文件。
 - check：重新生成并比较，检查 provenance、残留 internal import、全局状态和映射覆盖。
 
-M1 inspect 使用 AST 枚举所有构建变体，记录词法引用和潜在副作用；不是别名分析。generate 对选中的顶层非泛型函数和单名字状态声明进行前后类型检查；M1 每包一个源码单元。
+M1 inspect 使用 AST 枚举所有构建变体，记录词法引用和潜在副作用；不是别名分析。generate 对同包文件一起使用 go/types 做前后类型检查。WholeFile 保留类型、常量及已有 receiver；不自动去全局化。Context 转换仍限于单个状态源文件中的顶层非泛型函数和单名字状态声明；未知形式报错。
 
 第一阶段仅针对固定 Go 1.27 源码，维护可审计规则。无需解决任意 Go 程序自动去全局化问题。
 
@@ -55,7 +55,9 @@ Go 移植规则最终给每个选中声明指定一种处理方式：
 
 阶段 2 的符号解析不能依赖猜测的字符串替换。M1 使用 Go 1.27.1 标准库 importer，并按 Go 规则中包首次出现的顺序在内存中类型检查抽取的上游包，以原始 package path 提供给后续切片。未列入切片的 compiler/internal 导入明确拒绝，不读取宿主 GOROOT 私有包。完整前端依赖的解析在扩大切片时继续推进。
 
-规则采用 package path + declaration + AST 结构定位，未知形式明确拒绝。已有 receiver 和多文件包的转换后续扩展。
+规则采用 package path + declaration + AST 结构定位。保留模式支持原有 receiver 和 method expression；需要为这些方法注入 Context 的转换尚未实现，不能据此声称已去全局化。局部遮蔽按对象身份区分。
+
+WholeFile 的 ZeroValues 只处理显式审阅的无初始化 struct 哨兵，将同包引用改为独立零值并删除全局声明；初始化表达式变化或残留包级变量会报错。不同包对已删除哨兵的引用尚未自动传播，接入新消费者时须补受控转换，不能恢复全局变量。
 
 ## 少量规则与大量生成差异
 

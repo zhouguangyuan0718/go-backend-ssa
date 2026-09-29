@@ -49,3 +49,6 @@ Go dist 的 bootstrap 阶段、所需语言版本、生成器、编译器自举�
 
 M2 起做最小桥接试验，M6 后完成整条回接链路，M7 发布验收纳入替换编译器自举。这样不会到末期才发现接口无法接回原生后端。
 
+## 当前进展
+
+M2 第一批提供 position/gcbridge 的共享类型别名，并以独立 consumer module 验证位置编码/解码与对象身份。此试验尚未修改或构建宿主 cmd/compile，不代表完成前端、SSA、native tail 的替换。直接消费者约束及后续 Universe 方案见 [M2 记录](m2.md)。

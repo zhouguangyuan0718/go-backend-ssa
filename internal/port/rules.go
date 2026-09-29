@@ -28,6 +28,10 @@ func Migration() Plan {
 			"cmd/compile/internal/ssa",
 		},
 		Units: []Unit{
+			{Source: "src/cmd/internal/src/pos.go", WholeFile: true, ZeroValues: []string{"NoPos", "noPos"}},
+			{Source: "src/cmd/internal/src/xpos.go", WholeFile: true, ZeroValues: []string{"NoXPos"}},
+			{Source: "src/cmd/compile/internal/syntax/pos.go", WholeFile: true},
+			{Source: "src/cmd/compile/internal/syntax/source.go", WholeFile: true},
 			{
 				Source:    "src/cmd/internal/objabi/path.go",
 				Functions: []string{"PathToPrefix", "PrefixToPath"},
@@ -36,6 +40,7 @@ func Migration() Plan {
 				Source:    "src/cmd/compile/internal/ir/func.go",
 				Functions: []string{"ParseLinkFuncName", "splitPkg", "escapedImportPathOK", "modPathOK"},
 			},
+			{Source: "src/cmd/compile/internal/types/sym.go", Functions: []string{"IsExported"}},
 			{
 				Source:    "src/cmd/compile/internal/types/pkg.go",
 				Functions: []string{"InternString"},

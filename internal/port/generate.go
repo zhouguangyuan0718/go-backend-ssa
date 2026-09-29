@@ -54,8 +54,18 @@ func Render(s *Source, p Plan, root string) (*Rendered, error) {
 	r := &Rendered{Files: map[string][]byte{}, Ledger: Generated{SchemaVersion: 1, Tool: ToolVersion, Commit: s.Pin.Commit, PlanSHA256: hash(planJSON)}}
 	before, after := newImporter(), newImporter()
 	imports := p.importMap(s.Pin.TargetModule)
+	// A package is checked as a unit, in first-appearance dependency order.
+	var order []string
+	groups := make(map[string][]Unit)
 	for _, u := range p.Units {
-		files, provenance, err := renderUnit(s, u, imports, root, before, after)
+		pkg := u.sourcePackage()
+		if _, ok := groups[pkg]; !ok {
+			order = append(order, pkg)
+		}
+		groups[pkg] = append(groups[pkg], u)
+	}
+	for _, pkg := range order {
+		files, provenance, err := renderPackage(s, groups[pkg], imports, root, before, after)
 		if err != nil {
 			return nil, err
 		}

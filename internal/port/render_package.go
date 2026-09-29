@@ -11,8 +11,7 @@ import (
 	"path/filepath"
 )
 
-func renderUnit(s *Source, unit Unit, imports map[string]string, root string, before, after *packageImporter) (map[string][]byte, []Provenance, error) {
-	units := []Unit{unit}
+func renderPackage(s *Source, units []Unit, imports map[string]string, root string, before, after *packageImporter) (map[string][]byte, []Provenance, error) {
 	fs := token.NewFileSet()
 	var original []*ast.File
 	sources := make([][]byte, len(units))
@@ -37,6 +36,9 @@ func renderUnit(s *Source, unit Unit, imports map[string]string, root string, be
 		return nil, nil, fmt.Errorf("selected package %s: %w", sourcePkg, err)
 	}
 	before.packages[sourcePkg] = pkg
+	if err := replaceZeroValues(fs, original, units, info); err != nil {
+		return nil, nil, err
+	}
 
 	outfs := token.NewFileSet()
 	var output []*ast.File
@@ -53,6 +55,10 @@ func renderUnit(s *Source, unit Unit, imports map[string]string, root string, be
 		}
 		output = append(output, outf)
 		prov := Provenance{Output: u.output(), Source: u.Source, SourceSHA256: hash(sources[i]), OutputSHA256: hash(out), Rule: "select-and-relocate-v1", Declarations: append([]string(nil), u.Functions...)}
+		if u.WholeFile {
+			prov.Rule = "whole-file-and-zero-values-v1"
+			prov.Declarations = append([]string{"*"}, u.ZeroValues...)
+		}
 		if c := u.Context; c != nil {
 			if _, exists := s.Blobs[path.Join(path.Dir(u.Source), c.Adapter)]; exists {
 				return nil, nil, fmt.Errorf("adapter filename collides with upstream: %s", u.adapterPath())

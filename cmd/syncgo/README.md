@@ -12,4 +12,4 @@ inspect 不指定 -out 时输出完整 JSON 到 stdout；报告较大，通常�
 
 generate 遇到被编辑的生成文件或同名未登记文件会拒绝覆盖；应先审阅改动，将需要保留的修复移到规则/adapter，再恢复 ledger 对应版本。不要通过删除 ledger 绕过所有权检查。异常终止遗留的 `.cache/syncgo.lock` 只可在确认没有生成进程后清理。
 
-实现范围见 [M1 记录](../../docs/m1.md)。
+实现范围见 [M2 记录](../../docs/m2.md)。
