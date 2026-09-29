@@ -96,7 +96,7 @@ func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.Fil
 	}
 	if u.WholeFile {
 		for _, d := range f.Decls {
-			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == "init" {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == "init" && (u.ReceiverState == nil || !u.ReceiverState.RunInit) {
 				return nil, fmt.Errorf("package init requires an explicit adaptation rule: %s", name)
 			}
 		}

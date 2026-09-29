@@ -110,3 +110,5 @@ SSA 的 _gen、rewrite 规则和相关生成依赖必须与源提交一致。可
 `SupportFiles` 列出 adapter 依赖的既有手写实现，目前是 position/diagnostic。工具对这些源码进行真实类型检查和无全局状态审计，拒绝未列出的同目录生产文件、条件编译、隐藏初始化导入和依赖环；内容哈希记录在原有生成账本中。它不复制生成文件、不增加配置文件，也不会从磁盘读取尚未完成移植的上游包来凑足依赖。
 
 宿主方法/入口校验的签名比较忽略局部参数和结果名称（包括回调参数），仍严格比较类型、返回值及 variadic。多个上游入口可以共享相同类型的校验函数，不必为了 `fs`/`methods` 的命名差异复制 adapter。
+
+`ReceiverStateRule` 把少量全局状态移入上游已有的私有 receiver 结构，当前用于 syntax 的 scanner/labelScope/printer/dumper。保留源方法签名和算法；有明确 init 方法时在其中重置状态、执行原有初始化循环，否则在原有 keyed literal/builtin new 构造处分配状态。可推断的初始化形式仅支持新建 struct 指针及常量 byte slice，其他类型须有显式声明。固定数组 len/cap 的常量值来自 go/types；运行时全局访问必须发生在匹配的 receiver 方法内，否则拒绝生成。字段冲突、未初始化零值构造、未审核的 initializer/构造形式及初始化规则失配也会报错。此规则不为 AST 增加第二套 owner 或新的公开 parser 对象。

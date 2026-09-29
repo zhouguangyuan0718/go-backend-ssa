@@ -4,9 +4,11 @@ import (
 	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/gcbridge"
 	"go-backend-ssa/position"
+	"go-backend-ssa/syntax"
 	"go-backend-ssa/target"
 	"go-backend-ssa/types"
 	"go/constant"
+	"strings"
 	"testing"
 )
 
@@ -144,5 +146,19 @@ func TestNativeLayoutFromPublicModule(t *testing.T) {
 	}
 	if !u.Identical(u.ByteType, u.Types[types.Uint8]) || u.Diagnostics.HasErrors() {
 		t.Fatal("builtin binding")
+	}
+}
+
+func TestNativeSyntaxFromPublicModule(t *testing.T) {
+	f, err := syntax.Parse(syntax.NewFileBase("sum.go"), strings.NewReader("package p; func Sum(x,y int)int{return x+y}"), nil, nil, syntax.CheckBranches)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var native *gcbridge.SyntaxFile = f
+	var n gcbridge.SyntaxNode = f.DeclList[0]
+	fn := n.(*syntax.FuncDecl)
+	ret := fn.Body.List[0].(*syntax.ReturnStmt)
+	if native != f || fn.Name.Value != "Sum" || ret.Results.(*syntax.Operation).Op != syntax.Add {
+		t.Fatal("syntax bridge identity")
 	}
 }

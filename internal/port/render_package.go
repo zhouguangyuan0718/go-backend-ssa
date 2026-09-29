@@ -58,6 +58,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	if err := localizeReadTables(fs, original, info, units); err != nil {
 		return nil, nil, err
 	}
+	if err := moveReceiverState(fs, original, info, units); err != nil {
+		return nil, nil, err
+	}
 	if err := rewritePackageContext(fs, original, info, units); err != nil {
 		return nil, nil, err
 	}
@@ -92,6 +95,10 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		if u.WholeFile {
 			prov.Rule = "whole-file-and-zero-values-v1"
 			prov.Declarations = append(append([]string{"*"}, u.ZeroValues...), u.ReadTables...)
+		}
+		if state := u.ReceiverState; state != nil {
+			prov.Rule = "package-state-to-existing-receiver-v1"
+			prov.Declarations = append(prov.Declarations, sortedKeys(state.Fields)...)
 		}
 		if c := u.Context; c != nil {
 			if _, exists := s.Blobs[path.Join(path.Dir(u.Source), c.Adapter)]; exists {
