@@ -71,9 +71,20 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				}
 			}
 		}
+		renamed := map[string]bool{}
 		for _, d := range files[i].Decls {
 			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name != "init" && !(c.Existing && fn.Name.Name == c.Constructor) {
-				functions[info.Defs[fn.Name]] = fn.Name.Name
+				name := fn.Name.Name
+				if target := u.ContextMethods[name]; target != "" {
+					renamed[name] = true
+					name = target
+				}
+				functions[info.Defs[fn.Name]] = name
+			}
+		}
+		for name := range u.ContextMethods {
+			if !renamed[name] {
+				return fmt.Errorf("renamed context function not selected: %s", name)
 			}
 		}
 	}
@@ -95,6 +106,9 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		needed := statefulFunctions(files, info, candidates, states, external, owners, units)
 		for obj := range functions {
 			if needed[obj] == "" {
+				if functions[obj] != obj.Name() {
+					return fmt.Errorf("renamed function does not need context: %s", obj.Name())
+				}
 				delete(functions, obj)
 			}
 		}
@@ -151,16 +165,13 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			return true
 		})
 		rewriteExprs(node, selectors)
-		if err := threadMethodContext(node, info, parameterMethods, ctx); err != nil {
-			return err
-		}
 		rewriteNodes(node, replacements(ctx))
 		for _, owner := range owners {
 			if err := injectOwnedAllocations(node, info, owner, ctx); err != nil {
 				return err
 			}
 		}
-		return nil
+		return threadMethodContext(fs, files, node, info, parameterMethods, ctx, context.Type)
 	}
 	// Save initializer expressions before declaration rewriting changes their roots.
 	helpers := make([]string, len(files))
@@ -354,6 +365,9 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 					fn.Name = ast.NewIdent(name)
 					calls = append(calls, name)
 				}
+				if name := functions[info.Defs[fn.Name]]; name != "" && name != fn.Name.Name {
+					fn.Name = &ast.Ident{Name: name, NamePos: fn.Name.Pos()}
+				}
 				fn.Recv = &ast.FieldList{List: []*ast.Field{{Names: []*ast.Ident{ast.NewIdent(recv)}, Type: &ast.StarExpr{X: ast.NewIdent(context.Type)}}}}
 			}
 			if err := rewrite(fn.Body, ctx); err != nil {
@@ -397,6 +411,21 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			fn.Body.List = append(body, fn.Body.List[prefix:]...)
 			decls = append(decls, fn)
 		}
+		// Binding callbacks may add signature-type imports while declarations
+		// are being rewritten. Keep those additions when installing the result.
+		listed := map[*ast.ImportSpec]bool{}
+		for _, d := range decls {
+			if g, ok := d.(*ast.GenDecl); ok && g.Tok == token.IMPORT {
+				for _, spec := range g.Specs {
+					listed[spec.(*ast.ImportSpec)] = true
+				}
+			}
+		}
+		for _, im := range f.Imports {
+			if !listed[im] {
+				decls = append([]ast.Decl{&ast.GenDecl{Tok: token.IMPORT, TokPos: f.Name.End(), Specs: []ast.Spec{im}}}, decls...)
+			}
+		}
 		comments := ast.NewCommentMap(fs, f, f.Comments)
 		f.Decls = decls
 		f.Comments = comments.Filter(f).Comments()
@@ -406,6 +435,18 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		allocate = "syncgoNewContext()"
 	}
 	constructor := fmt.Sprintf("\nfunc %s() *%s {\n%s := %s\n", context.Constructor, context.Type, recv, allocate)
+	// Source variables exist at their zero value before any initializer runs.
+	// Bind value-typed owned state at that same point, including variables whose
+	// initializer may inspect another variable through a method call.
+	valueOwners := map[string]string{}
+	for obj, field := range states {
+		if owner := ownedTypeRule(obj.Type(), owners, info); owner != nil {
+			valueOwners[field] = owner.Field
+		}
+	}
+	for _, field := range sortedKeys(valueOwners) {
+		constructor += fmt.Sprintf("%s.%s.%s = %s\n", recv, field, valueOwners[field], recv)
+	}
 	for _, name := range calls {
 		constructor += recv + "." + name + "()\n"
 	}

@@ -135,7 +135,11 @@ func injectOwnedAllocations(node ast.Node, info *types.Info, rule *OwnerRule, ct
 			}
 		case *ast.ValueSpec:
 			if n.Type != nil && len(n.Values) == 0 && matches(n.Type) {
-				err = fmt.Errorf("zero declaration of owned type requires explicit construction")
+				for range n.Names {
+					n.Values = append(n.Values, &ast.CompositeLit{Type: n.Type, Elts: []ast.Expr{field()}})
+				}
+				// The generated literal already carries its owner; traversing it
+				// with pre-rewrite type information cannot reveal new allocations.
 				return false
 			}
 		case *ast.CallExpr:

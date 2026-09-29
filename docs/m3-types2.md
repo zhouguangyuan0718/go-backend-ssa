@@ -25,10 +25,19 @@
 
 `ContextRule.Selective` 根据 go/types 对象身份计算函数依赖的闭包：只有读取实例状态、调用依赖实例的函数、捕获这类函数作为回调，或构造需绑定 owner 的对象时，才将自由函数变成 Context 方法。纯函数、泛型纯函数、枚举方法及局部同名函数保持原签名。
 
-对不能挂 owner 的切片 receiver，以及允许 nil receiver 的私有辅助方法，`Unit.ContextParams` 显式列出候选方法。只有其中实际需要状态的方法才增加 Context 参数，并改写直接调用和方法表达式调用。保留原 receiver 与可变参数，禁止将签名已变化的方法静默用作原类型的方法值；需要时另作明确适配。这不修改公开的 Type/Sizes 等接口。
+对不能挂 owner 的切片 receiver，以及允许 nil receiver 的私有辅助方法，`Unit.ContextParams` 显式列出候选方法。只有其中实际需要状态的方法才增加 Context 参数，并改写直接调用和方法表达式调用。保留原 receiver 与可变参数。方法值用保留原函数签名的闭包绑定 Context，receiver 在创建回调时只求值一次；提升的方法，以及直接调用 recover 的方法值仍要求明确适配，不能改变绑定时机或恢复栈语义。这不修改公开的 Type/Sizes 等接口。
 
 `OwnerRule.Existing` 可复用原结构体中的 `*Context` 字段，例如 Config.Context 和 Checker.ctxt。工具检查字段确实存在且类型符合规则；原先已写出的字段初始化表达式保留，新分配对象缺少该字段时才填入实例。新建和外来参数检查沿用现有 owner 机制，不再增加另一根重复的 owner 指针。
 
 只含常量的字符串索引表也可通过 ReadTables 局部化。索引写入、取址、切片或其他逃逸仍被拒绝；实际 types2.VarKind.String 无需因为名称表而依赖 Context。
 
-这些能力的测试覆盖传递依赖、闭包与回调、方法表达式、可变/未命名参数、nil receiver、纯方法值、既有字段类型校验和跨实例输入拒绝。完整 types2 原源码的试跑已通过原始包的类型检查，尚未完成全部状态改写；nopos、临时 operand 与诊断输出等仍需继续适配。试跑不等于可用的类型检查 API。
+这些能力的测试覆盖传递依赖、闭包与回调、方法表达式、可变/未命名参数、nil receiver、纯方法值、既有字段类型校验和跨实例输入拒绝。完整 types2 原源码的试跑已通过原始包的类型检查，尚未完成全部状态改写；nopos、临时 operand、回调绑定已完成迁移工具支持，诊断输出等仍需继续适配。试跑不等于可用的类型检查 API。
+
+
+## 零值与回调绑定
+
+导入类型的零值（例如 syntax.Pos）使用同包类型别名表达，保持原类型身份，避免要求每个引用 nopos 的文件新增 import。别名冲突被拒绝；需要 pointer receiver 的读取保持可寻址，地址读取仍得到独立对象。此规则仅用于已审查的零值，不用于 invalidTypeSet 等有身份语义的 sentinel。
+
+临时 `var x, y operand` 保留原字段零值，同时分别绑定当前实例；按值保存的包状态在执行任何 initializer 前绑定 owner。源代码已有的 Context.nextID 字段和 nextID 自由函数发生移植后的命名冲突时，用 ContextMethods 指定一个方法名，按对象身份替换，保留原字段。
+
+方法值绑定支持变参、方法表达式、隐式取址/解引用、跨文件签名 import 和原始回调签名。原源码中的直接 defer 调用保持直接调用，测试覆盖 panic/recover；给直接含 recover 的方法值增加包装会改变恢复语义，因此明确拒绝。完整 types2 的临时迁移试跑已通过改写后包的类型检查，尚未通过进程环境依赖审计和运行时验收；目前不发布部分 checker API。

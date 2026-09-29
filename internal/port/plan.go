@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v3"
+const ToolVersion = "syncgo-m3-v4"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -35,20 +35,21 @@ type Plan struct {
 }
 
 type Unit struct {
-	Source        string
-	Functions     []string
-	Declarations  []string // Types, complete constant groups, and Receiver.Method names.
-	Owner         *OwnerRule
-	WholeFile     bool     // Preserve types, constants and existing receivers.
-	ZeroValues    []string // Reviewed zero-valued struct globals replaced by fresh values.
-	ReadTables    []string // Constant array lookups localized in their consuming functions.
-	State         []StateRule
-	ReceiverState *ReceiverStateRule
-	Context       *ContextRule
-	ContextParams []string            // Private receiver methods that take an explicit context parameter.
-	Calls         []CallRule          // Reviewed external functions bound to context methods.
-	Nullable      map[string][]string // Reviewed owned pointers/receivers that accept nil.
-	Checks        map[string]string   // Selected function/method -> context argument validator.
+	Source         string
+	Functions      []string
+	Declarations   []string // Types, complete constant groups, and Receiver.Method names.
+	Owner          *OwnerRule
+	WholeFile      bool     // Preserve types, constants and existing receivers.
+	ZeroValues     []string // Reviewed zero-valued struct globals replaced by fresh values.
+	ReadTables     []string // Constant array lookups localized in their consuming functions.
+	State          []StateRule
+	ReceiverState  *ReceiverStateRule
+	Context        *ContextRule
+	ContextMethods map[string]string   // Free function -> method name when the native Context already uses that name.
+	ContextParams  []string            // Private receiver methods that take an explicit context parameter.
+	Calls          []CallRule          // Reviewed external functions bound to context methods.
+	Nullable       map[string][]string // Reviewed owned pointers/receivers that accept nil.
+	Checks         map[string]string   // Selected function/method -> context argument validator.
 }
 
 // CallRule derives the upstream signature from Source; no replacement package
@@ -149,6 +150,11 @@ func (p Plan) Validate() error {
 					return fmt.Errorf("invalid receiver state field")
 				}
 				seen[field] = true
+			}
+		}
+		for source, target := range u.ContextMethods {
+			if u.Context == nil || !token.IsIdentifier(source) || !token.IsIdentifier(target) {
+				return fmt.Errorf("invalid context method name: %s", source)
 			}
 		}
 		parameterMethods := map[string]bool{}

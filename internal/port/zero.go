@@ -45,13 +45,31 @@ func replaceZeroValues(fs *token.FileSet, files []*ast.File, units []Unit, info 
 					}
 					obj := info.Defs[id]
 					named, ok := obj.Type().(*types.Named)
-					if !ok || named.Obj().Pkg() != obj.Pkg() {
-						return fmt.Errorf("zero-value rule requires a local named struct: %s", id.Name)
+					if !ok {
+						return fmt.Errorf("zero-value rule requires a named struct: %s", id.Name)
 					}
 					if _, ok := named.Underlying().(*types.Struct); !ok {
 						return fmt.Errorf("zero-value rule requires a struct: %s", id.Name)
 					}
-					zeros[obj] = named.Obj().Name()
+					name := zeroTypeName(obj)
+					if named.Obj().Pkg() != obj.Pkg() {
+						// A package-local alias preserves the imported type's
+						// identity without adding imports in every consuming file.
+						for _, f := range files {
+							collision := false
+							ast.Inspect(f, func(n ast.Node) bool {
+								if id, ok := n.(*ast.Ident); ok && id.Name == name {
+									collision = true
+								}
+								return true
+							})
+							if collision {
+								return fmt.Errorf("zero type alias collision: %s", name)
+							}
+						}
+						decls = append(decls, &ast.GenDecl{TokPos: g.TokPos, Tok: token.TYPE, Specs: []ast.Spec{&ast.TypeSpec{Name: &ast.Ident{Name: name, NamePos: id.Pos()}, Assign: id.Pos(), Type: v.Type}}})
+					}
+					zeros[obj] = name
 					found[id.Name], remove = true, true
 				}
 				if !remove {
@@ -74,11 +92,12 @@ func replaceZeroValues(fs *token.FileSet, files []*ast.File, units []Unit, info 
 	if len(zeros) == 0 {
 		return nil
 	}
+	addresses := zeroMethodReceivers(info)
 	replacements := map[*ast.Ident]ast.Expr{}
 	for id, obj := range info.Uses {
 		if name := zeros[obj]; name != "" {
 			// Parentheses disambiguate a composite literal in if/switch headers.
-			replacements[id] = &ast.ParenExpr{X: &ast.CompositeLit{Type: &ast.Ident{Name: name, NamePos: id.Pos()}}}
+			replacements[id] = freshZero(&ast.Ident{Name: name, NamePos: id.Pos()}, addresses[id])
 		}
 	}
 	for _, f := range files {
@@ -90,16 +109,52 @@ func replaceZeroValues(fs *token.FileSet, files []*ast.File, units []Unit, info 
 // Uses of another migrated package's zero sentinel follow the declaration's
 // reviewed rule; consumers do not need a second per-file replacement list.
 func replaceImportedZeros(files []*ast.File, info *types.Info, zeros map[types.Object]string) {
+	addresses := zeroMethodReceivers(info)
 	for _, f := range files {
 		replacements := map[ast.Node]ast.Expr{}
 		ast.Inspect(f, func(n ast.Node) bool {
 			if sel, ok := n.(*ast.SelectorExpr); ok {
 				if name := zeros[info.Uses[sel.Sel]]; name != "" {
-					replacements[sel] = &ast.ParenExpr{X: &ast.CompositeLit{Type: &ast.SelectorExpr{X: sel.X, Sel: &ast.Ident{Name: name, NamePos: sel.Sel.Pos()}}}}
+					replacements[sel] = freshZero(&ast.SelectorExpr{X: sel.X, Sel: &ast.Ident{Name: name, NamePos: sel.Sel.Pos()}}, addresses[sel])
 				}
 			}
 			return true
 		})
 		rewriteExprs(f, replacements)
 	}
+}
+
+// Imported zero types get an alias in the sentinel's original package. Export
+// it only when cross-package uses of an exported sentinel need to name it.
+func zeroTypeName(obj types.Object) string {
+	named := obj.Type().(*types.Named)
+	if named.Obj().Pkg() == obj.Pkg() {
+		return named.Obj().Name()
+	}
+	prefix := "zeroValue_"
+	if obj.Exported() {
+		prefix = "ZeroValue_"
+	}
+	return prefix + obj.Name()
+}
+
+func zeroMethodReceivers(info *types.Info) map[ast.Expr]bool {
+	addresses := map[ast.Expr]bool{}
+	for sel, selection := range info.Selections {
+		sig, ok := selection.Obj().Type().(*types.Signature)
+		if !ok || sig.Recv() == nil {
+			continue
+		}
+		if _, ok := sig.Recv().Type().(*types.Pointer); ok {
+			addresses[ast.Unparen(sel.X)] = true
+		}
+	}
+	return addresses
+}
+func freshZero(typ ast.Expr, addressable bool) ast.Expr {
+	var value ast.Expr = &ast.CompositeLit{Type: typ}
+	if addressable {
+		value = &ast.StarExpr{X: &ast.UnaryExpr{Op: token.AND, X: value}}
+	}
+	return &ast.ParenExpr{X: value}
 }

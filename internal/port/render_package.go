@@ -51,7 +51,7 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	for _, unit := range units {
 		for _, name := range unit.ZeroValues {
 			obj := pkg.Scope().Lookup(name)
-			before.zeros[obj] = obj.Type().(*types.Named).Obj().Name()
+			before.zeros[obj] = zeroTypeName(obj)
 		}
 	}
 	replaceImportedZeros(original, info, before.zeros)

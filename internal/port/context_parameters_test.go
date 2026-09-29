@@ -54,7 +54,7 @@ func TestContextParameters(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	s.cache[plan.Units[0].Source] = []byte(code + "\nfunc Bad()func(...int)int{return terms{1}.sum}\n")
+	s.cache[plan.Units[0].Source] = []byte(code + "\ntype embedding struct{terms};func Bad()func(...int)int{return embedding{}.sum}\n")
 	if _, err := Render(s, plan, t.TempDir()); err == nil || !strings.Contains(err.Error(), "method value") {
 		t.Fatalf("method value must be rejected: %v", err)
 	}

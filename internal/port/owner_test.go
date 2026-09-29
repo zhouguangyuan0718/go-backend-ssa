@@ -59,8 +59,6 @@ func TestOwnership(t *testing.T){
 	for _, tc := range []struct{ name, source, want string }{
 
 		{"missing owner", source, "requires an owner rule"},
-		{"zero local", strings.Replace(source, "return new(Node)", "var n Node; return &n", 1), "zero declaration"},
-		{"zero local in receiver", strings.Replace(source, "return &Node{N:p.N}", "var n Node; return &n", 1), "zero declaration"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u := plan.Units[0]
