@@ -1,5 +1,5 @@
 // Package typecheck exposes the migrated native compiler's IR typecheck state.
-// This currently initializes its universe and selected construction helpers;
+// This currently initializes its universe and native runtime declarations;
 // expression/statement checking and the noder reader are not yet integrated.
 package typecheck
 

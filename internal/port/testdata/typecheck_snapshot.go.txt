@@ -21,5 +21,26 @@ func TestSyncgoNativeSnapshot(t *testing.T){
  field:=TY.NewField(pos,UP.Lookup("args"),TY.NewSlice(TY.Types[types.TINT]));field.SetIsDDD(true)
  params:=UP.NewFuncParams([]*types.Field{field})
  out=append(out,fmt.Sprintf("params:%t:%t:%t:%t:%t",params[0]!=field,params[0].Type==field.Type,params[0].Sym==field.Sym,params[0].Pos==field.Pos,params[0].IsDDD()))
+
+ UP.InitRuntime();UP.InitCoverage()
+ for _,d:=range UP.runtimeDecls{n:=UP.LookupRuntime(d.name);out=append(out,fmt.Sprintf("runtime:%s:%v:%d:%v:%t:%t:%s:%v",d.name,n.Class,n.Typecheck(),n.Type(),n.Sym().Def==n,n.Func!=nil,n.Linksym().Name,n.Linksym().ABI()))}
+ coverage:=UP.LookupCoverage("initHook");out=append(out,fmt.Sprintf("coverage:%v:%v:%s",coverage.Class,coverage.Type(),coverage.Linksym().Name))
+ out=append(out,fmt.Sprintf("ABI:%t:%t:%t",UP.LookupRuntime("newobject").Linksym()==UP.LookupRuntimeFunc("newobject"),UP.LookupRuntime("writeBarrier").Linksym()==UP.LookupRuntimeVar("writeBarrier"),UP.LookupRuntimeVar("newobject")!=UP.LookupRuntimeFunc("newobject")))
+ for _,item:=range []struct{name string;args []*types.Type}{
+ {"newobject",[]*types.Type{TY.Types[types.TINT]}},
+ {"newobject",[]*types.Type{TY.Types[types.TSTRING]}},
+ {"mapaccess1",[]*types.Type{TY.Types[types.TSTRING],TY.Types[types.TINT],TY.Types[types.TSTRING],TY.Types[types.TINT]}},
+ {"chanrecv1",[]*types.Type{TY.Types[types.TINT],TY.Types[types.TINT]}},
+ }{original:=UP.LookupRuntime(item.name);n:=UP.LookupRuntime(item.name,item.args...);TY.CalcSize(n.Type());out=append(out,fmt.Sprintf("subst:%s:%v:%v:%t:%t:%t:%t:%t:%d",item.name,n.Type(),original.Type(),n!=original,n.Sym()==original.Sym(),n.Func==original.Func,n.Sym().Def==original,n.Type().ResultsTuple()!=original.Type().ResultsTuple(),n.Type().ArgWidth()))}
+ placeholder:=TY.Types[types.TANY]
+ structure:=TY.NewStruct([]*types.Field{
+ TY.NewField(pos,UP.Lookup("a"),TY.NewArray(placeholder,2)),
+ TY.NewField(pos,UP.Lookup("b"),TY.NewSlice(placeholder)),
+ TY.NewField(pos,UP.Lookup("c"),TY.NewMap(placeholder,placeholder)),
+ TY.NewField(pos,UP.Lookup("d"),TY.NewChan(placeholder,types.Cboth)),
+ })
+ values:=[]*types.Type{TY.Types[types.TINT],TY.Types[types.TSTRING],TY.Types[types.TUINT],TY.ByteType,TY.Types[types.TBOOL]}
+ substituted:=TY.SubstAny(structure,&values);TY.CalcSize(substituted)
+ out=append(out,fmt.Sprintf("structure:%v:%v:%d:%d:%t:%t:%t:%t",structure,substituted,len(values),substituted.Size(),structure.Field(0)!=substituted.Field(0),structure.Field(0).Type!=substituted.Field(0).Type,structure.Field(2).Type!=substituted.Field(2).Type,substituted.Underlying()==substituted))
  b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
 }

@@ -280,6 +280,12 @@ func TestNativeIRPublicGraph(t *testing.T) {
 	c := ir.NewContext(u, link)
 	tc := typecheck.NewContext(c)
 	tc.InitUniverse()
+	tc.InitRuntime()
+	alloc := tc.LookupRuntime("newobject", u.Types[types.Int])
+	if alloc.Type().Result(0).Type.Elem() != u.Types[types.Int] || alloc.Linksym() != tc.LookupRuntimeFunc("newobject") {
+		t.Fatal("native runtime substitution or ABI binding")
+	}
+
 	if c.BlankNode != u.BlankSym.Def || u.BuiltinPkg.Lookup("append").Def.(*ir.Name).BuiltinOp != ir.OAPPEND {
 		t.Fatal("native universe not installed")
 	}

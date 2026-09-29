@@ -5,6 +5,7 @@ import "go-backend-ssa/internal/cmd/obj"
 // LinkContext owns the native linker-symbol namespace inputs. The Link and its
 // lookup maps stay intact; no second symbol representation is introduced.
 type LinkContext struct {
+	Timer           Timings
 	Flag            CmdFlags
 	Ctxt            *obj.Link
 	ReservedImports map[string]bool

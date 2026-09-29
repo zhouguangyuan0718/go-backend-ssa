@@ -38,9 +38,3 @@ func (syncgoCtx *Context) NodNil() ir.Node {
 	}
 	return syncgoCtx.IR.NewNilExpr(syncgoCtx.IR.Types.Pos, syncgoCtx.IR.Types.Types[types.TNIL])
 }
-func (syncgoCtx *Context) initialize() {
-	if syncgoCtx == nil {
-		panic("uninitialized compilation")
-	}
-	syncgoCtx.syncgoInitVars0()
-}

@@ -36,6 +36,7 @@
 19. [M3 原生符号与内联位置](docs/m3-link.md)：ABI 符号身份、Link 显式绑定和内联位置还原。
 20. [M3 原生 IR 图](docs/m3-ir.md)：节点构造/复制/遍历、真实 ir.Name 类型绑定、函数/闭包及位置归属。
 21. [M3 原生 typecheck universe](docs/m3-typecheck.md)：内建名称、常量、操作表初始化及共享函数状态。
+22. [M3 原生 runtime 声明](docs/m3-runtime.md)：隐藏声明、类型参数替换、ABI 符号与实例计时。
 
 ## 当前可运行的工具
 

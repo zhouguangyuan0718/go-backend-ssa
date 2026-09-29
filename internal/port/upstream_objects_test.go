@@ -86,7 +86,9 @@ func testUpstreamObjectDeclarations(t *testing.T, s *Source, r *Rendered) {
 // Compare their full signatures and bodies with immutable upstream source.
 func testUpstreamObjectMethods(t *testing.T, s *Source, r *Rendered) {
 	t.Helper()
-	selected := map[string][]string{}
+	selected := map[string][]string{
+		"src/cmd/compile/internal/base/timings.go": {"Timings.append", "Timings.Start", "Timings.Stop", "Timings.AddEvent", "Timings.Write", "commonPrefix", "lines.add", "lines.write", "isnumber"},
+	}
 	for _, u := range Migration().Units {
 		if u.sourcePackage() != "cmd/internal/obj" {
 			continue

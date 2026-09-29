@@ -6,8 +6,47 @@
 package typecheck
 
 import (
+	"go-backend-ssa/internal/cmd/obj"
+	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/types"
 )
+
+// LookupRuntime returns a function or variable declared in
+// _builtin/runtime.go. If types_ is non-empty, successive occurrences
+// of the "any" placeholder type will be substituted.
+func (syncgoCtx *Context) LookupRuntime(name string, types_ ...*types.Type) *ir.Name {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	s := syncgoCtx.IR.Pkgs.Runtime.Lookup(name)
+	if s == nil || s.Def == nil {
+		syncgoCtx.fatalf("LookupRuntime: can't find runtime.%s", name)
+	}
+	n := s.Def.(*ir.Name)
+	if len(types_) != 0 {
+		n = syncgoCtx.substArgTypes(n, types_...)
+	}
+	return n
+}
+
+// SubstArgTypes substitutes the given list of types for
+// successive occurrences of the "any" placeholder in the
+// type syntax expression n.Type.
+func (syncgoCtx *Context) substArgTypes(old *ir.Name, types_ ...*types.Type) *ir.Name {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	for _, t := range types_ {
+		syncgoCtx.IR.Types.CalcSize(t)
+	}
+	n := syncgoCtx.IR.NewNameAt(old.Pos(), old.Sym(), syncgoCtx.IR.Types.SubstAny(old.Type(), &types_))
+	n.Class = old.Class
+	n.Func = old.Func
+	if len(types_) > 0 {
+		syncgoCtx.fatalf("SubstArgTypes: too many argument types")
+	}
+	return n
+}
 
 // AutoLabel generates a new Name node for use with
 // an automatically generated label.
@@ -36,4 +75,90 @@ func (syncgoCtx *Context) Lookup(name string) *types.Sym {
 		panic("uninitialized compilation")
 	}
 	return syncgoCtx.IR.Types.LocalPkg.Lookup(name)
+}
+
+// InitRuntime loads the definitions for the low-level runtime functions,
+// so that the compiler can generate calls to them,
+// but does not make them visible to user code.
+func (syncgoCtx *Context) InitRuntime() {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	syncgoCtx.IR.Base.Timer.Start("fe", "loadsys")
+
+	typs := syncgoCtx.runtimeTypes()
+	for _, d := range &syncgoCtx.runtimeDecls {
+		sym := syncgoCtx.IR.Pkgs.Runtime.Lookup(d.name)
+		typ := typs[d.typ]
+		switch d.tag {
+		case funcTag:
+			syncgoCtx.importfunc(sym, typ)
+		case varTag:
+			syncgoCtx.importvar(sym, typ)
+		default:
+			syncgoCtx.fatalf("unhandled declaration tag %v", d.tag)
+		}
+	}
+}
+
+// LookupRuntimeFunc looks up Go function name in package runtime. This function
+// must follow the internal calling convention.
+func (syncgoCtx *Context) LookupRuntimeFunc(name string) *obj.LSym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	return syncgoCtx.LookupRuntimeABI(name, obj.ABIInternal)
+}
+
+// LookupRuntimeVar looks up a variable (or assembly function) name in package
+// runtime. If this is a function, it may have a special calling
+// convention.
+func (syncgoCtx *Context) LookupRuntimeVar(name string) *obj.LSym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	return syncgoCtx.LookupRuntimeABI(name, obj.ABI0)
+}
+
+// LookupRuntimeABI looks up a name in package runtime using the given ABI.
+func (syncgoCtx *Context) LookupRuntimeABI(name string, abi obj.ABI) *obj.LSym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	return syncgoCtx.IR.Base.PkgLinksym("runtime", name, abi)
+}
+
+// InitCoverage loads the definitions for routines called
+// by code coverage instrumentation (similar to InitRuntime above).
+func (syncgoCtx *Context) InitCoverage() {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	typs := syncgoCtx.coverageTypes()
+	for _, d := range &syncgoCtx.coverageDecls {
+		sym := syncgoCtx.IR.Pkgs.Coverage.Lookup(d.name)
+		typ := typs[d.typ]
+		switch d.tag {
+		case funcTag:
+			syncgoCtx.importfunc(sym, typ)
+		case varTag:
+			syncgoCtx.importvar(sym, typ)
+		default:
+			syncgoCtx.fatalf("unhandled declaration tag %v", d.tag)
+		}
+	}
+}
+
+// LookupCoverage looks up the Go function 'name' in package
+// runtime/coverage. This function must follow the internal calling
+// convention.
+func (syncgoCtx *Context) LookupCoverage(name string) *ir.Name {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	sym := syncgoCtx.IR.Pkgs.Coverage.Lookup(name)
+	if sym == nil {
+		syncgoCtx.fatalf("LookupCoverage: can't find runtime/coverage.%s", name)
+	}
+	return sym.Def.(*ir.Name)
 }

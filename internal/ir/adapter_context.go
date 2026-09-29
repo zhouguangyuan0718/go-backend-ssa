@@ -51,6 +51,17 @@ func NewContext(u *types.Universe, link *obj.Link) *Context {
 	u.BindLink(link)
 	c := &Context{Types: u, Base: u.LinkContext()}
 	c.initialize()
+	// Native driver pseudo-packages from gc/main.go. Keep their source identity
+	// separate from real imported packages while using the original link prefixes.
+	c.Pkgs.Runtime = u.NewPkg("go.runtime", "runtime")
+	c.Pkgs.Runtime.Prefix = "runtime"
+	c.Pkgs.InternalMaps = u.NewPkg("go.internal/runtime/maps", "internal/runtime/maps")
+	c.Pkgs.InternalMaps.Prefix = "internal/runtime/maps"
+	c.Pkgs.Itab = u.NewPkg("go.itab", "go.itab")
+	c.Pkgs.Itab.Prefix = "go:itab"
+	c.Pkgs.Go = u.NewPkg("go", "")
+	c.Pkgs.Coverage = u.NewPkg("go.coverage", "runtime/coverage")
+	c.Pkgs.Coverage.Prefix = "runtime/coverage"
 	return c
 }
 

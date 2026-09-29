@@ -10,6 +10,15 @@ import (
 // for IR, symbols, types, current function and current position. Its mutable
 // operations and those of IR must be serialized together.
 type Context struct {
+	runtimeDecls [228]struct {
+		name     string
+		tag, typ int
+	}
+	coverageDecls [1]struct {
+		name     string
+		tag, typ int
+	}
+
 	IR                                                                                *ir.Context
 	okfor                                                                             [ir.OEND][]bool
 	okforeq, okforadd, okforand, okfornone, okforbool, okforcap, okforlen, okforarith [types.NTYPE]bool

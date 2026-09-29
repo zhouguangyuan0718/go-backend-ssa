@@ -714,6 +714,157 @@ func (syncgoCtx *Universe) NewField(pos src.XPos, sym *Sym, typ *Type) *Field {
 	return f
 }
 
+// SubstAny walks t, replacing instances of "any" with successive
+// elements removed from types.  It returns the substituted type.
+func (syncgoCtx *Universe) SubstAny(t *Type, types *[]*Type) *Type {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if t != nil {
+		if syncgoCtx == nil || t == nil || t.universe != syncgoCtx {
+			panic("argument belongs to another or uninitialized compilation")
+		}
+	}
+	syncgoCtx.checkSubstitution(t, types)
+	if t == nil {
+		return nil
+	}
+
+	switch t.kind {
+	default:
+		// Leave the type unchanged.
+
+	case TANY:
+		if len(*types) == 0 {
+			syncgoCtx.fatalf("SubstArgTypes: not enough argument types")
+		}
+		t = (*types)[0]
+		*types = (*types)[1:]
+
+	case TPTR:
+		elem := syncgoCtx.SubstAny(t.Elem(), types)
+		if elem != t.Elem() {
+			t = t.copy()
+			t.extra = Ptr{Elem: elem}
+		}
+
+	case TARRAY:
+		elem := syncgoCtx.SubstAny(t.Elem(), types)
+		if elem != t.Elem() {
+			t = t.copy()
+			t.extra.(*Array).Elem = elem
+		}
+
+	case TSLICE:
+		elem := syncgoCtx.SubstAny(t.Elem(), types)
+		if elem != t.Elem() {
+			t = t.copy()
+			t.extra = Slice{Elem: elem}
+		}
+
+	case TCHAN:
+		elem := syncgoCtx.SubstAny(t.Elem(), types)
+		if elem != t.Elem() {
+			t = t.copy()
+			t.extra.(*Chan).Elem = elem
+		}
+
+	case TMAP:
+		key := syncgoCtx.SubstAny(t.Key(), types)
+		elem := syncgoCtx.SubstAny(t.Elem(), types)
+		if key != t.Key() || elem != t.Elem() {
+			t = t.copy()
+			t.extra.(*Map).Key = key
+			t.extra.(*Map).Elem = elem
+		}
+
+	case TFUNC:
+		ft := t.funcType()
+		allParams := syncgoCtx.substFields(ft.allParams, types)
+
+		t = t.copy()
+		ft = t.funcType()
+		ft.allParams = allParams
+
+		rt := ft.resultsTuple
+		rt = rt.copy()
+		ft.resultsTuple = rt
+		rt.setFields(t.Results())
+
+	case TSTRUCT:
+		// Make a copy of all fields, including ones whose type does not change.
+		// This prevents aliasing across functions, which can lead to later
+		// fields getting their Offset incorrectly overwritten.
+		nfs := syncgoCtx.substFields(t.Fields(), types)
+		t = t.copy()
+		t.setFields(nfs)
+	}
+
+	return t
+}
+
+func (syncgoCtx *Universe) substFields(fields []*Field, types *[]*Type) []*Field {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	nfs := make([]*Field, len(fields))
+	for i, f := range fields {
+		nft := syncgoCtx.SubstAny(f.Type, types)
+		nfs[i] = f.Copy()
+		nfs[i].Type = nft
+	}
+	return nfs
+}
+
+// copy returns a shallow copy of the Type.
+func (t *Type) copy() *Type {
+	if t == nil {
+		return nil
+	}
+	var syncgoCtx *Universe
+	if t == nil {
+		syncgoCtx = newUniverse()
+	} else {
+		syncgoCtx = t.universe
+	}
+	if syncgoCtx == nil {
+		panic("receiver has no compilation owner")
+	}
+
+	nt := *t
+	// copy any *T Extra fields, to avoid aliasing
+	switch t.kind {
+	case TMAP:
+		x := *t.extra.(*Map)
+		nt.extra = &x
+	case TFORW:
+		x := *t.extra.(*Forward)
+		nt.extra = &x
+	case TFUNC:
+		x := *t.extra.(*Func)
+		nt.extra = &x
+	case TSTRUCT:
+		x := *t.extra.(*Struct)
+		nt.extra = &x
+	case TINTER:
+		x := *t.extra.(*Interface)
+		nt.extra = &x
+	case TCHAN:
+		x := *t.extra.(*Chan)
+		nt.extra = &x
+	case TARRAY:
+		x := *t.extra.(*Array)
+		nt.extra = &x
+	case TTUPLE, TSSA, TRESULTS:
+		syncgoCtx.fatalf("ssa types cannot be copied")
+	}
+	// TODO(mdempsky): Find out why this is necessary and explain.
+	if t.underlying == t {
+		nt.underlying = &nt
+	}
+	return &nt
+}
+
 func (f *Field) Copy() *Field {
 	nf := *f
 	return &nf

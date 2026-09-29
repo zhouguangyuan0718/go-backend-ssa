@@ -267,3 +267,16 @@ func formatUniverse(s *Sym) *Universe {
 	}
 	return u
 }
+
+// All substituted types belong to this instance, including inputs not yet
+// consumed by the recursive native algorithm. Validate before mutating the list.
+func (u *Universe) checkSubstitution(t *Type, values *[]*Type) {
+	if values == nil {
+		return
+	}
+	for _, value := range *values {
+		if value != nil && value.Universe() != u {
+			panic("substitution type belongs to another compilation")
+		}
+	}
+}
