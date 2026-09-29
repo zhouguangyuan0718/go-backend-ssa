@@ -20,6 +20,14 @@ func testUpstreamSSAState(t *testing.T, source *Source, rendered *Rendered, root
 		writeTestFile(t, dir, name, string(data))
 	}
 	plan := Migration()
+	referenceImports := plan.importMap(source.Pin.TargetModule)
+	referenceImports["cmd/compile/internal/base"] = "go-backend-ssa/internal/reference/base"
+	// Only the host fatal exit is replaced in the reference harness. Valid
+	// constructor paths remain upstream code; this is not a base implementation.
+	writeTestFile(t, dir, "internal/reference/base/adapter_exit.go", `package base
+import "fmt"
+func Fatalf(format string, args ...any) { panic(fmt.Errorf(format, args...)) }
+`)
 	for _, u := range plan.Units {
 		if u.Context != nil {
 			data, err := os.ReadFile(filepath.Join(root, u.adapterPath()))
@@ -41,7 +49,7 @@ func testUpstreamSSAState(t *testing.T, source *Source, rendered *Rendered, root
 			t.Fatal(err)
 		}
 		// Deliberately bypass context/owner rewriting and the no-global output audit.
-		raw, err := transform(fs, f, nil, Unit{Source: u.Source}, plan.importMap(source.Pin.TargetModule))
+		raw, err := transform(fs, f, nil, Unit{Source: u.Source}, referenceImports)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -49,7 +57,7 @@ func testUpstreamSSAState(t *testing.T, source *Source, rendered *Rendered, root
 	}
 	snapshot := `package types
 import "fmt"
-func Snapshot() []string {
+func Snapshot(size int) []string {
  SETUP
  var out []string
  for _,typ:=range []*Type{UP.TypeInvalid,UP.TypeMem,UP.TypeFlags,UP.TypeVoid,UP.TypeInt128,UP.TypeVec128,UP.TypeVec256,UP.TypeVec512,UP.TypeMask} {
@@ -62,11 +70,22 @@ func Snapshot() []string {
  }
  cached:=UP.TypeResultMem.extra.(*Results).Types
  out=append(out,fmt.Sprintf("%d:%t",len(cached),cached[0]==UP.TypeMem))
+ p:=UP.NewPtr(value)
+ slice:=UP.NewSlice(value)
+ array:=UP.NewArray(value,7)
+ channel:=UP.NewChan(value,Crecv)
+ mapping:=UP.NewMap(value,value)
+ out=append(out,fmt.Sprintf("ptr:%d:%d:%d:%d:%d:%t:%t",p.width,p.align,p.ptrBytes,p.intRegs,p.alg,p==UP.NewPtr(value),p==value.PtrTo()))
+ out=append(out,fmt.Sprintf("composites:%t:%d:%d:%t",slice==UP.NewSlice(value),array.NumElem(),channel.ChanDir(),mapping.Key()==value))
+ for _,typ:=range []*Type{p,slice,array,channel,mapping}{out=append(out,fmt.Sprintf("%d:%t:%t:%t",typ.Kind(),typ.Elem()==value,typ.HasShape(),typ.HasNil()))}
+ UP.NewPtrCacheEnabled=false
+ fresh:=UP.newType(TBOOL)
+ out=append(out,fmt.Sprintf("uncached:%t:%t",UP.NewPtr(fresh)==UP.NewPtr(fresh),UP.NewPtr(value)==p))
  return out
 }
 `
 	for _, variant := range []struct{ path, setup, prefix string }{
-		{"internal/reference/types", "", ""}, {"internal/types", "u:=NewUniverse(8,8,1<<50)", "u."},
+		{"internal/reference/types", "PtrSize=size;NewPtrCacheEnabled=true", ""}, {"internal/types", "u:=NewUniverse(size,size,1<<50)", "u."},
 	} {
 		code := strings.ReplaceAll(strings.ReplaceAll(snapshot, "SETUP", variant.setup), "UP.", variant.prefix)
 		writeTestFile(t, dir, variant.path+"/adapter_snapshot.go", code)
@@ -80,8 +99,10 @@ import (
  library "go-backend-ssa/internal/types"
 )
 func TestUpstreamSSAState(t *testing.T){
- want:=native.Snapshot()
- for i:=0;i<3;i++{if got:=library.Snapshot();!reflect.DeepEqual(got,want){t.Fatalf("library %v\nupstream %v",got,want)}}
+ for _,size:=range []int{4,8} {
+  want:=native.Snapshot(size)
+  for i:=0;i<3;i++{if got:=library.Snapshot(size);!reflect.DeepEqual(got,want){t.Fatalf("size %d: library %v\nupstream %v",size,got,want)}}
+ }
 }
 `)
 	cmd := exec.Command("go", "test", "-race", "-v", ".")

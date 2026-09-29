@@ -16,6 +16,10 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	// Go initializes files in lexical filename order, independent of plan order.
 	units = append([]Unit(nil), units...)
 	sort.Slice(units, func(i, j int) bool { return units[i].Source < units[j].Source })
+	signatureSources, err := loadCallSignatures(s, units, before)
+	if err != nil {
+		return nil, nil, err
+	}
 	fs := token.NewFileSet()
 	var original []*ast.File
 	sources := make([][]byte, len(units))
@@ -44,6 +48,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		return nil, nil, err
 	}
 
+	if err := localizeReadTables(fs, original, info, units); err != nil {
+		return nil, nil, err
+	}
 	if err := rewritePackageContext(fs, original, info, units); err != nil {
 		return nil, nil, err
 	}
@@ -63,9 +70,15 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		}
 		output = append(output, outf)
 		prov := Provenance{Output: u.output(), Source: u.Source, SourceSHA256: hash(sources[i]), OutputSHA256: hash(out), Rule: "select-and-relocate-v1", Declarations: append(append([]string(nil), u.Functions...), u.Declarations...)}
+		for _, call := range u.Calls {
+			if prov.SignatureSources == nil {
+				prov.SignatureSources = map[string]string{}
+			}
+			prov.SignatureSources[call.Source] = signatureSources[call.Source]
+		}
 		if u.WholeFile {
 			prov.Rule = "whole-file-and-zero-values-v1"
-			prov.Declarations = append([]string{"*"}, u.ZeroValues...)
+			prov.Declarations = append(append([]string{"*"}, u.ZeroValues...), u.ReadTables...)
 		}
 		if c := u.Context; c != nil {
 			if _, exists := s.Blobs[path.Join(path.Dir(u.Source), c.Adapter)]; exists {
@@ -129,6 +142,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 				}
 			}
 		}
+	}
+	if err := checkCallAdapters(units, before, outpkg, imports); err != nil {
+		return nil, nil, err
 	}
 	after.packages[dest] = outpkg
 	return result, provenance, nil

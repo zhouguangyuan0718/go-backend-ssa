@@ -15,6 +15,8 @@ type Kind = compiler.Kind
 type Pkg = compiler.Pkg
 type Sym = compiler.Sym
 type Object = compiler.Object
+type ChanDir = compiler.ChanDir
+type Map = compiler.Map
 
 const (
 	Int8          = compiler.TINT8
@@ -38,6 +40,14 @@ const (
 	Tuple         = compiler.TTUPLE
 	Results       = compiler.TRESULTS
 	SSA           = compiler.TSSA
+	Pointer       = compiler.TPTR
+	Slice         = compiler.TSLICE
+	Array         = compiler.TARRAY
+	MapKind       = compiler.TMAP
+	Chan          = compiler.TCHAN
+	RecvOnly      = compiler.Crecv
+	SendOnly      = compiler.Csend
+	SendRecv      = compiler.Cboth
 )
 
 func NewUniverse(layout target.Layout) (*Universe, error) {

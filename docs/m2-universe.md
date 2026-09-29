@@ -70,7 +70,7 @@ GOTOOLCHAIN=go1.27.1 go run ./cmd/syncgo check \
 
 ## 尚未实现
 
-保留 Type 字段并不等于完成类型系统。当前标量节点 width 为上游 BADWIDTH，align 尚未计算；没有伪造 Size/Alignment 结果。InitTypes、预声明名字、CalcSize、递归布局、NewPtr/NewSlice 缓存、接口/方法集、泛型、完整命名类型及包选择器仍待移植。
+保留 Type 字段并不等于完成类型系统。当前标量节点 width 为上游 BADWIDTH，align 尚未计算；没有伪造 Size/Alignment 结果。InitTypes、预声明名字、CalcSize、递归布局、接口/方法集、泛型、完整命名类型及包选择器仍待移植。
 
 32/64 位测试目前证明布局输入和图的实例隔离，**不是完整类型大小/对齐语义验收**。还没有源码到 SSA 的 Build、原生 lowering 或工具链自举。后续继续处理布局、预声明类型表和构造函数的全局依赖，再扩展编译阶段。
 
@@ -100,3 +100,13 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 额外将同一固定上游切片编译为保留原始全局变量和 init 的参考包，仅重定位 imports；与移植包对比 SSA 身份分类、缓存、HasShape 传播、width/align 和 SIMD 标记。go1.27.0 与 go1.27.1 均执行该差分。这是类型切片验证，不是 Go 源码到 SSA 的端到端验证。
 
 第三批验证结果：全量 `go test -race -v ./...`（设置 `GO_SSA_SOURCE_REPO`）通过，`syncgo check` 验证 16 份产物通过；go1.27.0 → go1.27.1 的 14 份移植 Go 文件内容无变化，来源工作树状态不变。日志位于本地忽略目录 `_work/m2-state-tests.log`。
+
+## 第四批：复合类型构造与指针缓存
+
+已移植上游 NewPtr/NewSlice/NewArray/NewMap/NewChan 及 Elem/Key/NumElem/ChanDir/PtrTo 等消费者接口。PtrSize 来自当前 Universe，NewPtrCacheEnabled 也是每实例字段。保留上游缓存语义：关闭开关只禁止写入新的指针缓存，已有缓存仍可命中；切片仍使用独立的元素缓存。指针的 width/align/ptrBytes/intRegs/alg 由原 NewPtr 算法初始化，32/64 位差分均通过；其他复合类型的完整布局仍等待 CalcSize。
+
+`base.Fatalf` 按上游真实函数签名绑定到同目录 `Universe.fatalf`，后者 panic(error)，不会退出宿主进程。该入口用于编译器不变量失败，不代替用户源码诊断。工具只将从固定源文件读取的签名放入移植前类型检查器，不生成假的 base 包；转换按 go/types 对象身份进行，且移植后核对 adapter 的完整签名。签名来源哈希写入现有生成账本。
+
+上游 Kind.String 也已移植。其常量整数索引表移动到使用它的函数内部，保留数组类型和查表算法；工具只允许索引读取和 len，拒绝写入、取地址、slice 或其他逃逸。
+
+验证：完整 race、独立 consumer、两版参考切片差分及升级检查通过；指针缓存开关、跨 Universe 拒绝、失败后继续构造均有覆盖。参考切片保留上游全局状态与构造算法，仅对宿主 Fatalf 退出行为使用测试 panic 适配，差分执行合法输入路径。`syncgo check` 验证 18 份产物，16 份移植 Go 文件在 go1.27.0 → go1.27.1 间无内容变化。日志：`_work/m2-constructors-tests.log`。

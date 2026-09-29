@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m2-v3"
+const ToolVersion = "syncgo-m2-v4"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -40,8 +40,14 @@ type Unit struct {
 	Owner        *OwnerRule
 	WholeFile    bool     // Preserve types, constants and existing receivers.
 	ZeroValues   []string // Reviewed zero-valued struct globals replaced by fresh values.
+	ReadTables   []string // Constant array lookups localized in their consuming functions.
 	Context      *ContextRule
+	Calls        []CallRule // Reviewed external functions bound to context methods.
 }
+
+// CallRule derives the upstream signature from Source; no replacement package
+// or invented compiler declaration is emitted into the library.
+type CallRule struct{ Source, Function, Method string }
 
 type OwnerRule struct {
 	Types          []string
@@ -104,12 +110,17 @@ func (p Plan) Validate() error {
 	fields := map[string]map[string]bool{}
 	for _, u := range p.Units {
 		output := u.output()
-		if !safePath(u.Source) || !ownedPath(output) || path.Ext(output) != ".go" || (!u.WholeFile && len(u.Functions)+len(u.Declarations) == 0) || outputs[output] {
+		if !safePath(u.Source) || !ownedPath(output) || path.Ext(output) != ".go" || (!u.WholeFile && len(u.Functions)+len(u.Declarations) == 0 && (u.Context == nil || len(u.Context.Fields) == 0)) || outputs[output] {
 			return fmt.Errorf("invalid migration source: %s", u.Source)
+		}
+		for _, call := range u.Calls {
+			if u.Context == nil || !safePath(call.Source) || portPath(call.Source) == "" || !token.IsIdentifier(call.Function) || !token.IsIdentifier(call.Method) {
+				return fmt.Errorf("invalid external call binding")
+			}
 		}
 		pkg := path.Dir(output)
 		outputs[output] = true
-		if u.WholeFile && (len(u.Functions)+len(u.Declarations) != 0 || u.Context != nil) || !u.WholeFile && len(u.ZeroValues) != 0 {
+		if u.WholeFile && (len(u.Functions)+len(u.Declarations) != 0 || u.Context != nil) || !u.WholeFile && len(u.ZeroValues)+len(u.ReadTables) != 0 {
 			return fmt.Errorf("incompatible whole-file rules: %s", u.Source)
 		}
 		if owner := u.Owner; owner != nil {

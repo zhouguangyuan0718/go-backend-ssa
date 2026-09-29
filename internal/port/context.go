@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"path"
 	"reflect"
 	"strings"
 )
@@ -19,6 +20,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	first := -1
 	states := map[types.Object]string{}
 	functions := map[types.Object]string{}
+	external := map[types.Object]string{}
 	var owners []*OwnerRule
 	for i, u := range units {
 		if u.Owner != nil {
@@ -45,6 +47,17 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 					return fmt.Errorf("invalid context field %s", field)
 				}
 				states[obj] = field
+			}
+		}
+		for _, call := range u.Calls {
+			pkg := strings.TrimPrefix(path.Dir(call.Source), "src/")
+			for _, obj := range info.Uses {
+				if obj != nil && obj.Pkg() != nil && obj.Pkg().Path() == pkg && obj.Name() == call.Function && obj.Parent() == obj.Pkg().Scope() {
+					if previous := external[obj]; previous != "" && previous != call.Method {
+						return fmt.Errorf("conflicting external binding")
+					}
+					external[obj] = call.Method
+				}
 			}
 		}
 		for _, d := range files[i].Decls {
@@ -81,6 +94,9 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			if name == "" {
 				name = functions[obj]
 			}
+			if name == "" {
+				name = external[obj]
+			}
 			if name != "" {
 				result[id] = &ast.SelectorExpr{X: positionedContext(ctx, id.Pos()), Sel: &ast.Ident{Name: name, NamePos: id.Pos()}}
 			}
@@ -88,6 +104,18 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		return result
 	}
 	rewrite := func(node ast.Node, ctx ast.Expr) error {
+		// Imported references are selectors, not bare identifiers. Match the
+		// resolved member object, so local values with the same spelling survive.
+		selectors := map[ast.Node]ast.Expr{}
+		ast.Inspect(node, func(n ast.Node) bool {
+			if sel, ok := n.(*ast.SelectorExpr); ok {
+				if name := external[info.Uses[sel.Sel]]; name != "" {
+					selectors[sel] = &ast.SelectorExpr{X: positionedContext(ctx, sel.Pos()), Sel: &ast.Ident{Name: name, NamePos: sel.Sel.Pos()}}
+				}
+			}
+			return true
+		})
+		rewriteExprs(node, selectors)
 		rewriteNodes(node, replacements(ctx))
 		for _, owner := range owners {
 			if err := injectOwnedAllocations(node, info, owner, ctx); err != nil {
@@ -180,14 +208,14 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 					condition = receiver + " == nil || " + condition
 				}
 				var err error
-				guard, err = contextStatements("if " + condition + " { panic(\"receiver has no compilation owner\") }")
+				guard, err = contextStatements("if "+condition+" { panic(\"receiver has no compilation owner\") }", fn.Body.Lbrace)
 				if err != nil {
 					return err
 				}
 				ctx = &ast.SelectorExpr{X: ast.NewIdent(receiver), Sel: ast.NewIdent(owner.Field)}
 			} else {
 				var err error
-				guard, err = contextStatements("if syncgoCtx == nil { panic(\"uninitialized compilation\") }")
+				guard, err = contextStatements("if syncgoCtx == nil { panic(\"uninitialized compilation\") }", fn.Body.Lbrace)
 				if err != nil {
 					return err
 				}
@@ -234,14 +262,14 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	return nil
 }
 
-func contextStatements(code string) ([]ast.Stmt, error) {
+func contextStatements(code string, pos token.Pos) ([]ast.Stmt, error) {
 	f, err := parser.ParseFile(token.NewFileSet(), "checks.go", "package p;func f(){"+code+"}", parser.SkipObjectResolution)
 	if err != nil {
 		return nil, err
 	}
 	// Positions from the temporary parse must not be interpreted in the
 	// upstream FileSet; they otherwise introduce spurious line breaks.
-	clearTokenPositions(reflect.ValueOf(f))
+	setTokenPositions(reflect.ValueOf(f), pos)
 	return f.Decls[0].(*ast.FuncDecl).Body.List, nil
 }
 
@@ -328,7 +356,7 @@ func ownedArgumentChecks(fn *ast.FuncDecl, info *types.Info, owners []*OwnerRule
 			}
 		}
 	}
-	return contextStatements(code.String())
+	return contextStatements(code.String(), fn.Body.Lbrace)
 }
 
 func positionedContext(expr ast.Expr, pos token.Pos) ast.Expr {
@@ -342,26 +370,28 @@ func positionedContext(expr ast.Expr, pos token.Pos) ast.Expr {
 	}
 }
 
-func clearTokenPositions(v reflect.Value) {
+func setTokenPositions(v reflect.Value, pos token.Pos) {
 	if !v.IsValid() {
 		return
 	}
 	if v.Type() == reflect.TypeOf(token.NoPos) && v.CanSet() {
-		v.SetInt(0)
+		if v.Int() != 0 {
+			v.SetInt(int64(pos))
+		}
 		return
 	}
 	switch v.Kind() {
 	case reflect.Interface, reflect.Pointer:
 		if !v.IsNil() {
-			clearTokenPositions(v.Elem())
+			setTokenPositions(v.Elem(), pos)
 		}
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
-			clearTokenPositions(v.Field(i))
+			setTokenPositions(v.Field(i), pos)
 		}
 	case reflect.Slice:
 		for i := 0; i < v.Len(); i++ {
-			clearTokenPositions(v.Index(i))
+			setTokenPositions(v.Index(i), pos)
 		}
 	}
 }

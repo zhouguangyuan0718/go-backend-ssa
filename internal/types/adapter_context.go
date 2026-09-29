@@ -22,6 +22,7 @@ type Universe struct {
 	TypeInvalid, TypeMem, TypeFlags, TypeVoid                *Type
 	TypeInt128, TypeVec128, TypeVec256, TypeVec512, TypeMask *Type
 	TypeResultMem                                            *Type
+	NewPtrCacheEnabled                                       bool
 	scalars                                                  [NTYPE]*Type
 }
 
@@ -93,3 +94,7 @@ func (u *Universe) Lookup(pkg *Pkg, name string) (*Sym, error) {
 	}
 	return pkg.Lookup(name), nil
 }
+
+// A violated compiler invariant aborts this call, never the embedding process.
+// This binds the original base.Fatalf signature; it is not a source diagnostic.
+func (u *Universe) fatalf(format string, args ...any) { panic(fmt.Errorf(format, args...)) }

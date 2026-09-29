@@ -80,3 +80,17 @@ func TestBackendSSATypeInputs(t *testing.T) {
 		t.Fatal("tuple children not accessible")
 	}
 }
+
+func TestPublicCompositeTypes(t *testing.T) {
+	layout, _ := target.NewLayout("linux", "386")
+	u, _ := types.NewUniverse(layout)
+	value, _ := u.Scalar(types.Int)
+	ptr := u.NewPtr(value)
+	slice := u.NewSlice(ptr)
+	array := u.NewArray(slice, 4)
+	channel := u.NewChan(value, types.SendRecv)
+	mapping := u.NewMap(value, ptr)
+	if array.NumElem() != 4 || array.Elem().Elem() != ptr || ptr.Elem() != value || mapping.Key() != value || channel.ChanDir() != types.SendRecv {
+		t.Fatal("cannot inspect composite graph through public package")
+	}
+}

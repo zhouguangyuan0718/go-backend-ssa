@@ -174,10 +174,21 @@ func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.Fil
 }
 
 func pruneImports(f *ast.File, extra ...ast.Node) {
+	pruneImportsWithInfo(f, nil, extra...)
+}
+
+func pruneImportsWithInfo(f *ast.File, info *types.Info, extra ...ast.Node) {
 	used := map[string]bool{}
 	visit := func(n ast.Node) bool {
 		if s, ok := n.(*ast.SelectorExpr); ok {
 			if id, ok := s.X.(*ast.Ident); ok {
+				if info != nil {
+					if obj, known := info.Uses[id]; known {
+						if _, imported := obj.(*types.PkgName); !imported {
+							return true
+						}
+					}
+				}
 				used[id.Name] = true
 			}
 		}
@@ -272,7 +283,7 @@ func transform(fset *token.FileSet, f *ast.File, info *types.Info, u Unit, mappi
 			return nil, err
 		}
 	}
-	pruneImports(f)
+	pruneImportsWithInfo(f, info)
 	for _, im := range f.Imports {
 		p, _ := strconv.Unquote(im.Path.Value)
 		if im.Name != nil && (im.Name.Name == "." || im.Name.Name == "_") {

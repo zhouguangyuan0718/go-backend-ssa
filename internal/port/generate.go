@@ -24,13 +24,14 @@ type Generated struct {
 	Files         []Provenance `json:"files"`
 }
 type Provenance struct {
-	Output        string   `json:"output"`
-	Source        string   `json:"source"`
-	SourceSHA256  string   `json:"source_sha256"`
-	OutputSHA256  string   `json:"output_sha256"`
-	Rule          string   `json:"rule"`
-	Declarations  []string `json:"declarations,omitempty"`
-	AdapterSHA256 string   `json:"adapter_sha256,omitempty"`
+	Output           string            `json:"output"`
+	Source           string            `json:"source"`
+	SourceSHA256     string            `json:"source_sha256"`
+	OutputSHA256     string            `json:"output_sha256"`
+	Rule             string            `json:"rule"`
+	Declarations     []string          `json:"declarations,omitempty"`
+	AdapterSHA256    string            `json:"adapter_sha256,omitempty"`
+	SignatureSources map[string]string `json:"signature_sources,omitempty"`
 }
 
 type Rendered struct {

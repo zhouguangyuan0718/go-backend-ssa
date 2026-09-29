@@ -4,7 +4,7 @@
 
 库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。每次调用拥有独立编译状态，返回结果在后续调用期间仍有效。
 
-当前状态：**M1 已完成，M2 已推进到跨文件状态解耦与 SSA 类型身份隔离；尚无 Go 源码到 SSA 的 Build API。** 当前可用位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型及 tuple/results 构造；完整类型布局和编译流程仍待移植。
+当前状态：**M1 已完成，M2 已推进到跨文件状态解耦与 SSA 类型身份隔离；尚无 Go 源码到 SSA 的 Build API。** 当前可用位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造；完整类型布局和编译流程仍待移植。
 
 - 语言范围：Go 1.27；其他语言版本尚不支持。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
@@ -25,7 +25,7 @@
 8. [原生编译器回接](docs/go-compiler-integration.md)：共享对象模型、gcbridge、native tail 与自举验收。
 9. [M1 实现与验证](docs/m1.md)：首批工具与切片记录。
 10. [M2 基础设施](docs/m2.md)：第一批位置设施与归属设计。
-11. [M2 类型与 Universe](docs/m2-universe.md)：第二、三批实现、对外入口及类型布局边界。
+11. [M2 类型与 Universe](docs/m2-universe.md)：第二至四批实现、对外入口及类型布局边界。
 
 ## 当前可运行的工具
 
@@ -77,3 +77,5 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 ```
 
 `NewTuple` 和 `NewResults` 保留上游返回 `*Type` 的签名；跨 Universe 或 nil 元素会 panic。`NewResults` 按上游语义保留输入 slice，调用后不能将其修改为外来类型。SSA 单例字段也应当作只读绑定使用。以上接口尚不生成 SSA 函数图。
+
+复合类型也直接使用上游入口：`u.NewPtr(value)`、`u.NewSlice(value)`、`u.NewArray(value, n)`、`u.NewMap(key, value)`、`u.NewChan(value, types.SendRecv)`；通过 `Elem`、`Key`、`NumElem`、`ChanDir` 等方法读取。`u.NewPtrCacheEnabled` 只控制当前实例。指针构造已使用实例目标宽度，完整类型布局仍待实现。
