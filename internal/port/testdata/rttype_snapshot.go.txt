@@ -1,0 +1,32 @@
+package rttype
+import("fmt";"encoding/json";"encoding/binary";"os";"reflect";"testing";"IMPORT_TYPES";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_OBJABI";"IMPORT_TYPECHECK";RT_IR_OBJW IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian}
+ switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ UP.Init()
+ var out []string
+ out=append(out,fmt.Sprintf("target:%s",target.arch))
+ for _,entry:=range []struct{name string;typ *types.Type}{
+ {"Type",UP.Type},{"Array",UP.ArrayType},{"Chan",UP.ChanType},{"Func",UP.FuncType},{"Interface",UP.InterfaceType},{"Map",UP.MapType},{"Ptr",UP.PtrType},{"Slice",UP.SliceType},{"Struct",UP.StructType},{"IMethod",UP.IMethod},{"Method",UP.Method},{"StructField",UP.StructField},{"Uncommon",UP.UncommonType},{"Switch",UP.InterfaceSwitch},{"Assert",UP.TypeAssert},{"ITab",UP.ITab},
+ }{
+ out=append(out,fmt.Sprintf("layout:%s:%d:%d:%v:%s",entry.name,entry.typ.Size(),entry.typ.Alignment(),entry.typ,entry.typ.LinkString()))
+ for _,f:=range entry.typ.Fields(){out=append(out,fmt.Sprintf("field:%s:%d:%d:%d",f.Sym.Name,f.Offset,f.Type.Size(),f.Type.Kind()))}
+ }
+ snapshot:=func(s *obj.LSym){out=append(out,fmt.Sprintf("data:%s:%x",s.Name,s.P));for _,r:=range s.R{name:="";if r.Sym!=nil{name=r.Sym.Name};out=append(out,fmt.Sprintf("reloc:%d:%d:%v:%s:%d",r.Off,r.Siz,r.Type,name,r.Add))}}
+ s,ref:=LINK.Lookup("p.itab"),LINK.Lookup("p.target")
+ cur:=UP.NewCursor(s,0,UP.ITab)
+ cur.Field("Inter").WritePtr(ref);cur.Field("Type").WritePtr(nil);cur.Field("Hash").WriteUint32(0x33445566)
+ functions,delta:=cur.Field("Fun").ModifyArray(3)
+ for i:=range 3{functions.Elem(i).WritePtrWeak(ref)}
+ out=append(out,fmt.Sprintf("array:%d:%d:%d",delta,UP.ITab.Field(3).Type.NumElem(),UP.ITab.Size()));snapshot(s)
+ data:=LINK.Lookup("p.values")
+ typ:=UP.FromReflect(reflect.TypeFor[struct{A uintptr;B uint32;C uint16;D uint8;E bool;F int;G int32;H []byte;I [2]uintptr}]())
+ cur=UP.NewCursor(data,0,typ)
+ cur.Field("A").WriteUintptr(0x12345678);cur.Field("B").WriteUint32(0xaabbccdd);cur.Field("C").WriteUint16(0x1122);cur.Field("D").WriteUint8(0x33);cur.Field("E").WriteBool(true);cur.Field("F").WriteInt(-23);cur.Field("G").WriteInt32(-31);cur.Field("H").WriteSlice(ref,7,3,3);cur.Field("I").Elem(1).WriteUintptr(42)
+ cur.Field("B").Reloc(obj.Reloc{Type:objabi.R_ADDROFF,Sym:ref,Add:9});snapshot(data)
+ offsets:=LINK.Lookup("p.offsets");array:=UP.NewArrayCursor(offsets,0,TY.Types[types.TINT32],3)
+ array.Elem(0).WriteSymPtrOff(ref,false);array.Elem(1).WriteSymPtrOff(ref,true);array.Elem(2).WriteSymPtrOff(nil,false);snapshot(offsets)
+ for _,rt:=range []reflect.Type{reflect.TypeFor[bool](),reflect.TypeFor[int8](),reflect.TypeFor[int16](),reflect.TypeFor[int32](),reflect.TypeFor[uint8](),reflect.TypeFor[uint16](),reflect.TypeFor[uint32](),reflect.TypeFor[float32](),reflect.TypeFor[float64](),reflect.TypeFor[string](),reflect.TypeFor[complex128](),reflect.TypeFor[chan<- byte](),reflect.TypeFor[func()](),reflect.TypeFor[*byte](),reflect.TypeFor[[0]byte]()} {typ:=UP.FromReflect(rt);out=append(out,fmt.Sprintf("reflect:%v:%d:%d:%d",rt,typ.Kind(),typ.Size(),typ.Alignment()))}
+ encoded,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(encoded))
+}

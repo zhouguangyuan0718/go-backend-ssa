@@ -9,6 +9,7 @@ import (
 	"go-backend-ssa/noder"
 	"go-backend-ssa/objw"
 	"go-backend-ssa/position"
+	"go-backend-ssa/rttype"
 	"go-backend-ssa/syntax"
 	"go-backend-ssa/target"
 	"go-backend-ssa/typecheck"
@@ -331,5 +332,25 @@ func TestNativeObjectWriterPublicAPI(t *testing.T) {
 	c.Global(data, int32(end), objw.RODATA|objw.DUPOK)
 	if binary.LittleEndian.Uint64(data.P) != 42 || len(data.R) != 1 || data.R[0].Sym != targetSym || data.R[0].Siz != 8 || data.Type.String() != "SRODATA" || !data.DuplicateOK() || link.Data[0] != data {
 		t.Fatal("native object writer identity/bytes/relocation")
+	}
+}
+
+func TestNativeRuntimeLayoutsPublicAPI(t *testing.T) {
+	layout, _ := target.NewLayout("linux", "386")
+	link := &gcbridge.Link{Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "386", PtrSize: 4, RegSize: 4, ByteOrder: binary.LittleEndian}}}
+	u, err := types.NewUniverseWithPositions(layout, &link.PosTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	typecheck.NewContext(ir.NewContext(u, link)).InitUniverse()
+	c := rttype.NewContext(objw.NewContext(u, link, "linux"))
+	c.Init()
+	s, fn := link.Lookup("p.itab"), link.Lookup("p.method")
+	var cursor rttype.Cursor = c.NewCursor(s, 0, c.ITab)
+	cursor.Field("Hash").WriteUint32(123)
+	methods, delta := cursor.Field("Fun").ModifyArray(2)
+	methods.Elem(1).WritePtrWeak(fn)
+	if c.ITab.Size() != 16 || delta != 4 || c.Type.Universe() != u || len(s.R) != 1 || s.R[0].Sym != fn || s.R[0].Off != 16 || s.R[0].Siz != 4 {
+		t.Fatal("public runtime layout/relocation")
 	}
 }

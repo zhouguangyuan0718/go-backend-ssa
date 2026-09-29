@@ -98,7 +98,7 @@ func Migration() Plan {
 					"Type.IsUintptr", "Type.copy", "Type.forwardType", "Type.SetUnderlying", "Type.Obj", "Type.IsUnsafePtr", "Field.End", "Type.Pos", "Type.Registers", "Type.Deferwidth", "Type.SetDeferwidth", "Type.Recur", "Type.SetRecur",
 					"Type.ChanArgs", "Type.FuncArgs", "Type.Methods", "Type.AllMethods", "Type.SetMethods", "Type.SetAllMethods", "Type.SetInterface", "Type.IsInterface", "Type.IsEmptyInterface", "Type.Size", "Type.Alignment", "Type.ArgWidth", "Type.HasPointers",
 					"Field.IsDDD", "Field.Nointerface", "Field.SetIsDDD", "Field.SetNointerface", "Field.Copy", "Field.IsMethod",
-					"Type.StructType", "Type.fields", "Type.Fields", "Type.Field", "Type.setFields", "Type.IsStruct", "Type.IsFuncArgStruct", "Type.NumFields", "Type.FieldType",
+					"Type.OffsetOf", "Type.StructType", "Type.fields", "Type.Fields", "Type.Field", "Type.setFields", "Type.IsStruct", "Type.IsFuncArgStruct", "Type.NumFields", "Type.FieldType",
 					"Type.funcType", "Func.recvs", "Func.params", "Func.results", "Func.recvParams", "Func.paramsResults",
 					"Type.ResultsTuple", "Type.Recvs", "Type.Params", "Type.Results", "Type.RecvParamsResults", "Type.RecvParams", "Type.ParamsResults",
 					"Type.NumRecvs", "Type.NumParams", "Type.NumResults", "Type.IsVariadic", "Type.Recv", "Type.Param", "Type.Result",
@@ -182,6 +182,8 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, pkgbitsMigration()...)
 	plan.Units = append(plan.Units, rangefuncMigration()...)
 	plan.Units = append(plan.Units, objwMigration()...)
+	plan.Units = append(plan.Units, runtimeABIMigration()...)
+	plan.Units = append(plan.Units, rttypeMigration()...)
 	plan.Units = append(plan.Units, dwarfgenMigration()...)
 	plan.Units = append(plan.Units, noderMigration()...)
 	// base's symbol helpers now consume the native obj package. Keep their

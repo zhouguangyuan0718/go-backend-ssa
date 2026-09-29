@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
 	"io"
 	"os"
@@ -173,6 +174,7 @@ func auditProductionFiles(root string, p Plan) error {
 }
 
 func auditOutput(pkg *types.Package, files []*ast.File, info *types.Info) error {
+	passivePointers := passivePointerTypes(files, info)
 	for _, name := range pkg.Scope().Names() {
 		if _, ok := pkg.Scope().Lookup(name).(*types.Var); ok {
 			return fmt.Errorf("remaining package variable %s.%s", pkg.Path(), name)
@@ -192,7 +194,15 @@ func auditOutput(pkg *types.Package, files []*ast.File, info *types.Info) error 
 			}
 		}
 	}
-	for _, obj := range info.Uses {
+	for expr, tv := range info.Types {
+		if basic, ok := tv.Type.(*types.Basic); ok && basic.Kind() == types.UnsafePointer && !passivePointers[expr] {
+			return fmt.Errorf("unclassified environment dependency: unsafe pointer expression")
+		}
+	}
+	for id, obj := range info.Uses {
+		if passivePointers[id] {
+			continue
+		}
 		if obj == nil || obj.Pkg() == nil {
 			continue
 		}
@@ -465,4 +475,58 @@ func stackDiagnosticObject(obj types.Object) bool {
 		}
 	}
 	return false
+}
+
+// ABI descriptors contain unsafe.Pointer in passive field and callback types.
+// Permit only those declarations, never conversions, dereferences, or unsafe
+// operations. In particular array-length expressions are not type syntax.
+func passivePointerTypes(files []*ast.File, info *types.Info) map[ast.Node]bool {
+	allowed := map[ast.Node]bool{}
+	var visit func(ast.Expr)
+	var fields func(*ast.FieldList)
+	fields = func(list *ast.FieldList) {
+		if list != nil {
+			for _, f := range list.List {
+				visit(f.Type)
+			}
+		}
+	}
+	visit = func(e ast.Expr) {
+		switch e := e.(type) {
+		case *ast.SelectorExpr:
+			obj := info.Uses[e.Sel]
+			if _, ok := obj.(*types.TypeName); ok && obj.Pkg() != nil && obj.Pkg().Path() == "unsafe" && obj.Name() == "Pointer" {
+				allowed[e.Sel] = true
+				allowed[e] = true
+			}
+		case *ast.StarExpr:
+			visit(e.X)
+		case *ast.ArrayType:
+			visit(e.Elt)
+		case *ast.MapType:
+			visit(e.Key)
+			visit(e.Value)
+		case *ast.ChanType:
+			visit(e.Value)
+		case *ast.StructType:
+			fields(e.Fields)
+		case *ast.FuncType:
+			fields(e.Params)
+			fields(e.Results)
+		case *ast.ParenExpr:
+			visit(e.X)
+		}
+	}
+	for _, f := range files {
+		for _, d := range f.Decls {
+			if decl, ok := d.(*ast.GenDecl); ok && decl.Tok == token.TYPE {
+				for _, spec := range decl.Specs {
+					if st, ok := spec.(*ast.TypeSpec).Type.(*ast.StructType); ok {
+						visit(st)
+					}
+				}
+			}
+		}
+	}
+	return allowed
 }
