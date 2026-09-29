@@ -22,6 +22,9 @@ func transformFixture(t *testing.T, source string, u Unit) ([]byte, error) {
 	if e != nil {
 		return nil, e
 	}
+	if err := rewritePackageContext(fs, []*ast.File{f}, info, []Unit{u}); err != nil {
+		return nil, err
+	}
 	return transform(fs, f, info, u, nil)
 }
 

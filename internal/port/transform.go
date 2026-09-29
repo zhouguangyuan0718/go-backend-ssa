@@ -88,8 +88,12 @@ func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.Fil
 	for _, d := range f.Decls {
 		switch d := d.(type) {
 		case *ast.FuncDecl:
-			if u.Context != nil && d.Name.Name == "init" {
-				return nil, fmt.Errorf("package init requires an explicit adaptation rule: %s", name)
+			if u.Context != nil && d.Recv == nil && d.Name.Name == "init" {
+				if !u.Context.Init {
+					return nil, fmt.Errorf("package init requires an explicit adaptation rule: %s", name)
+				}
+				decls = append(decls, d)
+				continue
 			}
 			key := d.Name.Name
 			if d.Recv != nil {
@@ -263,139 +267,12 @@ func rewriteExprs(node ast.Node, replace map[ast.Node]ast.Expr) {
 }
 
 func transform(fset *token.FileSet, f *ast.File, info *types.Info, u Unit, mapping map[string]string) ([]byte, error) {
-	var constructor string
-	if c := u.Context; c != nil {
-		for _, name := range []string{c.Type, c.Constructor} {
-			if !token.IsIdentifier(name) || token.Lookup(name).IsKeyword() {
-				return nil, fmt.Errorf("invalid context identifier %s", name)
-			}
-		}
-		fields := map[string]bool{}
-		for _, name := range c.Fields {
-			if !token.IsIdentifier(name) || fields[name] {
-				return nil, fmt.Errorf("invalid or duplicate context field %s", name)
-			}
-			fields[name] = true
-		}
-		const recv = "syncgoCtx"
-		collision := false
-		ast.Inspect(f, func(n ast.Node) bool {
-			if id, ok := n.(*ast.Ident); ok && (id.Name == recv || id.Name == c.Constructor || id.Name == c.Type) {
-				collision = true
-			}
-			return true
-		})
-		if collision {
-			return nil, fmt.Errorf("context identifier collision in %s", u.Source)
-		}
-		states := map[types.Object]string{}
-		functions := map[types.Object]string{}
-		for id, obj := range info.Defs {
-			if field, ok := c.Fields[id.Name]; ok && obj != nil && obj.Parent() == obj.Pkg().Scope() {
-				states[obj] = field
-			}
-		}
-		for _, d := range f.Decls {
-			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil {
-				functions[info.Defs[fn.Name]] = fn.Name.Name
-			}
-		}
-		replacements := map[*ast.Ident]ast.Expr{}
-		for id, obj := range info.Uses {
-			name := states[obj]
-			if name == "" {
-				name = functions[obj]
-			}
-			if name != "" {
-				replacements[id] = &ast.SelectorExpr{X: &ast.Ident{Name: recv, NamePos: id.Pos()}, Sel: &ast.Ident{Name: name, NamePos: id.Pos()}}
-			}
-		}
-		for _, d := range f.Decls {
-			ctx := ast.Expr(ast.NewIdent(recv))
-			local := replacements
-			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv != nil {
-				needs := false
-				ast.Inspect(fn, func(n ast.Node) bool {
-					if id, ok := n.(*ast.Ident); ok && replacements[id] != nil {
-						needs = true
-					}
-					return true
-				})
-				if !needs && (u.Owner == nil || !ownedReceiver(u.Owner, receiverType(fn))) {
-					continue
-				}
-				if u.Owner == nil || u.Owner.Context != c.Type || !ownedReceiver(u.Owner, receiverType(fn)) || len(fn.Recv.List[0].Names) != 1 {
-					return nil, fmt.Errorf("receiver context requires an owner rule: %s", fn.Name.Name)
-				}
-				recvName := fn.Recv.List[0].Names[0].Name
-				// Explicitly reject a nil/unowned receiver. Callers needing the
-				// anonymous package use Universe.Lookup(nil, name).
-				guard, err := parser.ParseFile(token.NewFileSet(), "guard.go", "package p;func f(){if "+recvName+" == nil || "+recvName+"."+u.Owner.Field+" == nil {panic(\"receiver has no compilation owner\")}}", 0)
-				if err != nil {
-					return nil, err
-				}
-				fn.Body.List = append(guard.Decls[0].(*ast.FuncDecl).Body.List, fn.Body.List...)
-				ctx = &ast.SelectorExpr{X: ast.NewIdent(recvName), Sel: ast.NewIdent(u.Owner.Field)}
-				local = map[*ast.Ident]ast.Expr{}
-				for id, expr := range replacements {
-					sel := expr.(*ast.SelectorExpr)
-					local[id] = &ast.SelectorExpr{X: ctx, Sel: sel.Sel}
-				}
-			}
-			rewriteNodes(d, local)
-			if u.Owner != nil {
-				if err := injectOwnedAllocations(d, info, u.Owner, ctx); err != nil {
-					return nil, err
-				}
-			}
-		}
-		var init strings.Builder
-		fmt.Fprintf(&init, "\nfunc %s() *%s {\n%s := &%s{}\n", c.Constructor, c.Type, recv, c.Type)
-		for _, entry := range info.InitOrder {
-			if len(entry.Lhs) != 1 || states[entry.Lhs[0]] == "" {
-				return nil, fmt.Errorf("unsupported state initialization")
-			}
-			// InitOrder can retain an old root identifier after the ValueSpec's
-			// expression slot has been replaced. Rewrite that slot explicitly.
-			expr := &ast.ParenExpr{X: entry.Rhs}
-			rewriteNodes(expr, replacements)
-			if u.Owner != nil {
-				if err := injectOwnedAllocations(expr, info, u.Owner, ast.NewIdent(recv)); err != nil {
-					return nil, err
-				}
-			}
-			fmt.Fprintf(&init, "%s.%s = %s\n", recv, states[entry.Lhs[0]], nodeText(fset, expr.X))
-		}
-		fmt.Fprintf(&init, "return %s\n}\n", recv)
-		constructor = init.String()
-		var decls []ast.Decl
-		for _, d := range f.Decls {
-			if g, ok := d.(*ast.GenDecl); ok && g.Tok == token.VAR {
-				continue
-			}
-			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil {
-				fn.Recv = &ast.FieldList{List: []*ast.Field{{Names: []*ast.Ident{ast.NewIdent(recv)}, Type: &ast.StarExpr{X: ast.NewIdent(c.Type)}}}}
-			}
-			decls = append(decls, d)
-		}
-		cm := ast.NewCommentMap(fset, f, f.Comments)
-		f.Decls = decls
-		f.Comments = cm.Filter(f).Comments()
-	}
 	if u.Owner != nil {
 		if err := addOwnerFields(f, u.Owner); err != nil {
 			return nil, err
 		}
 	}
-	if constructor != "" {
-		cf, err := parser.ParseFile(token.NewFileSet(), "constructor.go", "package p\n"+constructor, 0)
-		if err != nil {
-			return nil, err
-		}
-		pruneImports(f, cf)
-	} else {
-		pruneImports(f)
-	}
+	pruneImports(f)
 	for _, im := range f.Imports {
 		p, _ := strconv.Unquote(im.Path.Value)
 		if im.Name != nil && (im.Name.Name == "." || im.Name.Name == "_") {
@@ -415,7 +292,6 @@ func transform(fset *token.FileSet, f *ast.File, info *types.Info, u Unit, mappi
 	if err := format.Node(&out, fset, f); err != nil {
 		return nil, err
 	}
-	out.WriteString(constructor)
 	return format.Source(out.Bytes())
 }
 

@@ -16,7 +16,13 @@ type Universe struct {
 	anonymous        *Pkg
 	ptrSize, regSize int
 	maxWidth         int64
-	scalars          [NTYPE]*Type
+	// Upstream SSA singleton names are retained as per-compilation fields.
+	// Treat these bindings as read-only after construction, like the upstream
+	// globals; Type flags still belong to this Universe and may be mutated.
+	TypeInvalid, TypeMem, TypeFlags, TypeVoid                *Type
+	TypeInt128, TypeVec128, TypeVec256, TypeVec512, TypeMask *Type
+	TypeResultMem                                            *Type
+	scalars                                                  [NTYPE]*Type
 }
 
 func NewUniverse(ptrSize, regSize int, maxWidth int64) *Universe {
@@ -43,20 +49,11 @@ func (u *Universe) Scalar(kind Kind) (*Type, error) {
 	if t := u.scalars[kind]; t != nil {
 		return t, nil
 	}
-	t := newType(kind)
-	t.universe = u
+	t := u.newType(kind)
 	u.scalars[kind] = t
 	return t, nil
 }
 
-func (u *Universe) NewTuple(first, second *Type) (*Type, error) {
-	if u == nil || u.ptrSize == 0 || first == nil || second == nil || first.universe != u || second.universe != u {
-		return nil, fmt.Errorf("tuple types belong to another or uninitialized Universe")
-	}
-	t := NewTuple(first, second)
-	t.universe = u
-	return t, nil
-}
 func (t *Type) Universe() *Universe {
 	if t == nil {
 		return nil

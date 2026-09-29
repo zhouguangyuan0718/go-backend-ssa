@@ -36,6 +36,8 @@ const (
 	String        = compiler.TSTRING
 	UnsafePointer = compiler.TUNSAFEPTR
 	Tuple         = compiler.TTUPLE
+	Results       = compiler.TRESULTS
+	SSA           = compiler.TSSA
 )
 
 func NewUniverse(layout target.Layout) (*Universe, error) {

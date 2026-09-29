@@ -54,3 +54,5 @@ M2 起做最小桥接试验，M6 后完成整条回接链路，M7 发布验收�
 M2 第一批提供 position/gcbridge 的共享类型别名，并以独立 consumer module 验证位置编码/解码与对象身份。此试验尚未修改或构建宿主 cmd/compile，不代表完成前端、SSA、native tail 的替换。直接消费者约束及后续 Universe 方案见 [M2 记录](m2.md)。
 
 M2 第二批增加 Type/Pkg/Sym/Object 与真实 LSym 数据结构接入，外部 consumer 验证对象身份及 Object/Aux 接口；完整原生算法尚未接回。见 [第二批记录](m2-universe.md)。
+
+M2 第三批把上游 SSA 特殊类型绑定与 tuple/results 构造转为 Universe 成员，独立消费者可直接使用 `u.TypeMem`、`u.NewTuple`、`u.NewResults`。后续宿主中的 `types.TypeMem` 等访问必须接到对应编译实例，不能为了桥接重新建立全局别名。当前仅验证类型切片与未去全局化的上游切片一致，尚未编译宿主后端。

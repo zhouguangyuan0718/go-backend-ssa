@@ -55,7 +55,7 @@ func (c *Context) makePointer(t *types.Type) *types.Type {
 
 ## 类型环境
 
-Type 保留上游布局和缓存算法。M2 已确定下一批为 Type/Pkg 添加私有 Universe owner，并通过显式入口检查跨 Universe 输入；该结构改造及初步受控工厂已实现，完整布局/构造路径仍待移植，详见 [第二批记录](m2-universe.md)。无论形式如何，Size/Alignment/NewPtr/PtrTo 等路径都不得回到包级目标状态。
+Type 保留上游布局和缓存算法。M2 已为 Type/Pkg 添加私有 Universe owner，并将 SSA 类型身份、结果缓存及包级初始化迁入每实例状态；通过显式入口检查跨 Universe 输入，完整布局/构造路径仍待移植，详见 [第二批记录](m2-universe.md)。无论形式如何，Size/Alignment/NewPtr/PtrTo 等路径都不得回到包级目标状态。
 
 同一个源码类型在两个目标或两次调用中是不同可变对象。不同 Universe 的 Type 混用需在构造/验证边界报错；类型等价应使用语义比较，不能跨调用比较指针。
 

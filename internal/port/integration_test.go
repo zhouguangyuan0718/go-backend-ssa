@@ -47,6 +47,7 @@ func TestPinnedUpstreamAndUpgrade(t *testing.T) {
 	}
 	testUpstreamPositions(t, s, r)
 	testUpstreamSymbols(t, s, r, root)
+	testUpstreamSSAState(t, s, r, root)
 	oldPin := pin
 	oldPin.Tag = "go1.27.0"
 	commit, err := git(ctx, repo, nil, "rev-parse", "refs/tags/go1.27.0^{commit}")
@@ -64,6 +65,7 @@ func TestPinnedUpstreamAndUpgrade(t *testing.T) {
 	}
 	testUpstreamPositions(t, oldSource, old)
 	testUpstreamSymbols(t, oldSource, old, root)
+	testUpstreamSSAState(t, oldSource, old, root)
 	dir := t.TempDir()
 	if err := Install(dir, old); err != nil {
 		t.Fatal(err)

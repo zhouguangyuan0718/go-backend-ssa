@@ -9,9 +9,13 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 )
 
 func renderPackage(s *Source, units []Unit, imports map[string]string, root string, before, after *packageImporter) (map[string][]byte, []Provenance, error) {
+	// Go initializes files in lexical filename order, independent of plan order.
+	units = append([]Unit(nil), units...)
+	sort.Slice(units, func(i, j int) bool { return units[i].Source < units[j].Source })
 	fs := token.NewFileSet()
 	var original []*ast.File
 	sources := make([][]byte, len(units))
@@ -40,6 +44,10 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		return nil, nil, err
 	}
 
+	if err := rewritePackageContext(fs, original, info, units); err != nil {
+		return nil, nil, err
+	}
+	adapters := map[string][]byte{}
 	outfs := token.NewFileSet()
 	var output []*ast.File
 	result := make(map[string][]byte)
@@ -66,16 +74,20 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			if err := checkPath(root, u.adapterPath()); err != nil {
 				return nil, nil, err
 			}
-			adapter, err := os.ReadFile(filepath.Join(root, u.adapterPath()))
-			if err != nil {
-				return nil, nil, err
+			adapter, loaded := adapters[u.adapterPath()]
+			if !loaded {
+				adapter, err = os.ReadFile(filepath.Join(root, u.adapterPath()))
+				if err != nil {
+					return nil, nil, err
+				}
+				af, err := parser.ParseFile(outfs, u.adapterPath(), adapter, parser.ParseComments)
+				if err != nil {
+					return nil, nil, err
+				}
+				output = append(output, af)
+				adapters[u.adapterPath()] = adapter
 			}
-			af, err := parser.ParseFile(outfs, u.adapterPath(), adapter, parser.ParseComments)
-			if err != nil {
-				return nil, nil, err
-			}
-			output = append(output, af)
-			prov.Rule = "state-to-context-methods-v1"
+			prov.Rule = "package-state-to-context-methods-v2"
 			prov.Declarations = append(prov.Declarations, sortedKeys(c.Fields)...)
 			prov.AdapterSHA256 = hash(adapter)
 		}

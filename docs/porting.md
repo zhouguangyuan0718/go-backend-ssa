@@ -4,13 +4,13 @@
 
 [internal/port/rules.go](../internal/port/rules.go) 使用普通 Go 定义固定官方源码版本、抽取范围和 Context 改写规则，不使用外部配置文件。维护者提供包含该 commit 的本地 Go Git 仓库；工具读取 Git 对象，不要求或修改其工作树。默认离线、不自动更新 pin、不依赖该仓库当前 HEAD。
 
-`cmd/syncgo` 已以 Go 实现 inspect、generate、check，并支持 M2 的多文件/整文件移植。运行方式和精确限制见 [M2 第二批记录](m2-universe.md)。本文件其余部分同时描述完整工具的后续目标。
+`cmd/syncgo` 已以 Go 实现 inspect、generate、check，并支持 M2 的多文件/整文件移植。运行方式和精确限制见 [M2 类型与状态记录](m2-universe.md)。本文件其余部分同时描述完整工具的后续目标。
 
 - inspect：包/声明依赖、全局状态、环境访问、初始化顺序和符号映射报告。
 - generate：在临时目录重建移植文件、验证后替换工具拥有的文件。
 - check：重新生成并比较，检查 provenance、残留 internal import、全局状态和映射覆盖。
 
-M1 inspect 使用 AST 枚举所有构建变体，记录词法引用和潜在副作用；不是别名分析。generate 对同包文件一起使用 go/types 做前后类型检查。WholeFile 保留类型、常量及已有 receiver；不自动去全局化。Context 状态仍限于单个源文件的单名字声明；已支持具有显式 owner 的 receiver 方法。Declarations 可抽取真实 type、整组 const 和指定方法，OwnerRule 控制字段及分配改写；未知形式报错。
+M1 inspect 使用 AST 枚举所有构建变体，记录词法引用和潜在副作用；不是别名分析。generate 对同包文件一起使用 go/types 做前后类型检查。WholeFile 保留类型、常量及已有 receiver；不自动去全局化。Context 已支持同包多文件的单名字状态声明，所有参与文件共享一个 Context 类型和构造函数；已支持具有显式 owner 的 receiver 方法。Declarations 可抽取真实 type、整组 const 和指定方法，OwnerRule 控制字段及分配改写；未知形式报错。
 
 第一阶段仅针对固定 Go 1.27 源码，维护可审计规则。无需解决任意 Go 程序自动去全局化问题。
 
@@ -90,3 +90,11 @@ SSA 的 _gen、rewrite 规则和相关生成依赖必须与源提交一致。可
 新字段、新 opcode、新 Aux 种类或新全局变量必须显式处理。不得静默丢弃未知操作或降低断言以获得测试通过。第一轮迁移演练在 Go 1.27.0 / 1.27.1 之间进行，不意味着同时对外支持两套实现。
 
 每个移植文件保留上游版权头；首批源码的 LICENSE/PATENTS 已随生成器放入 `third_party/go/`，并记入 provenance。
+
+## 已实现的跨文件状态转换
+
+`pkg.go` 和 `type.go` 的 Context 规则共同描述 Universe 状态。工具在整个包的 go/types 对象上改写引用、函数值、递归和闭包，并沿用 Type/Pkg 的 owner；各文件的状态字段声明仍写在该文件对应的 Go 规则中。同包 Context 类型、构造函数或 adapter 不一致，以及重复状态/字段映射都会失败。
+
+包级初始化遵循 go/types.InitOrder。工具将连续来自同一文件的初始化表达式放入原文件中的私有 receiver helper，由唯一构造函数按顺序调用，因此原文件 import 别名不会互相覆盖。显式 `ContextRule.Init` 才允许将源文件的全部顶层 init 转为实例方法；它们在变量初始化后按词法文件名和声明顺序运行，并保留各自 return/defer 的作用域。产物仍禁止包级 var 和 init。此能力不自动批准新依赖；新增 init 引用必须通过声明闭包、类型检查和环境依赖审计。
+
+拥有状态的函数转为方法，`*Type` / `[]*Type` 等已登记 owner 类型参数在入口检查实例归属；不涉及实例状态或 owned 分配的原 receiver 方法保持原样。当前规则不推导任意容器、泛型、跨包状态参数和整个类型图的所有权，也不能替代后续对新增移植函数的 nil 语义审阅。

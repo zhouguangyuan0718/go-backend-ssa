@@ -56,3 +56,27 @@ func (b binding) Type() *types.Type  { return b.typ }
 
 var _ types.Object = binding{}
 var _ interface{ CanBeAnSSAAux() } = (*types.Type)(nil)
+
+func TestBackendSSATypeInputs(t *testing.T) {
+	layout, err := target.NewLayout("linux", "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := types.NewUniverse(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scalar, err := u.Scalar(types.Int)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tuple *gcbridge.Type = u.NewTuple(scalar, u.TypeMem)
+	results := u.NewResults([]*types.Type{u.TypeMem})
+	if !tuple.IsTuple() || !tuple.IsMemory() || results != u.TypeResultMem || !results.IsResults() {
+		t.Fatal("public backend cannot preserve SSA type identity")
+	}
+	first, second, err := tuple.TupleTypes()
+	if err != nil || first != scalar || second != u.TypeMem {
+		t.Fatal("tuple children not accessible")
+	}
+}

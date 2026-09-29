@@ -34,16 +34,17 @@ func TestUniverseOwnershipAndNativeIdentity(t *testing.T) {
 	if y.HasShape() {
 		t.Fatal("shared type flags")
 	}
-	if _, err := a.NewTuple(x, y); err == nil {
-		t.Fatal("foreign type accepted")
+	for _, args := range [][2]*types.Type{{x, y}, {nil, x}} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Error("invalid tuple input accepted")
+				}
+			}()
+			a.NewTuple(args[0], args[1])
+		}()
 	}
-	if _, err := a.NewTuple(nil, x); err == nil {
-		t.Fatal("nil type accepted")
-	}
-	pair, err := a.NewTuple(x, x)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pair := a.NewTuple(x, x)
 	first, second, err := pair.TupleTypes()
 	if err != nil || first != x || second != x || !pair.HasShape() || pair.Universe() != a {
 		t.Fatal("upstream tuple construction lost identity/flags")

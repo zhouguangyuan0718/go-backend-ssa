@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m2-v2"
+const ToolVersion = "syncgo-m2-v3"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -52,6 +52,7 @@ type ContextRule struct {
 	Type, Constructor string
 	Fields            map[string]string
 	Adapter           string // Handwritten filename in the ported package.
+	Init              bool   // Move this file's reviewed init bodies into per-context initialization.
 }
 
 func (u Unit) output() string        { return portPath(u.Source) }
@@ -98,7 +99,9 @@ func (p Plan) Validate() error {
 		return fmt.Errorf("empty migration plan")
 	}
 	outputs := map[string]bool{}
-	contexts := map[string]bool{}
+	contexts := map[string]*ContextRule{}
+	states := map[string]map[string]bool{}
+	fields := map[string]map[string]bool{}
 	for _, u := range p.Units {
 		output := u.output()
 		if !safePath(u.Source) || !ownedPath(output) || path.Ext(output) != ".go" || (!u.WholeFile && len(u.Functions)+len(u.Declarations) == 0) || outputs[output] {
@@ -125,11 +128,24 @@ func (p Plan) Validate() error {
 			}
 		}
 		if c := u.Context; c != nil {
-			if contexts[pkg] {
-				return fmt.Errorf("one Context source per package is supported: %s", pkg)
+			if previous := contexts[pkg]; previous != nil {
+				if previous.Type != c.Type || previous.Constructor != c.Constructor || previous.Adapter != c.Adapter {
+					return fmt.Errorf("inconsistent package context: %s", pkg)
+				}
+			} else {
+				contexts[pkg] = c
+				states[pkg], fields[pkg] = map[string]bool{}, map[string]bool{}
 			}
-			contexts[pkg] = true
-			if len(c.Fields) == 0 || !safePath(c.Adapter) || path.Base(c.Adapter) != c.Adapter || !strings.HasPrefix(c.Adapter, "adapter_") || path.Ext(c.Adapter) != ".go" || strings.HasSuffix(c.Adapter, "_test.go") {
+			if !token.IsIdentifier(c.Type) || !token.IsIdentifier(c.Constructor) {
+				return fmt.Errorf("invalid context identifier")
+			}
+			for state, field := range c.Fields {
+				if !token.IsIdentifier(state) || !token.IsIdentifier(field) || states[pkg][state] || fields[pkg][field] {
+					return fmt.Errorf("invalid or duplicate context state/field: %s", state)
+				}
+				states[pkg][state], fields[pkg][field] = true, true
+			}
+			if !safePath(c.Adapter) || path.Base(c.Adapter) != c.Adapter || !strings.HasPrefix(c.Adapter, "adapter_") || path.Ext(c.Adapter) != ".go" || strings.HasSuffix(c.Adapter, "_test.go") {
 				return fmt.Errorf("invalid context adapter: %s", c.Adapter)
 			}
 		}
