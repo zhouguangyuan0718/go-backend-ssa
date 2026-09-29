@@ -12,7 +12,7 @@ import (
 )
 
 func ExampleNewContext() {
-	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1)"), nil, nil, syntax.CheckBranches)
+	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return}"), nil, nil, syntax.CheckBranches)
 	if err != nil {
 		panic(err)
 	}
@@ -46,7 +46,11 @@ func ExampleNewContext() {
 	if err != nil {
 		panic(err)
 	}
-	stub, err := writer.WritePackage(pkg, info, files, nil)
+	closures, err := writer.RewriteRangeFuncs(pkg, info, files)
+	if err != nil {
+		panic(err)
+	}
+	stub, err := writer.WritePackage(pkg, info, files, closures)
 	if err != nil {
 		panic(err)
 	}

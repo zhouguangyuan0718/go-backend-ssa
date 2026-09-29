@@ -112,5 +112,5 @@ func TestDifferential(t *testing.T){
 	if err != nil {
 		t.Fatalf("checker differential at %s: %v\n%s", s.Pin.Tag, err, output)
 	}
-	t.Logf("native checker (48 cases) and writer (48 byte comparisons) differential at %s:\n%s", s.Pin.Tag, output)
+	t.Logf("native checker (48 cases) and writer/rangefunc (48 + 96 byte comparisons) differential at %s:\n%s", s.Pin.Tag, output)
 }

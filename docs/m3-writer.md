@@ -9,7 +9,7 @@
 - AST 必须成功通过同一个 `types2.Context` 检查；检查失败不能只根据 `Package.Complete()` 判断可用。
 - `Info` 必须开启 `StoreTypesInSyntax`，并初始化 `Defs/Uses/Instances/Selections/Implicits/Scopes/FileVersions`。调用者负责让 Info、AST、Package 对应同一次检查。
 - 目标 Link 和 compiler Types 的指针/寄存器宽度必须一致；checker 的 Sizes、语言版本以及 writer 的 GOARCH/Flag 也必须由调用者保持一致。构造函数默认语言为 go1.27、Complete=true、SyncFrames=-1。
-- 当前低层入口不执行 rangefunc/midway 重写，也没有集成编译器的 directive 收集。未重写的 range-over-func 明确返回错误。当前公开调用仅覆盖无需 compiler directives 的源码；linkname、embed、cgo、wasm 指令等尚不能从此入口完整传入，不能将 parser 忽略这些注释当成支持。
+- WritePackage 本身不执行前端重写；rangefunc 已通过[第七批](m3-rangefunc.md)的 RewriteRangeFuncs 显式入口接入，实验性 midway 和编译器 directive 收集尚未集成。未重写的 range-over-func 明确返回错误。当前公开调用仅覆盖无需 compiler directives 的源码；linkname、embed、cgo、wasm 指令等尚不能从此入口完整传入，不能将 parser 忽略这些注释当成支持。
 - 同一 Context 和它的 checker、Types、Link、AST 由调用者串行操作；独立对象组可以并发调用。外部共享可变 AST 或 Link 不在并发保证范围内。
 - 普通 writer 诊断记录在 `Context.Diagnostics`，失败不返回半成品。内部不变量失败仍 panic；没有进程退出。下一次有效写入重置当前诊断，已经取出的诊断快照保留。
 - 上游命令驱动的 `freePackage` 会清零 checker graph。库在此处只检查包身份并解除临时输入引用，保留调用者持有的 Package、Type 和 Object，后续写入不使旧图失效。
@@ -32,4 +32,4 @@ writer 的 any/comparable/rune 预声明类型缓存、运算符表、Link、原
 - 参考端使用原生完整 writer、pkgbits、checker 和原始全局状态，保留原生 freePackage；仅测试驱动注入已检查输入和诊断，重定位 import，并适配已经验证的位置零值。比较完整 stub，包括其 fingerprint。
 - go1.27.0 和 go1.27.1 使用同一套移植规则。该字节对照验证编码兼容性，不能替代后续程序执行、runtime 或后端语义验收。
 
-下一步接入原生前端准备步骤和 Unified IR reader，构造真实 compiler IR/typecheck；随后推进 walk/escape/ssagen。替换官方编译器对应实现、接回原生后端和工具链自举仍是未完成的最终目标。
+原生 rangefunc 准备步骤已在[第七批](m3-rangefunc.md)接入。下一步推进 Unified IR reader，构造真实 compiler IR/typecheck；随后推进 walk/escape/ssagen。替换官方编译器对应实现、接回原生后端和工具链自举仍是未完成的最终目标。

@@ -5,6 +5,7 @@ import (
 	"go-backend-ssa/diagnostic"
 	errors "go-backend-ssa/internal/go/types/errors"
 	"go-backend-ssa/internal/ir"
+	"go-backend-ssa/internal/rangefunc"
 	"go-backend-ssa/internal/types"
 	"go-backend-ssa/internal/types2"
 	"go/version"
@@ -110,27 +111,50 @@ func NewContext(checker *types2.Context, compilerTypes *types.Universe, link *ob
 	c.Flag.Lang = "go1.27"
 	c.Flag.Complete = true
 	c.Debug.SyncFrames = -1
+	c.Debug.RangeFuncCheck = 1
 	return c, nil
 }
 
-// WritePackage runs the upstream package-stub writer on already checked ASTs.
-// Info must contain the compiler maps and StoreTypesInSyntax results. Frontend
-// rewrites (rangefunc/midway), directive collection, imports, and diagnostics
-// belong to the caller at this low-level boundary. No type graph is cleared.
-func (c *Context) WritePackage(pkg *types2.Package, info *types2.Info, files []*syntax.File, rangeClosures map[*syntax.FuncLit]bool) (data string, err error) {
+// validateCheckedPackage checks the low-level input ownership and Info contract.
+func (c *Context) validateCheckedPackage(pkg *types2.Package, info *types2.Info, files []*syntax.File) error {
 	if c == nil || c.Checker == nil || c.Types == nil || c.Ctxt == nil {
-		return "", fmt.Errorf("uninitialized noder context")
+		return fmt.Errorf("uninitialized noder context")
 	}
 	if pkg == nil || pkg.Context() != c.Checker || info == nil || !info.StoreTypesInSyntax || info.Defs == nil || info.Uses == nil || info.Instances == nil || info.Selections == nil || info.Implicits == nil || info.Scopes == nil || info.FileVersions == nil {
-		return "", fmt.Errorf("noder requires this checker's package and complete compiler Info")
+		return fmt.Errorf("noder requires this checker's package and complete compiler Info")
 	}
 	if len(files) == 0 {
-		return "", fmt.Errorf("noder requires source files")
+		return fmt.Errorf("noder requires source files")
 	}
 	for _, file := range files {
 		if file == nil {
-			return "", fmt.Errorf("nil source file")
+			return fmt.Errorf("nil source file")
 		}
+	}
+	return nil
+}
+
+// RewriteRangeFuncs runs the original rangefunc pass on successfully checked
+// ASTs, updating them and Info in place. Call exactly once, before WritePackage,
+// and pass the returned closure map to the writer. Existing package types stay
+// valid; callers must not concurrently read the AST or Info being rewritten.
+func (c *Context) RewriteRangeFuncs(pkg *types2.Package, info *types2.Info, files []*syntax.File) (map[*syntax.FuncLit]bool, error) {
+	if err := c.validateCheckedPackage(pkg, info, files); err != nil {
+		return nil, err
+	}
+	r := rangefunc.NewContext(c.Checker)
+	r.Flag, r.Debug, r.TraceWriter = c.Flag, c.Debug, c.TraceWriter
+	return r.Rewrite(pkg, info, files), nil
+}
+
+// WritePackage runs the native writer after required frontend preparation.
+// See RewriteRangeFuncs for range-over-function source. Compiler directives and
+// experimental midway rewriting are not yet integrated at this entry point.
+func (c *Context) WritePackage(pkg *types2.Package, info *types2.Info, files []*syntax.File, rangeClosures map[*syntax.FuncLit]bool) (data string, err error) {
+	if err := c.validateCheckedPackage(pkg, info, files); err != nil {
+		return "", err
+	}
+	for _, file := range files {
 		syntax.Inspect(file, func(node syntax.Node) bool {
 			if clause, ok := node.(*syntax.RangeClause); ok {
 				typ := clause.X.GetTypeInfo().Type

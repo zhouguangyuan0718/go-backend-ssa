@@ -166,7 +166,7 @@ func TestNativeSyntaxFromPublicModule(t *testing.T) {
 }
 
 func TestNativeCheckerFromPublicModule(t *testing.T) {
-	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1)"), nil, nil, syntax.CheckBranches)
+	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return}"), nil, nil, syntax.CheckBranches)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,11 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := writer.WritePackage(p, info, []*syntax.File{file}, nil)
+	closures, err := writer.RewriteRangeFuncs(p, info, []*syntax.File{file})
+	if err != nil || len(closures) != 1 {
+		t.Fatalf("native rangefunc preparation: %v", err)
+	}
+	data, err := writer.WritePackage(p, info, []*syntax.File{file}, closures)
 	if err != nil || data == "" || p.Scope().Lookup("X").Type() != typ {
 		t.Fatalf("native writer/retained graph: %v", err)
 	}

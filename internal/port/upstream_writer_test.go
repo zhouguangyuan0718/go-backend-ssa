@@ -13,7 +13,7 @@ import (
 func prepareUpstreamWriter(t *testing.T, s *Source, dir string) {
 	t.Helper()
 	mapping := Migration().importMap(s.Pin.TargetModule)
-	for _, p := range []string{"cmd/compile/internal/base", "cmd/compile/internal/types", "cmd/compile/internal/types2", "cmd/compile/internal/syntax", "cmd/internal/objabi", "internal/buildcfg", "internal/pkgbits"} {
+	for _, p := range []string{"cmd/compile/internal/rangefunc", "cmd/compile/internal/base", "cmd/compile/internal/types", "cmd/compile/internal/types2", "cmd/compile/internal/syntax", "cmd/internal/objabi", "internal/buildcfg", "internal/pkgbits"} {
 		mapping[p] = "go-backend-ssa/internal/reference/" + path.Base(p)
 	}
 	mapping["internal/types/errors"] = "go-backend-ssa/internal/reference/errors"
@@ -22,6 +22,15 @@ func prepareUpstreamWriter(t *testing.T, s *Source, dir string) {
 			text = strings.ReplaceAll(text, `"`+from+`"`, `"`+to+`"`)
 		}
 		return strings.ReplaceAll(text, "src.NoXPos", "src.XPos{}")
+	}
+	for _, u := range rangefuncMigration() {
+		data, err := s.Read(u.Source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if path.Base(path.Dir(u.Source)) == "rangefunc" {
+			writeTestFile(t, dir, "internal/reference/rangefunc/rewrite.go", relocate(string(data)))
+		}
 	}
 	for _, u := range noderMigration() {
 		if path.Dir(u.Source) != "src/cmd/compile/internal/noder" {
@@ -86,13 +95,15 @@ var GOARCH string
 var GOROOT string
 `)
 	writeTestFile(t, dir, "internal/reference/noder/driver.go", `package noder
-import("fmt";"go-backend-ssa/internal/cmd/obj";"go-backend-ssa/internal/reference/base";"go-backend-ssa/internal/reference/buildcfg";"go-backend-ssa/internal/reference/syntax";"go-backend-ssa/internal/reference/types2")
+import("fmt";"go-backend-ssa/internal/cmd/obj";"go-backend-ssa/internal/reference/base";"go-backend-ssa/internal/reference/buildcfg";"go-backend-ssa/internal/reference/rangefunc";"go-backend-ssa/internal/reference/syntax";"go-backend-ssa/internal/reference/types2")
 var checkedPkg *types2.Package
 var checkedInfo *types2.Info
-func checkFiles(posMap,[]*noder)(*types2.Package,*types2.Info,map[*syntax.FuncLit]bool){return checkedPkg,checkedInfo,nil}
-func WriteChecked(pkg *types2.Package,info *types2.Info,files []*syntax.File,arch string,frames int)string{
+var checkedRange map[*syntax.FuncLit]bool
+func checkFiles(posMap,[]*noder)(*types2.Package,*types2.Info,map[*syntax.FuncLit]bool){return checkedPkg,checkedInfo,checkedRange}
+func WriteChecked(pkg *types2.Package,info *types2.Info,files []*syntax.File,arch string,frames,checks int)string{
  checkedPkg,checkedInfo=pkg,info
- base.Ctxt=&obj.Link{Pathname:"/src"};base.Flag.Lang="go1.27";base.Flag.Complete=true;base.Debug.SyncFrames=frames;base.Diagnostics=nil;buildcfg.GOARCH=arch
+ base.Ctxt=&obj.Link{Pathname:"/src"};base.Flag.Lang="go1.27";base.Flag.Complete=true;base.Debug.SyncFrames=frames;base.Debug.RangeFuncCheck=checks;base.Diagnostics=nil;buildcfg.GOARCH=arch
+ checkedRange=rangefunc.Rewrite(pkg,info,files)
  nodes:=make([]*noder,len(files));for i,f:=range files{nodes[i]=&noder{file:f}}
  data:=writePkgStub(posMap{},nodes)
  if len(base.Diagnostics)!=0{panic(fmt.Sprint(base.Diagnostics))}
@@ -105,7 +116,7 @@ import("fmt";"strings";"testing";"go-backend-ssa/internal/cmd/obj";"go-backend-s
 	template := `
 type NAMEImports struct{unsafe,dep *TC.Package}
 func(i NAMEImports)Import(p string)(*TC.Package,error){switch p{case "unsafe":return i.unsafe,nil;case "dep":return i.dep,nil};return nil,fmt.Errorf("unknown import %s",p)}
-func NAME(t *testing.T,source,arch string,frames int)string{
+func NAME(t *testing.T,source,arch string,frames,checks int)string{
  t.Helper()
  ctxt:=TC.NewContext()
  conf:=TC.Config{Context:ctxt,GoVersion:"go1.27",Sizes:SIZES}
@@ -118,8 +129,8 @@ func NAME(t *testing.T,source,arch string,frames int)string{
  WRITE
 }
 `
-	library := strings.NewReplacer("NAME", "writePorted", "TC", "pc", "SYN", "ps", "SIZES", `ctxt.SizesFor("gc",arch)`, "UNSAFE", "ctxt.Unsafe", "WRITE", `ptr:=8;if arch=="386"{ptr=4};link:=&obj.Link{Pathname:"/src",Arch:&obj.LinkArch{Arch:&sys.Arch{Name:arch,PtrSize:ptr,RegSize:ptr}}};c,err:=pn.NewContext(ctxt,types.NewUniverse(ptr,ptr,1<<50),link);if err!=nil{t.Fatal(err)};c.Debug.SyncFrames=frames;data,err:=c.WritePackage(pkg,info,[]*ps.File{file},nil);if err!=nil{t.Fatal(err)};return data`).Replace(template)
-	reference := strings.NewReplacer("NAME", "writeReference", "TC", "rc", "SYN", "rs", "SIZES", `rc.SizesFor("gc",arch)`, "UNSAFE", "rc.Unsafe", "WRITE", `return rn.WriteChecked(pkg,info,[]*rs.File{file},arch,frames)`).Replace(template)
+	library := strings.NewReplacer("NAME", "writePorted", "TC", "pc", "SYN", "ps", "SIZES", `ctxt.SizesFor("gc",arch)`, "UNSAFE", "ctxt.Unsafe", "WRITE", `ptr:=8;if arch=="386"{ptr=4};link:=&obj.Link{Pathname:"/src",Arch:&obj.LinkArch{Arch:&sys.Arch{Name:arch,PtrSize:ptr,RegSize:ptr}}};c,err:=pn.NewContext(ctxt,types.NewUniverse(ptr,ptr,1<<50),link);if err!=nil{t.Fatal(err)};c.Debug.SyncFrames=frames;c.Debug.RangeFuncCheck=checks;closures,err:=c.RewriteRangeFuncs(pkg,info,[]*ps.File{file});if err!=nil{t.Fatal(err)};data,err:=c.WritePackage(pkg,info,[]*ps.File{file},closures);if err!=nil{t.Fatal(err)};return data`).Replace(template)
+	reference := strings.NewReplacer("NAME", "writeReference", "TC", "rc", "SYN", "rs", "SIZES", `rc.SizesFor("gc",arch)`, "UNSAFE", "rc.Unsafe", "WRITE", `return rn.WriteChecked(pkg,info,[]*rs.File{file},arch,frames,checks)`).Replace(template)
 	tests := `
 func TestNativeWriterBytes(t *testing.T){
  sources:=[]string{
@@ -136,8 +147,8 @@ func TestNativeWriterBytes(t *testing.T){
   "package p;import \"dep\";var X=dep.Id(dep.Box[int]{Value:3})",
   "package p\n//line generated.go:40:3\nfunc F()string{return \"hello\"}\n",
  }
- for i,source:=range sources{for _,arch:=range []string{"386","amd64"}{for _,frames:=range []int{-1,0}{t.Run(fmt.Sprintf("%d/%s/%d",i,arch,frames),func(t *testing.T){want,got:=writeReference(t,source,arch,frames),writePorted(t,source,arch,frames);if got!=want{at:=0;for at<len(got)&&at<len(want)&&got[at]==want[at]{at++};t.Fatalf("native stub bytes differ: offset %d, ported %d bytes, reference %d bytes",at,len(got),len(want))}})}}}
+ for i,source:=range sources{for _,arch:=range []string{"386","amd64"}{for _,frames:=range []int{-1,0}{t.Run(fmt.Sprintf("%d/%s/%d",i,arch,frames),func(t *testing.T){want,got:=writeReference(t,source,arch,frames,1),writePorted(t,source,arch,frames,1);if got!=want{at:=0;for at<len(got)&&at<len(want)&&got[at]==want[at]{at++};t.Fatalf("native stub bytes differ: offset %d, ported %d bytes, reference %d bytes",at,len(got),len(want))}})}}}
 }
 `
-	writeTestFile(t, dir, "internal/compare/writer_test.go", header+library+reference+tests)
+	writeTestFile(t, dir, "internal/compare/writer_test.go", header+library+reference+tests+rangefuncByteTests)
 }

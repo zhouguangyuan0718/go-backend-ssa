@@ -1,6 +1,6 @@
 # 逐步细化与实施
 
-状态：M0 已建立；M1 的审计工具、最小生成闭环和小切片升级演练已实现，见 [M1 记录](m1.md)；M2 第一批（多文件移植、位置/诊断/目标输入、位置桥接）已实现，详见 [M2 记录](m2.md)；M2 第二至七批已实现 [真实结构、Universe、SSA 身份、复合类型/签名、原生布局/预声明类型及未定类型状态解耦](m2-universe.md)，M3 已完成 [源码到原生 AST 的首批接口](m3-syntax.md) 、[原生 types2 类型检查](m3-types2.md) 、[Unified IR 编码基础](m3-unified.md) 、[noder/原生后端共享数据声明](m3-objects.md) 、[noder 位置映射](m3-noder.md) 和 [原生 Unified IR writer](m3-writer.md)；完整 noder/IR、源码到 SSA 及原生编译器回接尚未实现。下表列出阶段目标，不能将某一切片通过扩大为完整编译器能力。
+状态：M0 已建立；M1 的审计工具、最小生成闭环和小切片升级演练已实现，见 [M1 记录](m1.md)；M2 第一批（多文件移植、位置/诊断/目标输入、位置桥接）已实现，详见 [M2 记录](m2.md)；M2 第二至七批已实现 [真实结构、Universe、SSA 身份、复合类型/签名、原生布局/预声明类型及未定类型状态解耦](m2-universe.md)，M3 已完成 [源码到原生 AST 的首批接口](m3-syntax.md) 、[原生 types2 类型检查](m3-types2.md) 、[Unified IR 编码基础](m3-unified.md) 、[noder/原生后端共享数据声明](m3-objects.md) 、[noder 位置映射](m3-noder.md) 、[原生 Unified IR writer](m3-writer.md) 和 [原生 rangefunc 重写](m3-rangefunc.md)；完整 noder/IR、源码到 SSA 及原生编译器回接尚未实现。下表列出阶段目标，不能将某一切片通过扩大为完整编译器能力。
 
 | 阶段 | 交付 | 验收门槛 |
 | --- | --- | --- |
