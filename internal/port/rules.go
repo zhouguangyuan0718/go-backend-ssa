@@ -190,6 +190,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, typebitsMigration()...)
 	plan.Units = append(plan.Units, compareMigration()...)
 	plan.Units = append(plan.Units, reflectdataMigration()...)
+	plan.Units = append(plan.Units, staticinitMigration()...)
 	plan.Units = append(plan.Units, dwarfgenMigration()...)
 	plan.Units = append(plan.Units, noderMigration()...)
 	// base's symbol helpers now consume the native obj package. Keep their

@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"go-backend-ssa/internal/cmd/objabi"
 	"go-backend-ssa/internal/go/pkgbits"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/objw"
 	"go-backend-ssa/internal/reflectdata"
 	"go-backend-ssa/internal/rttype"
 	"go-backend-ssa/internal/staticdata"
+	"go-backend-ssa/internal/staticinit"
 	"go-backend-ssa/internal/types"
 	"sync"
 	"testing"
@@ -46,6 +48,7 @@ func bodyContext(t *testing.T) *Context {
 	rt := rttype.NewContext(ow)
 	rt.Init()
 	c.ReflectData = reflectdata.NewContext(c.Typecheck, rt, staticdata.NewContext(c.Typecheck.IR, ow))
+	c.StaticInit = staticinit.NewContext(c.Typecheck, c.ReflectData)
 	return c
 }
 func readTestSource(t *testing.T, c *Context, source string, names ...string) map[string]*ir.Name {
@@ -160,4 +163,118 @@ func TestConcurrentNativeReaderRetainsBodies(t *testing.T) {
 		})
 	}
 	wg.Wait()
+}
+
+func TestNativeReaderPackageInitialization(t *testing.T) {
+	c := bodyContext(t)
+	source := `package p
+ var A=7
+ var B=A
+ var M=map[int]int{0:0,1:1,2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,10:10}
+ var Slice=[]int{3,4,5}
+ func Value()int{return 11}
+ var Dynamic=Value()
+ func init(){A++}
+ `
+	initializeTestPackage(t, c, source)
+	target := c.Typecheck.Target
+	if len(target.Inits) != 2 || len(c.StaticInit.MapInitToVar) != 1 {
+		t.Fatal("missing package/user init or map outlining", len(target.Inits), len(c.StaticInit.MapInitToVar))
+	}
+	init := target.Inits[0]
+	schedule := c.StaticInit.NewSchedule()
+	c.Typecheck.IR.WithFunc(init, func() {
+		for _, stmt := range init.Body {
+			schedule.StaticInit(stmt)
+		}
+	})
+	for _, name := range []string{"A", "B"} {
+		n := c.Types.LocalPkg.Lookup(name).Def.(*ir.Name)
+		if binary.LittleEndian.Uint64(n.Linksym().P) != 7 {
+			t.Fatal("native static initializer", name, n.Linksym().P)
+		}
+	}
+	if len(schedule.Out) != 2 || schedule.Out[0].Op() != ir.OCALLFUNC || schedule.Out[1].Op() != ir.OAS {
+		t.Fatal("dynamic initialization order", schedule.Out)
+	}
+	c.StaticInit.AddKeepRelocations()
+	mapSym := c.Types.LocalPkg.Lookup("M").Linksym()
+	if len(mapSym.R) != 1 || mapSym.R[0].Type != objabi.R_KEEP {
+		t.Fatal("map initializer reachability", mapSym.R)
+	}
+	if c.Diagnostics.HasErrors() || c.Typecheck.IR.CurFunc != nil {
+		t.Fatal("initialization diagnostics/function state")
+	}
+}
+
+func initializeTestPackage(t *testing.T, c *Context, source string) {
+	t.Helper()
+	pkg, info, files := checked(t, c.Checker, source)
+	data, err := c.WritePackage(pkg, info, files, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pr := c.newPkgReader(pkgbits.NewPkgDecoder(pkg.Path(), data))
+	c.localPkgReader = pr
+	r := pr.newReader(pkgbits.SectionMeta, pkgbits.PrivateRootIdx, pkgbits.SyncPrivate)
+	target := c.Typecheck.Target
+	r.pkgInit(c.Types.LocalPkg, target)
+	drainTestBodies(c)
+
+}
+
+func TestConcurrentPackageInitializersRetainState(t *testing.T) {
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			c := bodyContext(t)
+			c.Debug.WrapGlobalMapCtl = 2
+			initializeTestPackage(t, c, `package p;var A=7;var M=map[int]int{1:2};func mutate()int{A++;return A};var B=mutate();var C=A`)
+			fn := c.Typecheck.Target.Inits[0]
+			s := c.StaticInit.NewSchedule()
+			c.Typecheck.IR.WithFunc(fn, func() {
+				for _, stmt := range fn.Body {
+					s.StaticInit(stmt)
+				}
+			})
+			if len(s.Out) != 3 || s.Out[0].Op() != ir.OCALLFUNC {
+				t.Error("mutation barrier or order lost")
+				return
+			}
+			// The final global copy must execute after mutate, never copy the initial 7.
+			copied := c.Types.LocalPkg.Lookup("C").Linksym()
+			if len(copied.P) != 0 {
+				t.Error("global copied across mutation")
+			}
+			old := c.Types.LocalPkg.Lookup("A").Linksym()
+			before := append([]byte(nil), old.P...)
+			temp := c.StaticInit.StaticName(c.Types.Types[types.TINT])
+			name := temp.Sym().Name
+			oldMap := c.StaticInit.MapInitToVar
+			c.StaticInit.AddKeepRelocations()
+			other := bodyContext(t)
+			other.Debug.WrapGlobalMapCtl = 2
+			initializeTestPackage(t, other, `package p;var M=map[int]int{1:2}`)
+			fresh := other.StaticInit.StaticName(other.Types.Types[types.TINT])
+			if !bytes.Equal(before, old.P) || name != temp.Sym().Name || name != fresh.Sym().Name || len(oldMap) != 1 || len(c.StaticInit.MapInitToVar) != 1 || fresh.Sym() == temp.Sym() {
+				t.Error("initialization state leaked between instances")
+			}
+			count := len(c.Types.LocalPkg.Lookup("M").Linksym().R)
+			c.StaticInit.AddKeepRelocations()
+			if len(c.Types.LocalPkg.Lookup("M").Linksym().R) != count {
+				t.Error("keep-relocation queue not consumed")
+			}
+			if c.Typecheck.IR.CurFunc != nil || c.Diagnostics.HasErrors() {
+				t.Error("init function state leaked")
+			}
+		})
+	}
+	wg.Wait()
+}
+func TestStaticInitializerRejectsForeignGraph(t *testing.T) {
+	c, other := bodyContext(t), bodyContext(t)
+	mustDictionaryPanic(t, func() { staticinit.NewContext(c.Typecheck, other.ReflectData) })
+	foreign := other.StaticInit.StaticName(other.Types.Types[types.TINT])
+	mustDictionaryPanic(t, func() { c.StaticInit.NewSchedule().StaticAssign(foreign, 0, nil, c.Types.Types[types.TINT]) })
+	mustDictionaryPanic(t, func() { c.StaticInit.StaticName(other.Types.Types[types.TINT]) })
 }

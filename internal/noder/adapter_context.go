@@ -7,6 +7,7 @@ import (
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/rangefunc"
 	"go-backend-ssa/internal/reflectdata"
+	"go-backend-ssa/internal/staticinit"
 	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
 	"go-backend-ssa/internal/types2"
@@ -23,6 +24,7 @@ import (
 // Context owns the formerly process-wide inputs used by the selected noder
 // algorithms. The supplied Link and its position table belong to this instance.
 type Context struct {
+	StaticInit                                       *staticinit.Context
 	ReflectData                                      *reflectdata.Context
 	ptrSize, renameinitgen, inlgen                   int
 	basics                                           [types2.UntypedNil + 1]**types.Type

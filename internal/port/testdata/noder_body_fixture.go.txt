@@ -1,7 +1,7 @@
 package noder
 import("encoding/binary";"os";"strings";"testing";"go-backend-ssa/internal/cmd/obj";"go-backend-ssa/internal/cmd/sys";"go-backend-ssa/internal/ir";"go-backend-ssa/internal/typecheck";"go-backend-ssa/internal/types";"go-backend-ssa/internal/types2";"go-backend-ssa/internal/syntax")
 func TestSyncgoBodyFixture(t *testing.T){
- arch:=os.Getenv("SYNCGO_TARGET");size:=8;var order binary.ByteOrder=binary.LittleEndian;frames:=0;if strings.HasSuffix(arch,"-nosync"){arch=strings.TrimSuffix(arch,"-nosync");frames=-1};switch arch{case "386":size=4;case "mips":size=4;order=binary.BigEndian;case "ppc64":order=binary.BigEndian}
+ arch:=strings.SplitN(os.Getenv("SYNCGO_TARGET"),"-",2)[0];size:=8;var order binary.ByteOrder=binary.LittleEndian;frames:=0;if strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-nosync"){frames=-1};switch arch{case "386":size=4;case "mips":size=4;order=binary.BigEndian;case "ppc64":order=binary.BigEndian}
  link:=&obj.Link{Pathname:"/src",Arch:&obj.LinkArch{Arch:&sys.Arch{Name:arch,PtrSize:size,RegSize:size,ByteOrder:order}}};u:=types.NewUniverseWithPositions(size,size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");g:=ir.NewContext(u,link);tc:=typecheck.NewContext(g);tc.InitUniverse();g.Base.Flag.Lang="go1.27";g.Base.Flag.Complete=true;g.Debug.SyncFrames=frames;g.Debug.RangeFuncCheck=1
  c,err:=NewContext(types2.NewContext(),tc);if err!=nil{t.Fatal(err)}
  source:=`package p
@@ -31,7 +31,21 @@ func TestSyncgoBodyFixture(t *testing.T){
  func Branch(n int)int{a:=0;L: for{switch n{case 0:break L;case 1:n--;continue L;default:a++;n--}};return a}
  func GenericClosure[T any](v T)func()T{return func()T{return v}}
  func Capture()int{return GenericClosure(7)()}
- func init(){}
+ var A=7
+ var Before=A
+ var Arr=[4]int{1:8,3:9}
+ var Ptr=&Arr[3]
+ var Slice=[]int{2,3,4}
+ var Bytes=[]byte("go\x00语言")
+ var Str="hello"
+ var Iface any=Number(3)
+ var Fn=func()int{return 9}
+ var SmallMap=map[int]int{1:2}
+ var LargeMap=map[int]int{0:0,1:1,2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,10:10}
+ func mutate()int{A++;return A}
+ var Side=map[int]int{0:mutate()}
+ var After=A
+ func init(){A++}
  `
  file,err:=syntax.Parse(syntax.NewFileBase("input.go"),strings.NewReader(source),nil,nil,syntax.CheckBranches);if err!=nil{t.Fatal(err)}
  info:=&types2.Info{StoreTypesInSyntax:true,Defs:map[*syntax.Name]types2.Object{},Uses:map[*syntax.Name]types2.Object{},Selections:map[*syntax.SelectorExpr]*types2.Selection{},Implicits:map[syntax.Node]types2.Object{},Scopes:map[syntax.Node]*types2.Scope{},Instances:map[*syntax.Name]types2.Instance{},FileVersions:map[*syntax.PosBase]string{}}

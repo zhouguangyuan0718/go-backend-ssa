@@ -112,3 +112,8 @@ func (ctxt *Link) LookupInit(name string, init func(s *LSym)) *LSym {
 	}
 	return &once.sym
 }
+
+// StaticNamePrefix is the prefix the front end applies to static temporary
+// variables. When turned into LSyms, these can be tagged as static so
+// as to avoid inserting them into the linker's name lookup tables.
+const StaticNamePrefix = ".stmp_"

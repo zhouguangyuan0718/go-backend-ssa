@@ -1,15 +1,49 @@
 package noder
 import("fmt";"encoding/json";"encoding/binary";"os";"strings";"sort";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_PKGBITS";BODY_RUNTIME IMPORT_BASE)
 func TestSyncgoNativeSnapshot(t *testing.T){
- target:=struct{arch string;size int;order binary.ByteOrder}{strings.TrimSuffix(os.Getenv("SYNCGO_TARGET"),"-nosync"),8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.SplitN(os.Getenv("SYNCGO_TARGET"),"-",2)[0],8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
  SETUP
+ switch {case strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-fips"):LINK.Pkgpath="crypto/internal/fips140/testinit";case strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-nooutline"):ND_DEBUG.WrapGlobalMapCtl=1;case strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-stressoutline"):ND_DEBUG.WrapGlobalMapCtl=2}
  var out []string
  data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
  pr:=UP.newPkgReader(pkgbits.NewPkgDecoder("example/p",string(data)));UP.localPkgReader=pr
- wanted:=map[string]bool{};for _,s:=range []string{"RecF","RecI","Node","Alias","Rounded","Complex","Add","Closure","Generic","Control","Range","Method","Composite","Calls","Branch","Capture","init"}{wanted[s]=true}
- for i:=range pr.NumElems(pkgbits.SectionName){r:=pr.newReader(pkgbits.SectionName,index(i),pkgbits.SyncObject1);_,sym:=r.qualifiedIdent();tag:=pkgbits.CodeObj(r.Code(pkgbits.SyncCodeObj));if tag==pkgbits.ObjStub||sym.Pkg!=TY.LocalPkg||!wanted[sym.Name]{continue};n:=pr.objIdx(index(i),nil,nil,false).(*ir.Name);delete(wanted,sym.Name);out=append(out,fmt.Sprintf("decl:%v:%v:%v:%v:%t",n.Sym(),n.Op(),n.Type(),n.Val(),n.Alias()));if n.Class==ir.PFUNC{TC.Target.Funcs=append(TC.Target.Funcs,n.Func)};if sym.Name!="init"&&pr.objIdx(index(i),nil,nil,false)!=n{t.Fatal("object cache identity")}}
+ wanted:=map[string]bool{};for _,s:=range []string{"RecF","RecI","Node","Alias","Rounded","Complex","Add","Closure","Generic","Control","Range","Method","Composite","Calls","Branch","Capture"}{wanted[s]=true}
+ for i:=range pr.NumElems(pkgbits.SectionName){r:=pr.newReader(pkgbits.SectionName,index(i),pkgbits.SyncObject1);_,sym:=r.qualifiedIdent();tag:=pkgbits.CodeObj(r.Code(pkgbits.SyncCodeObj));if tag==pkgbits.ObjStub||sym.Pkg!=TY.LocalPkg||!wanted[sym.Name]{continue};n:=pr.objIdx(index(i),nil,nil,false).(*ir.Name);delete(wanted,sym.Name);out=append(out,fmt.Sprintf("decl:%v:%v:%v:%v:%t",n.Sym(),n.Op(),n.Type(),n.Val(),n.Alias()));if sym.Name!="init"&&pr.objIdx(index(i),nil,nil,false)!=n{t.Fatal("object cache identity")}}
  if len(wanted)!=0{t.Fatal("missing",wanted)}
+ pr.newReader(pkgbits.SectionMeta,pkgbits.PrivateRootIdx,pkgbits.SyncPrivate).pkgInit(TY.LocalPkg,TC.Target)
  BODY_DRAIN
+ for _,fn:=range TC.Target.Inits {
+  out=append(out,fmt.Sprintf("init:%v:%t",fn.Sym(),fn.IsPackageInit()))
+  if fn.IsPackageInit(){
+   for _,stmt:=range fn.Body {out=append(out,fmt.Sprintf("before-static:%v",stmt))}
+   schedule:=INIT_SCHEDULE
+   GRAPH.WithFunc(fn,func(){for _,stmt:=range fn.Body{schedule.StaticInit(stmt)}})
+   fn.Body=schedule.Out
+   out=append(out,fmt.Sprintf("schedule:%d:%d:%d",len(schedule.Plans),len(schedule.Temps),len(schedule.Out)))
+  }
+ }
+ // Exercise the native post-inlining static-folding recognizer using its
+ // actual AS2/INLMARK/BLOCK/GOTO/LABEL IR shape, including rejection paths.
+ pos:=AUTO_POS
+ param:=GRAPH.NewNameAt(pos,TY.LocalPkg.Lookup("inlineParam"),TY.Types[types.TINT]);param.Class=ir.PAUTO
+ retvar:=GRAPH.NewNameAt(pos,TY.LocalPkg.Lookup("inlineReturn"),TY.Types[types.TUINT8]);retvar.Class=ir.PAUTO
+ label:=TY.LocalPkg.Lookup("inlineEnd")
+ args:=GRAPH.NewAssignListStmt(pos,ir.OAS2,[]ir.Node{param},[]ir.Node{GRAPH.NewInt(pos,257)})
+ result:=GRAPH.NewConvExpr(pos,ir.OCONV,TY.Types[types.TUINT8],param)
+ assign:=GRAPH.NewAssignListStmt(pos,ir.OAS2,[]ir.Node{retvar},[]ir.Node{result})
+ block:=GRAPH.NewBlockStmt(pos,[]ir.Node{GRAPH.NewDecl(pos,ir.ODCL,retvar),assign,GRAPH.NewBranchStmt(pos,ir.OGOTO,label)})
+ inlined:=GRAPH.NewInlinedCallExpr(pos,[]ir.Node{block,GRAPH.NewLabelStmt(pos,label)},[]ir.Node{retvar});inlined.SetType(TY.Types[types.TUINT8]);inlined.PtrInit().Append(args,GRAPH.NewInlineMarkStmt(pos,1))
+ dest:=INIT_STATE.StaticName(TY.Types[types.TUINT8]);fold:=INIT_SCHEDULE
+ ND_DEBUG.InlStaticInit=0
+ out=append(out,fmt.Sprintf("inline-disabled:%t",fold.StaticAssign(dest,0,inlined,dest.Type())))
+ ND_DEBUG.InlStaticInit=1
+ param.SetAddrtaken(true);out=append(out,fmt.Sprintf("inline-address:%t",fold.StaticAssign(dest,0,inlined,dest.Type())));param.SetAddrtaken(false)
+ out=append(out,fmt.Sprintf("inline-fold:%t",fold.StaticAssign(dest,0,inlined,dest.Type())))
+ out=append(out,fmt.Sprintf("inline-retained:%t:%v:%x",result.X==param,args.Rhs[0],dest.Linksym().P))
+ INIT_STATE.AddKeepRelocations()
+ var mapInits []string
+ for fn,v:=range INIT_STATE.MapInitToVar {mapInits=append(mapInits,fmt.Sprintf("map-init:%v:%v",fn.Sym(),v.Sym()))};sort.Strings(mapInits);out=append(out,mapInits...)
+
  for _,fn:=range TC.Target.Funcs{
  if fn.Pos()==(src.XPos{}){t.Fatal("function position missing")}
   out=append(out,fmt.Sprintf("fn:%v:%v:%d:%t:%t:%s:%s:%v",fn.Sym(),fn.Type(),fn.Typecheck(),fn.Dupok(),fn.Wrapper(),LINK.PosTable.Pos(fn.Pos()),LINK.PosTable.Pos(fn.Endlineno),fn.Parents))
@@ -20,7 +54,7 @@ func TestSyncgoNativeSnapshot(t *testing.T){
  }
  for _,typ:=range UP.needWrapperTypes{out=append(out,fmt.Sprintf("need-wrapper:%v",typ))};for _,typ:=range UP.haveWrapperTypes{out=append(out,fmt.Sprintf("have-wrapper:%v",typ))}
  for _,entry:=range UP.needMethodValueWrappers{out=append(out,fmt.Sprintf("method-value:%v:%v",entry.rcvr,entry.method.Sym))}
- symbols:=append([]*obj.LSym(nil),LINK.Data...);sort.Slice(symbols,func(i,j int)bool{return symbols[i].Name<symbols[j].Name});for _,s:=range symbols{out=append(out,fmt.Sprintf("symbol:%s:%v:%d:%x:%d",s.Name,s.Type,s.Size,s.P,uint32(s.Attribute)));for _,r:=range s.R{out=append(out,fmt.Sprintf("reloc:%v:%d:%d:%s:%v:%d",r.Type,r.Off,r.Siz,r.Sym.Name,r.Sym.ABI(),r.Add))}}
+ symbols:=append([]*obj.LSym(nil),LINK.Data...);seen:=map[*obj.LSym]bool{};for _,s:=range symbols{seen[s]=true};for _,n:=range TC.Target.Externs{if n.Op()==ir.ONAME{sym:=n.Linksym();if !seen[sym]{symbols=append(symbols,sym);seen[sym]=true}}};sort.Slice(symbols,func(i,j int)bool{return symbols[i].Name<symbols[j].Name});for _,s:=range symbols{out=append(out,fmt.Sprintf("symbol:%s:%v:%d:%x:%d",s.Name,s.Type,s.Size,s.P,uint32(s.Attribute)));for _,r:=range s.R{out=append(out,fmt.Sprintf("reloc:%v:%d:%d:%s:%v:%d",r.Type,r.Off,r.Siz,r.Sym.Name,r.Sym.ABI(),r.Add))}}
  out=append(out,fmt.Sprintf("end:%d:%d:%t",len(UP.todoBodies),len(UP.todoDicts),GRAPH.CurFunc==nil))
  bytes,_:=json.Marshal(out);fmt.Printf("SYNCGO_IR=%s\n",bytes)
 }

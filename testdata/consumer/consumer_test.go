@@ -13,6 +13,7 @@ import (
 	"go-backend-ssa/reflectdata"
 	"go-backend-ssa/rttype"
 	"go-backend-ssa/staticdata"
+	"go-backend-ssa/staticinit"
 	"go-backend-ssa/syntax"
 	"go-backend-ssa/target"
 	"go-backend-ssa/typebits"
@@ -384,6 +385,13 @@ func TestNativeReflectionDataPublicAPI(t *testing.T) {
 	rt := rttype.NewContext(objw.NewContext(u, link, "linux"))
 	rt.Init()
 	c := reflectdata.NewContext(tc, rt, staticdata.NewContext(tc.IR, rt.Writer))
+	scheduler := staticinit.NewContext(tc, c)
+	global := scheduler.StaticName(u.Types[types.Int])
+	schedule := scheduler.NewSchedule()
+	if !schedule.StaticAssign(global, 0, tc.IR.NewInt(position.XPos{}, 17), u.Types[types.Int]) || binary.LittleEndian.Uint32(global.Linksym().P) != 17 || len(schedule.Out) != 0 {
+		t.Fatal("public static initialization")
+	}
+
 	typ := u.NewMap(u.Types[types.String], u.Types[types.Int])
 	symbol := c.TypeLinksym(typ)
 	ref := c.TypePtrAt(position.XPos{}, typ)
