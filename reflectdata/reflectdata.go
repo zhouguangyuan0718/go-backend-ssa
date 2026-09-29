@@ -1,5 +1,7 @@
 // Package reflectdata exposes the native compiler's runtime type symbols and
-// IR references and GC bitmap data. Full descriptor and ITab emission are not yet ported.
+// IR references, GC bitmap data and equality-function selection.
+// Initialize the attached typecheck runtime declarations before using EqFor.
+// Full descriptor and ITab emission are not yet ported.
 package reflectdata
 
 import (

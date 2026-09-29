@@ -7,6 +7,7 @@ import (
 	"go-backend-ssa/internal/rttype"
 	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
+	"io"
 	"sync"
 )
 
@@ -16,6 +17,7 @@ import (
 // register concurrently once layouts are complete and no phase mutates types;
 // call WriteGCSymbols only after those registrations have finished.
 type Context struct {
+	memhashvarlen, memequalvarlen                        *obj.LSym
 	gcsymmu                                              sync.Mutex
 	gcsymset                                             map[*types.Type]struct{}
 	ZeroSize                                             int64
@@ -73,3 +75,11 @@ func (c *Context) makefield(name string, t *types.Type) *types.Field {
 }
 
 func (c *Context) checkGCType(t *types.Type, onDemandAllowed bool) { c.checkType(t) }
+
+func (c *Context) tracePrintf(f string, a ...any) (int, error) {
+	w := c.Typecheck.IR.TraceWriter
+	if w == nil {
+		w = io.Discard
+	}
+	return fmt.Fprintf(w, f, a...)
+}

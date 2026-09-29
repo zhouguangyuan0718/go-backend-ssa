@@ -404,4 +404,30 @@ func TestNativeReflectionDataPublicAPI(t *testing.T) {
 		t.Fatal("native zero extent")
 	}
 
+	tc.InitRuntime()
+	array := u.NewArray(u.Types[types.String], 64)
+	equal, needsLength := c.EqFor(array)
+	fn := equal.(*ir.Name).Func
+	if needsLength || fn == nil || !fn.Dupok() || !fn.NilCheckDisabled() || len(fn.Body) == 0 {
+		t.Fatal("public native equality body")
+	}
+	loops := 0
+	ir.VisitList(fn.Body, func(n ir.Node) {
+		if n.Op() == ir.OFOR {
+			loops++
+		}
+	})
+	if loops == 0 || len(tc.Target.Funcs) == 0 {
+		t.Fatal("generated equality was not registered")
+	}
+	before := len(tc.Target.Funcs)
+	again, _ := c.EqFor(array)
+	if again != equal || len(tc.Target.Funcs) != before {
+		t.Fatal("public equality cache identity")
+	}
+	memory, length := c.EqFor(u.NewArray(u.Types[types.Int], 3))
+	if !length || memory != tc.LookupRuntime("memequal") {
+		t.Fatal("public runtime equality selection")
+	}
+
 }

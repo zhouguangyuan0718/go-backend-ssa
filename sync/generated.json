@@ -2,7 +2,7 @@
   "schema_version": 1,
   "tool": "syncgo-m3-v10",
   "commit": "862c888e612ac346c7c4d99c9392bdfd265f33b0",
-  "plan_sha256": "2ec7c09f6c60b0fbcda2c86ae89c03add8ac4d0ca798a46572b512ba55913de7",
+  "plan_sha256": "2e14d7f3f4ac291fc454708db38d858d574f0c4c5dc070ad761b14325908d7d6",
   "files": [
     {
       "output": "internal/cmd/src/pos.go",
@@ -2724,10 +2724,37 @@
       }
     },
     {
+      "output": "internal/reflectdata/alg.go",
+      "source": "src/cmd/compile/internal/reflectdata/alg.go",
+      "source_sha256": "0609daf743ecba93da7a25d75ebc45dcda925843c05d613d8f81a5405f639d6c",
+      "output_sha256": "e8b8bc1d0fb6fdcd9ed22489fbc141af054e56e6f2d7aa05671b6a5285085481",
+      "rule": "package-state-to-context-methods-v2",
+      "declarations": [
+        "*",
+        "eqSigBuilder.build"
+      ],
+      "adapter_sha256": "48124b80b5ed2f250eae7fe06fba9bafd8f90322de2c04573e4200eea0548b30",
+      "signature_sources": {
+        "src/cmd/compile/internal/base/flag.go": "4a0fa18857d702ea677247cc6c562795c780f4ae6a669e1a2e2352febdcb660a",
+        "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264",
+        "src/cmd/compile/internal/ir/const.go": "a1a14d0eb4a2b9b3d443e36360463ae8a7c53944274134522934acc0d715542a",
+        "src/cmd/compile/internal/ir/expr.go": "2bbf3953f62dff808fdc7deaeffad85111666d7e474b58da897d8a9aa0197b5c",
+        "src/cmd/compile/internal/ir/fmt.go": "12463dd5a41e1c345f4cf72ba4e5376da38fb86c028a141804ac2371fce334ce",
+        "src/cmd/compile/internal/ir/func.go": "185b5f070932048b28c173de6d770ee7415b0490c1130623ab8b69dadd2d8387",
+        "src/cmd/compile/internal/ir/stmt.go": "11ca6c04300f863eefddf8886ebc1d5ab7320dcabe04e53875de19bb07dd2994",
+        "src/cmd/compile/internal/objw/objw.go": "a588072a2d04d34b784fcb4d35763b118b4fd179b582a707b33bc40b1aa21a8f",
+        "src/cmd/compile/internal/typecheck/dcl.go": "00f0fb20b54aa4fa2a0eaf56c8f106aaf0c69f7be4af9c12ab419524995d67fd",
+        "src/cmd/compile/internal/typecheck/syms.go": "da209e06e437d2db3064d8ab909b7830b85dfe43b2be717ce2bf225b07720c83",
+        "src/cmd/compile/internal/typecheck/typecheck.go": "58b51e747cb5d6dbe9b35ec1c248eacb1f14515e93d5ff359a744c857100f1fd",
+        "src/cmd/compile/internal/types/alg.go": "9b4d6c846095292518c83f6ae1df49d9e7b18f3ec1578dc7672e2145c12caa19",
+        "src/cmd/compile/internal/types/type.go": "50e7b9332dd700aebbd6999f9a5d1bc17e8d24e3f21b06b3c30a628ea751e696"
+      }
+    },
+    {
       "output": "internal/reflectdata/helpers.go",
       "source": "src/cmd/compile/internal/reflectdata/helpers.go",
       "source_sha256": "c7309f4fa25c579bcba0194d9b9f3ddfe12a2c9a01db02f3afb89e4d9d148d7a",
-      "output_sha256": "c116dc81e35c53d2b60d953ceaac459a40416f80d442ab3c9a700fb060a8b278",
+      "output_sha256": "dc824ac68fbb29486eafb53c9f2312b10f65900488be01689850ee9c4528e3e2",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "hasRType",
@@ -2750,7 +2777,7 @@
         "RangeMapRType",
         "UnsafeSliceElemRType"
       ],
-      "adapter_sha256": "86e5ef61f5acbad5b96002aa5ad156f0119291f3502fae3d1683519ac3f6d461"
+      "adapter_sha256": "48124b80b5ed2f250eae7fe06fba9bafd8f90322de2c04573e4200eea0548b30"
     },
     {
       "output": "internal/reflectdata/map.go",
@@ -2767,7 +2794,7 @@
         "cachedMapTableType",
         "cachedMapType"
       ],
-      "adapter_sha256": "86e5ef61f5acbad5b96002aa5ad156f0119291f3502fae3d1683519ac3f6d461",
+      "adapter_sha256": "48124b80b5ed2f250eae7fe06fba9bafd8f90322de2c04573e4200eea0548b30",
       "signature_sources": {
         "src/cmd/compile/internal/ir/name.go": "ded604a74bb741602d034c06be2ef9c2a4bf881aa7f77b5a63d90071d1619c3e",
         "src/cmd/compile/internal/ir/symtab.go": "0aac16901a94fb1a152cd68370142df495d6b55e36103a6377d2b96fd17e06d2",
@@ -2809,11 +2836,13 @@
         "ZeroSize",
         "gcsymmu",
         "gcsymset",
+        "memequalvarlen",
+        "memhashvarlen",
         "signatmu",
         "signatset",
         "signatslice"
       ],
-      "adapter_sha256": "86e5ef61f5acbad5b96002aa5ad156f0119291f3502fae3d1683519ac3f6d461",
+      "adapter_sha256": "48124b80b5ed2f250eae7fe06fba9bafd8f90322de2c04573e4200eea0548b30",
       "signature_sources": {
         "src/cmd/compile/internal/base/link.go": "316af57f6117869dae6d8762325773c582a8fc7e8fc8638cb69f8d0381b111f8",
         "src/cmd/compile/internal/base/print.go": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264",

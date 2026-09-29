@@ -2,7 +2,7 @@ package port
 
 func reflectdataMigration() []Unit {
 	context := func() *ContextRule {
-		return &ContextRule{Type: "Context", Constructor: "newContext", Adapter: "adapter_context.go", Selective: true}
+		return &ContextRule{Type: "Context", Constructor: "newContext", Adapter: "adapter_context.go", Selective: true, RedirectTrace: true}
 	}
 	reflect := Unit{
 		Source:       "src/cmd/compile/internal/reflectdata/reflect.go",
@@ -18,7 +18,7 @@ func reflectdataMigration() []Unit {
 			{Source: "src/cmd/compile/internal/typecheck/subr.go", Function: "LinksymAddr", Method: "Typecheck.LinksymAddr"},
 		},
 	}
-	reflect.Context.Fields = map[string]string{"signatmu": "signatmu", "signatset": "signatset", "signatslice": "signatslice", "gcsymmu": "gcsymmu", "gcsymset": "gcsymset", "ZeroSize": "ZeroSize"}
+	reflect.Context.Fields = map[string]string{"signatmu": "signatmu", "signatset": "signatset", "signatslice": "signatslice", "gcsymmu": "gcsymmu", "gcsymset": "gcsymset", "ZeroSize": "ZeroSize", "memhashvarlen": "memhashvarlen", "memequalvarlen": "memequalvarlen"}
 	for _, name := range []string{"Types", "ErrorType"} {
 		reflect.State = append(reflect.State, StateRule{Source: "src/cmd/compile/internal/types/type.go", Variable: name, Field: "Typecheck.IR.Types." + name})
 	}
@@ -61,5 +61,5 @@ func reflectdataMigration() []Unit {
 	for _, name := range []string{"NewPtr", "NewArray", "NewStruct", "NewNamed"} {
 		mapTypes.Calls = append(mapTypes.Calls, CallRule{Source: "src/cmd/compile/internal/types/type.go", Function: name, Method: "Typecheck.IR.Types." + name})
 	}
-	return []Unit{reflect, helpers, mapTypes}
+	return []Unit{reflect, helpers, mapTypes, reflectAlgorithms(context())}
 }

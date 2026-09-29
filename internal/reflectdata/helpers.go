@@ -245,8 +245,3 @@ func (syncgoCtx *Context) UnsafeSliceElemRType(pos src.XPos, n *ir.BinaryExpr) i
 	}
 	return syncgoCtx.sliceElemRType(pos, n.Type())
 }
-func newContext() *Context {
-	syncgoCtx := &Context{}
-	syncgoCtx.syncgoInitVars0()
-	return syncgoCtx
-}

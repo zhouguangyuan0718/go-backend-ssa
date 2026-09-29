@@ -4,6 +4,7 @@ func TestSyncgoNativeSnapshot(t *testing.T){
  target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian}
  switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
  SETUP
+ LINK.Arch.CanMergeLoads=target.arch=="386"||target.arch=="amd64"
  var out []string
  pos:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase("p.go","/src/p.go"),7,3))
  named:=func(pkg *types.Pkg,name string,under *types.Type)*types.Type{n:=GRAPH.NewDeclNameAt(pos,ir.OTYPE,pkg.Lookup(name));typ:=TY.NewNamed(n);n.SetType(typ);n.SetTypecheck(1);typ.SetUnderlying(under);return typ}
@@ -82,6 +83,33 @@ func TestSyncgoNativeSnapshot(t *testing.T){
  large:=TY.NewArray(p,129);cell,demand,n:=UP.dgcsym(large,true,true);out=append(out,fmt.Sprintf("ondemand:%t:%d",demand,n));snapshotGC(cell)
  var zeroSym *obj.LSym
  for _,size:=range []int64{0,8,1,128,64}{z:=UP.ZeroAddr(size).(*ir.AddrExpr);sym:=z.X.(*ir.LinksymOffsetExpr).Linksym;if zeroSym==nil{zeroSym=sym};out=append(out,fmt.Sprintf("zero:%d:%d:%s:%t:%v:%d",size,UP.ZeroSize,sym.Name,sym==zeroSym,z.Type(),z.Typecheck()))}
+
+ // Native hash/equality signatures, checked function bodies and closure data.
+ TC.InitRuntime()
+ algorithmTypes:=[]*types.Type{TY.Types[types.TBOOL],TY.Types[types.TINT],TY.Types[types.TSTRING],TY.NewInterface(nil),TY.Types[types.TFLOAT32],TY.Types[types.TFLOAT64],TY.Types[types.TCOMPLEX64],TY.Types[types.TCOMPLEX128],TY.NewStruct(nil)}
+ for _,n:=range []int64{1,2,3,4,8,16,65}{algorithmTypes=append(algorithmTypes,TY.NewArray(TY.Types[types.TUINT8],n))}
+ fields:=func(kinds ...*types.Type)[]*types.Field{var fs []*types.Field;for i,t:=range kinds{fs=append(fs,TY.NewField(pos,TY.LocalPkg.Lookup(fmt.Sprint("V",i)),t))};return fs}
+ mixed:=TY.NewStruct(fields(TY.Types[types.TSTRING],TY.Types[types.TUINT8],TY.Types[types.TSTRING],TY.NewInterface(nil),TY.Types[types.TFLOAT32]))
+ blank:=TY.NewStruct([]*types.Field{TY.NewField(pos,TY.LocalPkg.Lookup("A"),TY.Types[types.TUINT8]),TY.NewField(pos,TY.LocalPkg.Lookup("_"),TY.Types[types.TINT]),TY.NewField(pos,TY.LocalPkg.Lookup("B"),TY.Types[types.TSTRING])})
+ ifaceSig:=TY.NewSignature(TY.NewField(pos,nil,TY.FakeRecvType()),nil,nil)
+ nonempty:=TY.NewInterface([]*types.Field{TY.NewField(pos,TY.LocalPkg.Lookup("M"),ifaceSig)})
+ algorithmTypes=append(algorithmTypes,mixed,blank,nonempty,TY.NewArray(nonempty,5),TY.NewArray(TY.Types[types.TSTRING],64),TY.NewArray(TY.Types[types.TFLOAT32],19),TY.NewArray(mixed,3),TY.NewArray(TY.NewArray(TY.Types[types.TSTRING],9),7),TY.NewStruct(fields(TY.NewArray(TY.Types[types.TUINT8],65),TY.Types[types.TSTRING])))
+ closureSnapshot:=func(kind string,s *obj.LSym){out=append(out,fmt.Sprintf("closure:%s:%s:%v:%d:%x:%d",kind,s.Name,s.Type,s.Size,s.P,uint32(s.Attribute)));for _,r:=range s.R{out=append(out,fmt.Sprintf("closure-reloc:%d:%d:%v:%s:%v:%d",r.Off,r.Siz,r.Type,r.Sym.Name,r.Sym.ABI(),r.Add))}}
+ for _,typ:=range algorithmTypes{
+ TY.CalcSize(typ);sig:=UP.eqSignature(typ);hash,eq:=UP.genhash(typ),UP.geneq(typ)
+ out=append(out,fmt.Sprintf("signature:%v:%s:%d:%v",typ,sig,UP.sigSize(sig),TY.AlgType(typ)));closureSnapshot("hash",hash);closureSnapshot("eq",eq)
+ count:=len(TC.Target.Funcs);out=append(out,fmt.Sprintf("algorithm-cache:%t:%t:%t",hash==UP.genhash(typ),eq==UP.geneq(typ),count==len(TC.Target.Funcs)))
+ switch TY.AlgType(typ){case types.AMEM,types.ASPECIAL:n,length:=UP.EqFor(typ);out=append(out,fmt.Sprintf("eqfor:%v:%t",n,length))}
+ }
+ // Signatures of padding-only/zero-length arrays and non-comparable equality.
+ for _,typ:=range []*types.Type{TY.NewArray(TY.Types[types.TSTRING],0),TY.NewArray(TY.Types[types.TSTRING],1),TY.NewArray(TY.NewStruct(nil),999)}{TY.CalcSize(typ);out=append(out,fmt.Sprintf("zero-signature:%v:%s",typ,UP.eqSignature(typ)))}
+ out=append(out,fmt.Sprintf("noequal:%t:%t",UP.geneq(TY.NewSlice(integer))==nil,UP.geneq(noalg)==nil))
+ for _,fn:=range TC.Target.Funcs{
+ out=append(out,fmt.Sprintf("algorithm-fn:%s:%v:%v:%t:%t:%v:%d",fn.Nname.Sym().Name,fn.Type(),fn.Pragma,fn.Dupok(),fn.NilCheckDisabled(),fn.ABI,len(fn.Dcl)))
+ for _,n:=range fn.Dcl{out=append(out,fmt.Sprintf("decl:%v:%v:%v",n,n.Type(),n.Class))}
+ ir.VisitList(fn.Body,func(n ir.Node){out=append(out,fmt.Sprintf("node:%v:%v:%v:%d",n.Op(),n,n.Type(),n.Typecheck()))})
+ }
+ TC.CheckFuncStack();out=append(out,fmt.Sprintf("algorithm-scope:%t",GRAPH.CurFunc==nil))
  queue:=append([]typeAndStr(nil),UP.signatslice...);slices.SortFunc(queue,typesStrCmp)
  for _,ts:=range queue{out=append(out,fmt.Sprintf("queued:%s:%s",ts.short,ts.regular))}
  encoded,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(encoded))
