@@ -1,6 +1,6 @@
 # 逐步细化与实施
 
-状态：M0 已建立；M1 的审计工具、最小生成闭环和小切片升级演练已实现，见 [M1 记录](m1.md)；M2 第一批（多文件移植、位置/诊断/目标输入、位置桥接）已实现，详见 [M2 记录](m2.md)；M2 第二至七批已实现 [真实结构、Universe、SSA 身份、复合类型/签名、原生布局/预声明类型及未定类型状态解耦](m2-universe.md)，M3 已完成 [源码到原生 AST 的首批接口](m3-syntax.md) 、[原生 types2 类型检查](m3-types2.md) 、[Unified IR 编码基础](m3-unified.md) 、[noder/原生后端共享数据声明](m3-objects.md) 、[noder 位置映射](m3-noder.md) 、[原生 Unified IR writer](m3-writer.md) 、[原生 rangefunc 重写](m3-rangefunc.md) 、[原生符号/内联位置](m3-link.md) 、[原生 IR 图](m3-ir.md) 、[原生 typecheck universe](m3-typecheck.md) 、[原生 runtime 声明](m3-runtime.md) 、[原生 IR 检查](m3-typecheck-ir.md) 、[reader 记录解码](m3-reader-metadata.md) 、[对象数据写入](m3-object-data.md)、[原生类型描述符与 ITab](m3-descriptors.md)、[reader 字典与共享状态](m3-reader-dictionaries.md) 、[原生类型、对象与函数体读取](m3-reader-bodies.md) 和 [原生静态初始化调度](m3-staticinit.md)；完整 noder reader/IR 驱动、源码到 SSA 及原生编译器回接尚未实现。下表列出阶段目标，不能将某一切片通过扩大为完整编译器能力。
+状态：M0 已建立；M1 的审计工具、最小生成闭环和小切片升级演练已实现，见 [M1 记录](m1.md)；M2 第一批（多文件移植、位置/诊断/目标输入、位置桥接）已实现，详见 [M2 记录](m2.md)；M2 第二至七批已实现 [真实结构、Universe、SSA 身份、复合类型/签名、原生布局/预声明类型及未定类型状态解耦](m2-universe.md)，M3 已完成 [源码到原生 AST 的首批接口](m3-syntax.md) 、[原生 types2 类型检查](m3-types2.md) 、[Unified IR 编码基础](m3-unified.md) 、[noder/原生后端共享数据声明](m3-objects.md) 、[noder 位置映射](m3-noder.md) 、[原生 Unified IR writer](m3-writer.md) 、[原生 rangefunc 重写](m3-rangefunc.md) 、[原生符号/内联位置](m3-link.md) 、[原生 IR 图](m3-ir.md) 、[原生 typecheck universe](m3-typecheck.md) 、[原生 runtime 声明](m3-runtime.md) 、[原生 IR 检查](m3-typecheck-ir.md) 、[reader 记录解码](m3-reader-metadata.md) 、[对象数据写入](m3-object-data.md)、[原生类型描述符与 ITab](m3-descriptors.md)、[reader 字典与共享状态](m3-reader-dictionaries.md) 、[原生类型、对象与函数体读取](m3-reader-bodies.md) 、[原生静态初始化调度](m3-staticinit.md) 和 [原生调用图基础](m3-callgraph.md)；完整 noder reader/IR 驱动、源码到 SSA 及原生编译器回接尚未实现。下表列出阶段目标，不能将某一切片通过扩大为完整编译器能力。
 
 | 阶段 | 交付 | 验收门槛 |
 | --- | --- | --- |
@@ -61,6 +61,6 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 | artifact 与官方 .a 的互操作 | M4 以后 | 本库严格版本匹配的 artifact 优先 |
 | 首个可执行验证后端 | M3–M5 | 小范围验证，不绑定核心库到 LLVM |
 | open defer、GC、ABI 完整元数据 | M5–M6 | 明确记录 Go runtime 约定，逐项实现 |
-| PGO/cgo/汇编/实验开关 | M7 之后另立范围 | 当前拒绝，不静默降级 |
+| PGO/cgo/汇编/实验开关 | M7 之后另立范围 | 完整流程当前拒绝，不静默降级；原生 profile/调用图已作为内联依赖迁入 |
 
 技术细节通过源码审计和原型推进，不把每个实现选择都变成用户批准门槛。发布、远端仓库等操作按后续实际指令处理。

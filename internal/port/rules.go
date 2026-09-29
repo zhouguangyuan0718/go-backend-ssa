@@ -180,6 +180,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, linkMigration()...)
 	plan.Units = append(plan.Units, irMigration()...)
 	plan.Units = append(plan.Units, typecheckMigration()...)
+	plan.Units = append(plan.Units, pgoMigration()...)
 	plan.Units = append(plan.Units, types2Migration()...)
 	plan.Units = append(plan.Units, pkgbitsMigration()...)
 	plan.Units = append(plan.Units, rangefuncMigration()...)

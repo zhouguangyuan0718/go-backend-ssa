@@ -1,0 +1,43 @@
+package pgoir
+import("bufio";"bytes";"encoding/json";"fmt";"slices";"strings";"testing";"IMPORT_PGO";"IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_TYPES";"IMPORT_TYPECHECK";IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T) {
+ SETUP
+ var out []string
+ file:=src.NewFileBase("calls.go","/src/calls.go")
+ pos:=func(line uint)src.XPos{return LINK.PosTable.XPos(src.MakePos(file,line,1))}
+ sig:=TY.NewSignature(nil,nil,nil)
+ makefn:=func(name string,line uint)*ir.Func{fn:=GRAPH.NewFunc(pos(line),pos(line),TY.LocalPkg.Lookup(name),sig);fn.Nname.Defn=fn;return fn}
+ leaf,a,b,self,outer:=makefn("leaf",10),makefn("a",20),makefn("b",30),makefn("self",40),makefn("outer",50)
+ call:=func(line uint,fn *ir.Func)*ir.CallExpr{return GRAPH.NewCallExpr(pos(line),ir.OCALLFUNC,fn.Nname,nil)}
+ a.Body=ir.Nodes{call(21,b),call(22,leaf)};b.Body=ir.Nodes{call(31,a)};self.Body=ir.Nodes{call(41,self)}
+ closure:=GRAPH.NewClosureFunc(pos(51),pos(51),ir.OCLOSURE,sig,outer,TC.Target,1)
+ closure.Body=ir.Nodes{call(52,leaf)};outer.Body=ir.Nodes{closure.OClosure,call(54,a)}
+ // Relative line offsets may be negative across a //line directive.
+ linebase:=src.NewLinePragmaBase(src.MakePos(file,55,1),"generated.go","/src/generated.go",2,1)
+ neg:=GRAPH.NewCallExpr(LINK.PosTable.XPos(src.MakePos(linebase,55,1)),ir.OCALLFUNC,leaf.Nname,nil)
+ outer.Body=append(outer.Body,neg)
+ TC.Target.Funcs=append(TC.Target.Funcs,outer,self,a,b,leaf)
+ GRAPH.VisitFuncsBottomUp(TC.Target.Funcs,func(fns []*ir.Func,recursive bool){var names []string;for _,fn:=range fns{names=append(names,ir.LinkFuncName(fn))};out=append(out,fmt.Sprintf("scc:%v:%t",names,recursive))})
+ out=append(out,fmt.Sprintf("offset:%d",UP.NodeLineOffset(neg,outer)))
+ raw:="GO PREPROFILE V1\nexample/p.outer\nmissing.fn\n8 90\nexample/p.outer\nremote.fn\n9 70\nexample/p.a\nexample/p.b\n1 40\nexample/p.outer\nexample/p.leaf\n-48 30\nexample/p.outer\nexample/p.self\n10 20\nother.caller\nignored.fn\n1 10\n"
+ input,err:=pgo.FromSerialized(strings.NewReader(raw));if err!=nil{t.Fatal(err)}
+ remote:=makefn("remoteBody",80)
+ var lookups []string;cleaned:=0
+ UP.LookupFunc=func(name string)(*ir.Func,error){lookups=append(lookups,name);if name=="remote.fn"{return remote,nil};return nil,fmt.Errorf("not present")}
+ UP.PostLookupCleanup=func(){cleaned++}
+ profile:=CG_BUILD
+ out=append(out,fmt.Sprintf("lookup:%v:cleanup:%d:weight:%d",lookups,cleaned,profile.TotalWeight))
+ var edges []string
+ for key,n:=range profile.WeightedCG.IRNodes {
+  edges=append(edges,fmt.Sprintf("node:%s:%s:%t",key,n.Name(),n.AST!=nil))
+  for k,e:=range n.OutEdges{edges=append(edges,fmt.Sprintf("edge:%s:%s:%d:%d:%s:%s:%t:%t",k.CallerName,k.CalleeName,k.CallSiteOffset,e.Weight,e.Src.Name(),e.Dst.Name(),e.Src==n,e.Dst==profile.WeightedCG.IRNodes[k.CalleeName]))}
+ }
+ slices.Sort(edges);out=append(out,edges...)
+ variable:=GRAPH.NewNameAt(pos(60),TY.LocalPkg.Lookup("variable"),sig);variable.Class=ir.PAUTO
+ out=append(out,fmt.Sprintf("callee:%t:%t:%t",UP.DirectCallee(leaf.Nname)==leaf,UP.DirectCallee(closure.OClosure)==closure,UP.DirectCallee(variable)==nil))
+ for _,data:=range []string{raw,"","wrong\n","GO PREPROFILE V1\n","GO PREPROFILE V1\nf\n","GO PREPROFILE V1\nf\ng\n","GO PREPROFILE V1\nf\ng\nx 1\n","GO PREPROFILE V1\nf\ng\n-4 -2\n","GO PREPROFILE V1\nf\ng\n1 1\nf\ng\n1 2\n"} {
+  reader:=bufio.NewReader(strings.NewReader(data));ok,err:=pgo.IsSerialized(reader);out=append(out,fmt.Sprintf("header:%t:%v",ok,err))
+  p,err:=pgo.FromSerialized(reader);if err!=nil{out=append(out,err.Error());continue};var dst bytes.Buffer;n,err:=p.WriteTo(&dst);out=append(out,fmt.Sprintf("serialized:%d:%v:%q:%d",n,err,dst.String(),p.TotalWeight))
+ }
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(data))
+}

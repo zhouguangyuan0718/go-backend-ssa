@@ -2,6 +2,7 @@ package port
 
 func irMigration() []Unit {
 	units := []Unit{
+		{Source: "src/cmd/compile/internal/ir/scc.go", WholeFile: true, Owner: &OwnerRule{Types: []string{"bottomUpVisitor"}, Context: "Context", Field: "compilation"}},
 		{Source: "src/cmd/compile/internal/ir/symtab.go", WholeFile: true},
 		{Source: "src/cmd/compile/internal/ir/mini.go",
 			WholeFile: true,

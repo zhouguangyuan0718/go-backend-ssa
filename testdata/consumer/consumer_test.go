@@ -9,6 +9,8 @@ import (
 	"go-backend-ssa/ir"
 	"go-backend-ssa/noder"
 	"go-backend-ssa/objw"
+	"go-backend-ssa/pgo"
+	"go-backend-ssa/pgoir"
 	"go-backend-ssa/position"
 	"go-backend-ssa/reflectdata"
 	"go-backend-ssa/rttype"
@@ -510,5 +512,45 @@ func TestNativeStaticDataPublicAPI(t *testing.T) {
 	c.WriteFuncSyms()
 	if !value.OnList() || len(value.R) != 1 || value.R[0].Sym != fn.Nname.Linksym() || value.R[0].Sym.ABI() != gcbridge.ABIInternal {
 		t.Fatal("public native function value")
+	}
+}
+
+// This consumer supplies native lookup hooks for its already-built local graph.
+// It does not claim that production noder import lookup has been connected.
+func TestPublicCallGraph(t *testing.T) {
+	layout, _ := target.NewLayout("linux", "amd64")
+	link := &gcbridge.Link{}
+	u, err := types.NewUniverseWithPositions(layout, &link.PosTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.LocalPkg = u.NewPkg("example/p", "p")
+	graph := ir.NewContext(u, link)
+	tc := typecheck.NewContext(graph)
+	tc.InitUniverse()
+	pos := link.PosTable.XPos(position.Make(position.NewFile("p.go", "/p.go"), 10, 1))
+	fn := graph.NewFunc(pos, pos, u.LocalPkg.Lookup("F"), u.NewSignature(nil, nil, nil))
+	fn.Nname.Defn = fn
+	tc.Target.Funcs = []*ir.Func{fn}
+	visits := 0
+	graph.VisitFuncsBottomUp(tc.Target.Funcs, func(fns []*ir.Func, recursive bool) {
+		visits++
+		if len(fns) != 1 || fns[0] != fn || recursive {
+			t.Fatal("SCC")
+		}
+	})
+	input, err := pgo.FromSerialized(strings.NewReader("GO PREPROFILE V1\nexample/p.F\nexample/p.F\n2 7\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := pgoir.NewContext(tc)
+	cleaned := false
+	c.LookupFunc = func(string) (*ir.Func, error) { t.Fatal("local function should already be present"); return nil, nil }
+	c.PostLookupCleanup = func() { cleaned = true }
+	profile := c.NewProfile(input)
+	key := input.NamedEdgeMap.ByWeight[0]
+	var node *pgoir.IRNode = profile.WeightedCG.IRNodes["example/p.F"]
+	if visits != 1 || !cleaned || node.AST != fn || node.OutEdges[key].Weight != 7 || c.DirectCallee(fn.Nname) != fn {
+		t.Fatal("public native graph")
 	}
 }
