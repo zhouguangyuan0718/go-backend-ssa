@@ -5,37 +5,12 @@ func noderMigration() []Unit {
 		return &ContextRule{Type: "Context", Constructor: "initContext", Initialize: true, PreserveNilArgs: true, RedirectTrace: true, Adapter: "adapter_context.go", Selective: true}
 	}
 	return []Unit{
-		{Source: "src/cmd/compile/internal/noder/reader.go",
-			Functions: []string{"newPkgReader", "setType", "setValue", "Shapify", "shapeSig"},
-			Declarations: []string{"dictParamName", "pkgReader.objDictIdx", "readerDict.mangle", "reader.recvTypeParamNames", "reader.typeParamNames", "readerDict.typeParamMethodExprsOffset", "readerDict.subdictsOffset", "readerDict.rtypesOffset", "readerDict.itabsOffset", "readerDict.numWords", "readerDict.varType", "pkgReader", "pkgReaderIndex", "reader", "readerDict", "readerMethodExprInfo",
-				"pkgReader.newReader", "pkgReader.posBaseIdx", "pkgReader.pkgIdx",
-				"reader.pos", "reader.origPos", "reader.pos0", "reader.posBase", "reader.inlPosBase", "reader.inlPos", "reader.pkg", "reader.doPkg", "reader.typInfo", "reader.objInfo", "reader.qualifiedIdent", "reader.localIdent", "reader.selector", "reader.hasTypeParams", "readerDict.hasTypeParams", "reader.pragmaFlag"},
-			ContextParams: []string{"readerDict.mangle", "readerDict.varType"},
-			Checks:        map[string]string{"Shapify": "checkShape", "pkgReader.objDictIdx": "checkDictArgs"},
-			Context:       context(), Owner: &OwnerRule{Types: []string{"pkgReader", "reader"}, Context: "Context", Field: "compilation"},
-			State: []StateRule{
-				{Source: "src/internal/buildcfg/cfg.go", Variable: "GOROOT", Field: "GOROOT"},
-				{Source: "src/cmd/compile/internal/types/type.go", Variable: "Types", Field: "Types.Types"},
-				{Source: "src/cmd/compile/internal/types/type.go", Variable: "ShapePkg", Field: "Types.ShapePkg"},
-				{Source: "src/cmd/compile/internal/types/fmt.go", Variable: "BuiltinPkg", Field: "Types.BuiltinPkg"},
-				{Source: "src/cmd/compile/internal/types/fmt.go", Variable: "UnsafePkg", Field: "Types.UnsafePkg"},
-				{Source: "src/cmd/compile/internal/types/fmt.go", Variable: "LocalPkg", Field: "Types.LocalPkg"},
-			}, Calls: []CallRule{
-				{Source: "src/cmd/compile/internal/types/pkg.go", Function: "NewPkg", Method: "Types.NewPkg"},
-				{Source: "src/cmd/compile/internal/types/type.go", Function: "NewNamed", Method: "Types.NewNamed"},
-				{Source: "src/cmd/compile/internal/types/type.go", Function: "NewPtr", Method: "Types.NewPtr"},
-				{Source: "src/cmd/compile/internal/types/type.go", Function: "NewField", Method: "Types.NewField"},
-				{Source: "src/cmd/compile/internal/types/type.go", Function: "NewSignature", Method: "Types.NewSignature"},
-				{Source: "src/cmd/compile/internal/types/type.go", Function: "NewArray", Method: "Types.NewArray"},
-				{Source: "src/cmd/compile/internal/types/fmt.go", Function: "SplitMethSuffix", Method: "Types.SplitMethSuffix"},
-				{Source: "src/cmd/compile/internal/ir/name.go", Function: "NewDeclNameAt", Method: "Typecheck.IR.NewDeclNameAt"},
-				{Source: "src/cmd/compile/internal/base/print.go", Function: "Warn", Method: "warn"},
-			}},
+		noderReaderMigration(context()),
 
-		{Source: "src/cmd/compile/internal/noder/noder.go", Functions: []string{"trimFilename", "checkEmbed"}, Declarations: []string{"noder", "linkname", "pragmas", "pragmas.Nointerface", "WasmImport", "WasmExport", "pragmaPos", "pragmaEmbed"},
+		{Source: "src/cmd/compile/internal/noder/noder.go", Functions: []string{"trimFilename", "checkEmbed", "Renameinit"}, Declarations: []string{"noder", "linkname", "pragmas", "pragmas.Nointerface", "WasmImport", "WasmExport", "pragmaPos", "pragmaEmbed"},
 			Context: func() *ContextRule {
 				c := context()
-				c.Fields = map[string]string{"unOps": "unOps", "binOps": "binOps"}
+				c.Fields = map[string]string{"unOps": "unOps", "binOps": "binOps", "renameinitgen": "renameinitgen"}
 				return c
 			}(),
 			State: []StateRule{{Source: "src/cmd/compile/internal/base/link.go", Variable: "Ctxt", Field: "Ctxt"}, {Source: "src/cmd/compile/internal/base/flag.go", Variable: "Flag", Field: "Base.Flag"}},
@@ -44,9 +19,17 @@ func noderMigration() []Unit {
 		{Source: "src/cmd/compile/internal/noder/codes.go", WholeFile: true},
 		{Source: "src/cmd/compile/internal/noder/lex.go", Declarations: []string{"funcPragmas"}},
 		{Source: "src/cmd/compile/internal/noder/quirks.go", Functions: []string{"typeExprEndPos", "lastFieldType"}, Context: context()},
-		{Source: "src/cmd/compile/internal/noder/helpers.go", Functions: []string{"idealType", "isTypeParam", "isNotInHeap", "typed"}, Context: context()},
-		{Source: "src/cmd/compile/internal/noder/types.go", Functions: []string{"deref2"}, Context: context()},
-		{Source: "src/cmd/compile/internal/noder/unified.go", Declarations: []string{"uirVersion"}, Functions: []string{"writePkgStub"}, Context: context(), Calls: []CallRule{
+		{Source: "src/cmd/compile/internal/noder/helpers.go", WholeFile: true, Context: context()},
+		{Source: "src/cmd/compile/internal/noder/types.go", WholeFile: true, Context: func() *ContextRule {
+			c := context()
+			c.Fields = map[string]string{"basics": "basics", "dirs": "dirs"}
+			return c
+		}()},
+		{Source: "src/cmd/compile/internal/noder/unified.go", Declarations: []string{"uirVersion"}, Functions: []string{"writePkgStub"}, Context: func() *ContextRule {
+			c := context()
+			c.Fields = map[string]string{"localPkgReader": "localPkgReader"}
+			return c
+		}(), Calls: []CallRule{
 			{Source: "src/cmd/compile/internal/noder/irgen.go", Function: "checkFiles", Method: "checkedFiles"},
 			{Source: "src/cmd/compile/internal/noder/unified.go", Function: "freePackage", Method: "retainCheckedPackage"},
 		}},

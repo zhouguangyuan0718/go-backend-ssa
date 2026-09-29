@@ -6,6 +6,7 @@
 package noder
 
 import (
+	"go-backend-ssa/internal/types"
 	"go-backend-ssa/internal/types2"
 )
 
@@ -15,4 +16,39 @@ func deref2(t types2.Type) types2.Type {
 		t = ptr.Elem()
 	}
 	return t
+}
+func (syncgoCtx *Context) syncgoInitVars2() {
+	syncgoCtx.basics = [...]**types.Type{
+		types2.Invalid:        new(*types.Type),
+		types2.Bool:           &syncgoCtx.Types.Types[types.TBOOL],
+		types2.Int:            &syncgoCtx.Types.Types[types.TINT],
+		types2.Int8:           &syncgoCtx.Types.Types[types.TINT8],
+		types2.Int16:          &syncgoCtx.Types.Types[types.TINT16],
+		types2.Int32:          &syncgoCtx.Types.Types[types.TINT32],
+		types2.Int64:          &syncgoCtx.Types.Types[types.TINT64],
+		types2.Uint:           &syncgoCtx.Types.Types[types.TUINT],
+		types2.Uint8:          &syncgoCtx.Types.Types[types.TUINT8],
+		types2.Uint16:         &syncgoCtx.Types.Types[types.TUINT16],
+		types2.Uint32:         &syncgoCtx.Types.Types[types.TUINT32],
+		types2.Uint64:         &syncgoCtx.Types.Types[types.TUINT64],
+		types2.Uintptr:        &syncgoCtx.Types.Types[types.TUINTPTR],
+		types2.Float32:        &syncgoCtx.Types.Types[types.TFLOAT32],
+		types2.Float64:        &syncgoCtx.Types.Types[types.TFLOAT64],
+		types2.Complex64:      &syncgoCtx.Types.Types[types.TCOMPLEX64],
+		types2.Complex128:     &syncgoCtx.Types.Types[types.TCOMPLEX128],
+		types2.String:         &syncgoCtx.Types.Types[types.TSTRING],
+		types2.UnsafePointer:  &syncgoCtx.Types.Types[types.TUNSAFEPTR],
+		types2.UntypedBool:    &syncgoCtx.Types.UntypedBool,
+		types2.UntypedInt:     &syncgoCtx.Types.UntypedInt,
+		types2.UntypedRune:    &syncgoCtx.Types.UntypedRune,
+		types2.UntypedFloat:   &syncgoCtx.Types.UntypedFloat,
+		types2.UntypedComplex: &syncgoCtx.Types.UntypedComplex,
+		types2.UntypedString:  &syncgoCtx.Types.UntypedString,
+		types2.UntypedNil:     &syncgoCtx.Types.Types[types.TNIL],
+	}
+	syncgoCtx.dirs = [...]types.ChanDir{
+		types2.SendRecv: types.Cboth,
+		types2.SendOnly: types.Csend,
+		types2.RecvOnly: types.Crecv,
+	}
 }

@@ -11,6 +11,8 @@ import (
 
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/syntax"
+
+	"go-backend-ssa/internal/types"
 )
 
 // trimFilename returns the "trimmed" filename of b, which is the
@@ -85,6 +87,15 @@ type pragmaPos struct {
 type pragmaEmbed struct {
 	Pos      syntax.Pos
 	Patterns []string
+}
+
+func (syncgoCtx *Context) Renameinit() *types.Sym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	s := syncgoCtx.Typecheck.LookupNum("init.", syncgoCtx.renameinitgen)
+	syncgoCtx.renameinitgen++
+	return s
 }
 
 func (syncgoCtx *Context) checkEmbed(decl *syntax.VarDecl, haveEmbed, withinFunc bool) error {

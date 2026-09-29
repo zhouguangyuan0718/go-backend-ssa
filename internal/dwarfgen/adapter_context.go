@@ -20,3 +20,18 @@ func (c *Context) fatalf(format string, args ...any) { panic(fmt.Errorf(format, 
 func (c *Context) fatalfAt(pos src.XPos, format string, args ...any) {
 	panic(fmt.Errorf("%s: %s", c.Base.FmtPos(pos), fmt.Sprintf(format, args...)))
 }
+
+// Bind attaches a zero marker to the existing compiler position table. Rebinding
+// the same table preserves recorded scopes; a different table is rejected.
+func (m *ScopeMarker) Bind(base *base.LinkContext) {
+	if base == nil || base.Ctxt == nil {
+		panic("scope marker requires a compiler position table")
+	}
+	if m.compilation != nil {
+		if m.compilation.Base != base {
+			panic("scope marker belongs to another compilation")
+		}
+		return
+	}
+	m.compilation = &Context{Base: base}
+}

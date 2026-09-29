@@ -37,7 +37,20 @@ func prepareUpstreamWriter(t *testing.T, s *Source, dir string) {
 		// The native reader uses compiler types/IR and is compared separately
 		// through the full-toolchain overlay in upstream_ir_test.go.
 		if path.Base(u.Source) == "helpers.go" {
+			u.WholeFile = false
 			u.Functions = []string{"idealType", "isTypeParam", "isNotInHeap"}
+		}
+		if path.Base(u.Source) == "types.go" {
+			u.WholeFile = false
+			u.Functions = []string{"deref2"}
+			u.Context.Fields = nil
+		}
+		if path.Base(u.Source) == "noder.go" {
+			u.Functions = []string{"trimFilename", "checkEmbed"}
+			delete(u.Context.Fields, "renameinitgen")
+		}
+		if path.Base(u.Source) == "unified.go" {
+			u.Context.Fields = nil
 		}
 		if path.Base(u.Source) == "reader.go" {
 			continue
@@ -119,7 +132,7 @@ func WriteChecked(pkg *types2.Package,info *types2.Info,files []*syntax.File,arc
  return data
 }
 `)
-	header := `package compare
+	header := `package compare_test
 import("fmt";"strings";"testing";"go-backend-ssa/internal/cmd/obj";"go-backend-ssa/internal/cmd/sys";"go-backend-ssa/internal/types";"go-backend-ssa/internal/typecheck";"go-backend-ssa/internal/ir";pc "go-backend-ssa/internal/types2";ps "go-backend-ssa/internal/syntax";pn "go-backend-ssa/internal/noder";rc "go-backend-ssa/internal/reference/types2";rs "go-backend-ssa/internal/reference/syntax";rn "go-backend-ssa/internal/reference/noder")
 `
 	template := `

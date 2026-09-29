@@ -56,6 +56,7 @@ func Migration() Plan {
 			{Source: "src/cmd/internal/objabi/line.go", Functions: []string{"AbsFile", "ApplyRewrites", "applyRewrite", "hasPathPrefix"},
 				Context: &ContextRule{Type: "PathContext", Constructor: "newPathContext", Adapter: "adapter_path.go", Selective: true},
 				State:   []StateRule{{Source: "src/internal/buildcfg/cfg.go", Variable: "GOROOT", Field: "GOROOT"}}},
+			{Source: "src/cmd/internal/objabi/util.go", Declarations: []string{"GlobalDictPrefix"}},
 			{Source: "src/cmd/internal/objabi/symkind.go", WholeFile: true},
 			{Source: "src/cmd/internal/objabi/reloctype.go", WholeFile: true},
 			{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Addr", "AddrName", "AddrPos", "AddrType", "As", "Attribute", "Func", "LSym", "Link", "LinkArch", "OperandPos", "Prog", "Reloc", "ABI", "ABI0", "ABISet", "ABISetCallable", "AttrDuplicateOK", "symOnce", "Attribute.load", "Attribute.Set", "Attribute.ABI", "Attribute.SetABI", "Attribute.Static", "ABISet.Set", "ABISet.Get", "ABISet.String", "Link.Diag", "Attribute.OnList", "Attribute.DuplicateOK", "Attribute.Local", "LSym.String", "LSym.NewTypeInfo", "LSym.TypeInfo", "LSym.NewItabInfo", "LSym.ItabInfo", "TypeInfo", "ItabInfo"}, Functions: []string{"ABISetOf", "ParseABI"}, Context: objectDataContext()},

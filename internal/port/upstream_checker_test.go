@@ -57,7 +57,7 @@ func testUpstreamChecker(t *testing.T, s *Source, r *Rendered, root string) {
 		writeTestFile(t, dir, strings.TrimPrefix(dest, "go-backend-ssa/")+"/"+path.Base(name), text)
 	}
 	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
-	header := `package compare
+	header := `package compare_test
 import("fmt";"reflect";"sort";"strings";"testing";ported "go-backend-ssa/types2";ps "go-backend-ssa/syntax";original "go-backend-ssa/internal/reference/types2";rs "go-backend-ssa/internal/reference/syntax")
 `
 	template := `

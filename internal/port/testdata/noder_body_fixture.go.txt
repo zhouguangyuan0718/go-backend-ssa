@@ -1,0 +1,41 @@
+package noder
+import("encoding/binary";"os";"strings";"testing";"go-backend-ssa/internal/cmd/obj";"go-backend-ssa/internal/cmd/sys";"go-backend-ssa/internal/ir";"go-backend-ssa/internal/typecheck";"go-backend-ssa/internal/types";"go-backend-ssa/internal/types2";"go-backend-ssa/internal/syntax")
+func TestSyncgoBodyFixture(t *testing.T){
+ arch:=os.Getenv("SYNCGO_TARGET");size:=8;var order binary.ByteOrder=binary.LittleEndian;frames:=0;if strings.HasSuffix(arch,"-nosync"){arch=strings.TrimSuffix(arch,"-nosync");frames=-1};switch arch{case "386":size=4;case "mips":size=4;order=binary.BigEndian;case "ppc64":order=binary.BigEndian}
+ link:=&obj.Link{Pathname:"/src",Arch:&obj.LinkArch{Arch:&sys.Arch{Name:arch,PtrSize:size,RegSize:size,ByteOrder:order}}};u:=types.NewUniverseWithPositions(size,size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");g:=ir.NewContext(u,link);tc:=typecheck.NewContext(g);tc.InitUniverse();g.Base.Flag.Lang="go1.27";g.Base.Flag.Complete=true;g.Debug.SyncFrames=frames;g.Debug.RangeFuncCheck=1
+ c,err:=NewContext(types2.NewContext(),tc);if err!=nil{t.Fatal(err)}
+ source:=`package p
+ type RecF=func(RecI)
+ type RecI interface{M(RecF)}
+ type Node struct{Next *Node;Value int}
+ type Alias=Node
+ const Rounded float32=1.234567890123
+ const Complex complex64=1.234567890123+2.34567890123i
+ func Add(x,y int)int{for i:=0;i<y;i++ {if i%2==0{x+=i}};return x}
+ func Closure(x int)func()int{return func()int{x++;return x}}
+ func Id[T any](v T)T{return v}
+ type Box[T any]struct{V T}
+ func(b Box[T])Get()T{return b.V}
+ func Generic()int{b:=Id(Box[int]{V:3});f:=b.Get;return f()}
+ func Control(ch chan int,a any)int{defer close(ch);select{case v:=<-ch:return v;default:};switch x:=a.(type){case int:return x;case string:return len(x)};return 0}
+ func Each(yield func(int)bool){yield(1);yield(2)}
+ func Range()int{s:=0;for v:=range Each{s+=v};return s}
+ type Number int
+ func(n Number)M()int{return int(n)}
+ func Constraint[T interface{M()int}](x T)int{return x.M()}
+ func Assert[T any](x any)T{return x.(T)}
+ func Method()int{return Constraint(Number(2))+Assert[int](3)}
+ func Composite(x []int,m map[string]int)[]int{for k,v:=range m{if len(k)>0 {x=append(x,v)}};return x[1:len(x):cap(x)]}
+ func Variadic(x ...int)int{return len(x)}
+ func Calls()int{go Variadic(1,2);defer Variadic(3);return Variadic([]int{4,5}...)}
+ func Branch(n int)int{a:=0;L: for{switch n{case 0:break L;case 1:n--;continue L;default:a++;n--}};return a}
+ func GenericClosure[T any](v T)func()T{return func()T{return v}}
+ func Capture()int{return GenericClosure(7)()}
+ func init(){}
+ `
+ file,err:=syntax.Parse(syntax.NewFileBase("input.go"),strings.NewReader(source),nil,nil,syntax.CheckBranches);if err!=nil{t.Fatal(err)}
+ info:=&types2.Info{StoreTypesInSyntax:true,Defs:map[*syntax.Name]types2.Object{},Uses:map[*syntax.Name]types2.Object{},Selections:map[*syntax.SelectorExpr]*types2.Selection{},Implicits:map[syntax.Node]types2.Object{},Scopes:map[syntax.Node]*types2.Scope{},Instances:map[*syntax.Name]types2.Instance{},FileVersions:map[*syntax.PosBase]string{}}
+ conf:=types2.Config{Context:c.Checker,GoVersion:"go1.27",Sizes:c.Checker.SizesFor("gc",arch)};files:=[]*syntax.File{file};pkg,err:=conf.Check("example/p",files,info);if err!=nil{t.Fatal(err)}
+ closures,err:=c.RewriteRangeFuncs(pkg,info,files);if err!=nil{t.Fatal(err)};data,err:=c.WritePackage(pkg,info,files,closures);if err!=nil{t.Fatal(err)}
+ if err:=os.WriteFile(BODY_INPUT_PATH,[]byte(data),0600);err!=nil{t.Fatal(err)}
+}

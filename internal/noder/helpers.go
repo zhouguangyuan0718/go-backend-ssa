@@ -11,14 +11,75 @@ import (
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/syntax"
 
+	"go-backend-ssa/internal/cmd/src"
 	"go-backend-ssa/internal/types"
 	"go-backend-ssa/internal/types2"
 )
+
+// Helpers for constructing typed IR nodes.
+//
+// TODO(mdempsky): Move into their own package so they can be easily
+// reused by iimport and frontend optimizations.
+
+type ImplicitNode interface {
+	ir.Node
+	SetImplicit(x bool)
+}
+
+// Implicit returns n after marking it as Implicit.
+func Implicit(n ImplicitNode) ImplicitNode {
+	n.SetImplicit(true)
+	return n
+}
 
 // typed returns n after setting its type to typ.
 func typed(typ *types.Type, n ir.Node) ir.Node {
 	n.SetType(typ)
 	n.SetTypecheck(1)
+	return n
+}
+
+// Values
+
+// FixValue returns val after converting and truncating it as
+// appropriate for typ.
+func (syncgoCtx *Context) FixValue(typ *types.Type, val constant.Value) constant.Value {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	syncgoCtx.assert(typ.Kind() != types.TFORW)
+	switch {
+	case typ.IsInteger():
+		val = constant.ToInt(val)
+	case typ.IsFloat():
+		val = constant.ToFloat(val)
+	case typ.IsComplex():
+		val = constant.ToComplex(val)
+	}
+	if !typ.IsUntyped() {
+		val = syncgoCtx.Typecheck.ConvertVal(val, typ, false)
+	}
+	syncgoCtx.Typecheck.IR.AssertValidTypeForConst(typ, val)
+	return val
+}
+
+// Expressions
+
+func (syncgoCtx *Context) Addr(pos src.XPos, x ir.Node) *ir.AddrExpr {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	n := syncgoCtx.Typecheck.NodAddrAt(pos, x)
+	typed(syncgoCtx.Types.NewPtr(x.Type()), n)
+	return n
+}
+
+func (syncgoCtx *Context) Deref(pos src.XPos, typ *types.Type, x ir.Node) *ir.StarExpr {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	n := syncgoCtx.Typecheck.IR.NewStarExpr(pos, x)
+	typed(typ, n)
 	return n
 }
 
@@ -96,4 +157,6 @@ func (syncgoCtx *Context) initContext() {
 	}
 	syncgoCtx.syncgoInitVars0()
 	syncgoCtx.syncgoInitVars1()
+	syncgoCtx.syncgoInitVars2()
+	syncgoCtx.syncgoInitVars3()
 }

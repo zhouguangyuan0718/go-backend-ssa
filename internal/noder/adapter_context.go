@@ -6,6 +6,7 @@ import (
 	errors "go-backend-ssa/internal/go/types/errors"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/rangefunc"
+	"go-backend-ssa/internal/reflectdata"
 	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
 	"go-backend-ssa/internal/types2"
@@ -22,6 +23,19 @@ import (
 // Context owns the formerly process-wide inputs used by the selected noder
 // algorithms. The supplied Link and its position table belong to this instance.
 type Context struct {
+	ReflectData                                      *reflectdata.Context
+	ptrSize, renameinitgen, inlgen                   int
+	basics                                           [types2.UntypedNil + 1]**types.Type
+	dirs                                             [3]types.ChanDir
+	localPkgReader                                   *pkgReader
+	objReader                                        map[*types.Sym]pkgReaderIndex
+	bodyReader                                       map[*ir.Func]pkgReaderIndex
+	importBodyReader                                 map[*types.Sym]pkgReaderIndex
+	todoDicts                                        []func()
+	todoBodies                                       []*ir.Func
+	needWrapperTypes, haveWrapperTypes               []*types.Type
+	needMethodValueWrappers, haveMethodValueWrappers []methodValueWrapper
+
 	Base          *base.LinkContext
 	checked       *types2.Package
 	info          *types2.Info
@@ -117,6 +131,7 @@ func NewContext(checker *types2.Context, tc *typecheck.Context) (*Context, error
 		return nil, fmt.Errorf("noder requires initialized native compiler types")
 	}
 	c := &Context{Base: graph.Base, Checker: checker, Typecheck: tc, Types: u, Ctxt: link, GOARCH: link.Arch.Name, Flag: &graph.Base.Flag, Debug: &graph.Debug, Diagnostics: &graph.Diagnostics}
+	c.ptrSize = u.PointerSize()
 	c.initContext()
 	return c, nil
 }
@@ -222,4 +237,23 @@ func (c *Context) retainCheckedPackage(pkg *types2.Package) {
 
 func (c *Context) isGlobal(obj types2.Object) bool {
 	return obj.Parent() == c.Checker.PackageScope(obj.Pkg())
+}
+
+func (c *Context) assertfAt(ok bool, pos src.XPos, format string, args ...any) {
+	if !ok {
+		c.fatalfAt(pos, format, args...)
+	}
+}
+
+// Bind the native marker at the first scope without replacing live scope data.
+func scopeReaderContext(r *reader) *Context {
+	if r == nil || r.compilation == nil {
+		panic("reader has no compilation owner")
+	}
+	r.marker.Bind(r.compilation.Base)
+	return r.compilation
+}
+
+func (c *Context) warnfAt(pos src.XPos, format string, args ...any) {
+	c.Diagnostics.Add(diagnostic.Warning, "", c.Ctxt.PosTable.Pos(pos), fmt.Sprintf(format, args...))
 }

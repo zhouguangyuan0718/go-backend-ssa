@@ -1,6 +1,7 @@
 package dwarfgen
 
 import (
+	"go-backend-ssa/internal/base"
 	"go-backend-ssa/internal/cmd/obj"
 	"go-backend-ssa/internal/cmd/src"
 	"go-backend-ssa/internal/ir"
@@ -72,4 +73,23 @@ func TestScopePositionFailureDoesNotMutateMarks(t *testing.T) {
 		t.Fatal("invalid position changed scopes")
 	}
 	m.Pop(pos(6))
+}
+
+func TestMarkerBindingPreservesScopes(t *testing.T) {
+	link := &obj.Link{}
+	ctx := base.NewLinkContext(link)
+	var marker ScopeMarker
+	marker.Bind(ctx)
+	pos := link.PosTable.XPos(src.MakePos(src.NewFileBase("p.go", "p.go"), 1, 1))
+	marker.Push(pos)
+	marker.Bind(ctx)
+	if len(marker.parents) != 1 || len(marker.marks) != 1 {
+		t.Fatal("binding reset native scope state")
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("foreign binding accepted")
+		}
+	}()
+	marker.Bind(base.NewLinkContext(&obj.Link{}))
 }

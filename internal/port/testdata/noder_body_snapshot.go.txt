@@ -1,0 +1,26 @@
+package noder
+import("fmt";"encoding/json";"encoding/binary";"os";"strings";"sort";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_PKGBITS";BODY_RUNTIME IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.TrimSuffix(os.Getenv("SYNCGO_TARGET"),"-nosync"),8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ var out []string
+ data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
+ pr:=UP.newPkgReader(pkgbits.NewPkgDecoder("example/p",string(data)));UP.localPkgReader=pr
+ wanted:=map[string]bool{};for _,s:=range []string{"RecF","RecI","Node","Alias","Rounded","Complex","Add","Closure","Generic","Control","Range","Method","Composite","Calls","Branch","Capture","init"}{wanted[s]=true}
+ for i:=range pr.NumElems(pkgbits.SectionName){r:=pr.newReader(pkgbits.SectionName,index(i),pkgbits.SyncObject1);_,sym:=r.qualifiedIdent();tag:=pkgbits.CodeObj(r.Code(pkgbits.SyncCodeObj));if tag==pkgbits.ObjStub||sym.Pkg!=TY.LocalPkg||!wanted[sym.Name]{continue};n:=pr.objIdx(index(i),nil,nil,false).(*ir.Name);delete(wanted,sym.Name);out=append(out,fmt.Sprintf("decl:%v:%v:%v:%v:%t",n.Sym(),n.Op(),n.Type(),n.Val(),n.Alias()));if n.Class==ir.PFUNC{TC.Target.Funcs=append(TC.Target.Funcs,n.Func)};if sym.Name!="init"&&pr.objIdx(index(i),nil,nil,false)!=n{t.Fatal("object cache identity")}}
+ if len(wanted)!=0{t.Fatal("missing",wanted)}
+ BODY_DRAIN
+ for _,fn:=range TC.Target.Funcs{
+ if fn.Pos()==(src.XPos{}){t.Fatal("function position missing")}
+  out=append(out,fmt.Sprintf("fn:%v:%v:%d:%t:%t:%s:%s:%v",fn.Sym(),fn.Type(),fn.Typecheck(),fn.Dupok(),fn.Wrapper(),LINK.PosTable.Pos(fn.Pos()),LINK.PosTable.Pos(fn.Endlineno),fn.Parents))
+  for _,m:=range fn.Marks{out=append(out,fmt.Sprintf("mark:%s:%d",LINK.PosTable.Pos(m.Pos),m.Scope))}
+  for _,d:=range fn.Dcl{out=append(out,fmt.Sprintf("local:%v:%v:%d:%t:%t",d.Sym(),d.Type(),d.Class,d.AutoTemp(),d.Curfn==fn))}
+  for _,v:=range fn.ClosureVars{out=append(out,fmt.Sprintf("capture:%v:%v:%t:%t",v.Sym(),v.Type(),v.Curfn==fn,v.Outer!=nil))}
+  for _,stmt:=range fn.Body{ir.Visit(stmt,func(n ir.Node){out=append(out,fmt.Sprintf("node:%s:%d:%v:%s:%v",n.Op(),n.Typecheck(),n.Type(),LINK.PosTable.Pos(n.Pos()),n))})}
+ }
+ for _,typ:=range UP.needWrapperTypes{out=append(out,fmt.Sprintf("need-wrapper:%v",typ))};for _,typ:=range UP.haveWrapperTypes{out=append(out,fmt.Sprintf("have-wrapper:%v",typ))}
+ for _,entry:=range UP.needMethodValueWrappers{out=append(out,fmt.Sprintf("method-value:%v:%v",entry.rcvr,entry.method.Sym))}
+ symbols:=append([]*obj.LSym(nil),LINK.Data...);sort.Slice(symbols,func(i,j int)bool{return symbols[i].Name<symbols[j].Name});for _,s:=range symbols{out=append(out,fmt.Sprintf("symbol:%s:%v:%d:%x:%d",s.Name,s.Type,s.Size,s.P,uint32(s.Attribute)));for _,r:=range s.R{out=append(out,fmt.Sprintf("reloc:%v:%d:%d:%s:%v:%d",r.Type,r.Off,r.Siz,r.Sym.Name,r.Sym.ABI(),r.Add))}}
+ out=append(out,fmt.Sprintf("end:%d:%d:%t",len(UP.todoBodies),len(UP.todoDicts),GRAPH.CurFunc==nil))
+ bytes,_:=json.Marshal(out);fmt.Printf("SYNCGO_IR=%s\n",bytes)
+}

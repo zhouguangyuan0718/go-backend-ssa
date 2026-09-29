@@ -3551,7 +3551,7 @@ func (pw *pkgWriter) terminates(stmt syntax.Stmt) bool {
 
 	return false
 }
-func (syncgoCtx *Context) syncgoInitVars1() {
+func (syncgoCtx *Context) syncgoInitVars3() {
 	syncgoCtx.anyTypeName = syncgoCtx.Checker.Universe.Lookup("any").(*types2.TypeName)
 	syncgoCtx.comparableTypeName = syncgoCtx.Checker.Universe.Lookup("comparable").(*types2.TypeName)
 	syncgoCtx.runeTypeName = syncgoCtx.Checker.Universe.Lookup("rune").(*types2.TypeName)
