@@ -1,0 +1,42 @@
+package noder
+import("encoding/binary";"os";"strings";"testing";"go-backend-ssa/internal/cmd/obj";"go-backend-ssa/internal/cmd/sys";"go-backend-ssa/internal/ir";"go-backend-ssa/internal/typecheck";"go-backend-ssa/internal/types";"go-backend-ssa/internal/types2";"go-backend-ssa/internal/syntax")
+func TestSyncgoBodyFixture(t *testing.T){
+ arch:=strings.SplitN(os.Getenv("SYNCGO_TARGET"),"-",2)[0];size:=8;var order binary.ByteOrder=binary.LittleEndian;frames:=0;if strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-nosync"){frames=-1};switch arch{case "386":size=4;case "mips":size=4;order=binary.BigEndian;case "ppc64":order=binary.BigEndian}
+ link:=&obj.Link{Pathname:"/src",Arch:&obj.LinkArch{Arch:&sys.Arch{Name:arch,PtrSize:size,RegSize:size,ByteOrder:order}}};u:=types.NewUniverseWithPositions(size,size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");g:=ir.NewContext(u,link);tc:=typecheck.NewContext(g);tc.InitUniverse();g.Base.Flag.Lang="go1.27";g.Base.Flag.Complete=true;g.Debug.SyncFrames=frames;g.Debug.RangeFuncCheck=1
+ c,err:=NewContext(types2.NewContext(),tc);if err!=nil{t.Fatal(err)}
+ source:=`package p
+var Sink int
+func Add(x int)int{return x+1}
+type I interface {M(int)int}
+type A int
+func(a A)M(x int)int{return Add(int(a)+x)}
+type B int
+func(b B)M(x int)int{return int(b)-x}
+func MakeI(x int)I{return A(x)}
+func Direct(x int)int{var i I=A(x);return i.M(1)}
+func Factory(x int)int{i:=MakeI(x);return i.M(2)}
+func Same(x int,b bool)int{var i I;if b{i=A(x)}else{i=A(x+1)};return i.M(3)}
+func Mixed(x int,b bool)int{var i I=A(x);if b{i=B(x)};return i.M(4)}
+func Unknown(i I)int{return i.M(5)}
+func Late(x int)int{var i I;r:=i.M(6);i=A(x);return r}
+func Alias(x int)int{var i I=A(x);j:=i;i=j;return j.M(7)}
+func Nil()int{var i I;return i.M(8)}
+func Deferred(x int){var i I=A(x);defer i.M(9)}
+func GoCall(x int){var i I=A(x);go i.M(10)}
+func Slice(xs []A)int{r:=0;for _,a:=range xs{var i I=a;r+=i.M(1)};return r}
+func Map(xs map[int]A)int{r:=0;for _,a:=range xs{var i I=a;r+=i.M(1)};return r}
+func Chan(xs chan A)int{r:=0;for a:=range xs{var i I=a;r+=i.M(1)};return r}
+func Maker(x int)func()int{Sink++;return func()int{return x}}
+func Nested(x int)int{return Maker(x)()}
+func ClosureTwice(x int)int{f:=func()int{return x};return f()+f()}
+func Pair(x int)(I,int){return A(x),x}
+func Multi(x int)int{i,n:=Pair(x);return i.M(n)}
+func Rec(x int)int{if x==0{return 0};return Rec(x-1)}
+func Indirect(f func(int)int,x int)int{return f(x)}
+`
+ file,err:=syntax.Parse(syntax.NewFileBase("input.go"),strings.NewReader(source),nil,nil,syntax.CheckBranches);if err!=nil{t.Fatal(err)}
+ info:=&types2.Info{StoreTypesInSyntax:true,Defs:map[*syntax.Name]types2.Object{},Uses:map[*syntax.Name]types2.Object{},Selections:map[*syntax.SelectorExpr]*types2.Selection{},Implicits:map[syntax.Node]types2.Object{},Scopes:map[syntax.Node]*types2.Scope{},Instances:map[*syntax.Name]types2.Instance{},FileVersions:map[*syntax.PosBase]string{}}
+ conf:=types2.Config{Context:c.Checker,GoVersion:"go1.27",Sizes:c.Checker.SizesFor("gc",arch)};files:=[]*syntax.File{file};pkg,err:=conf.Check("example/p",files,info);if err!=nil{t.Fatal(err)}
+ closures,err:=c.RewriteRangeFuncs(pkg,info,files);if err!=nil{t.Fatal(err)};data,err:=c.WritePackage(pkg,info,files,closures);if err!=nil{t.Fatal(err)}
+ if err:=os.WriteFile(BODY_INPUT_PATH,[]byte(data),0600);err!=nil{t.Fatal(err)}
+}

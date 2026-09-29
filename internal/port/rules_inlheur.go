@@ -3,7 +3,7 @@ package port
 func inlheurMigration() []Unit {
 	const root = "src/cmd/compile/internal/inline/inlheur/"
 	units := []Unit{
-		{Source: root + "analyze.go", Declarations: []string{"debugTraceFuncs", "propAnalyzer", "fnInlHeur", "csDelimiter"}, Functions: []string{"AnalyzeFunc", "TearDown", "analyzeFunc", "revisitInlinability", "computeFuncProps", "runAnalyzersOnFunction", "propsForFunc", "fnFileLine", "Enabled", "UnitTesting"}},
+		{Source: root + "analyze.go", Declarations: []string{"debugTraceFuncs", "propAnalyzer", "fnInlHeur", "csDelimiter", "preambleDelimiter", "fnDelimiter", "comDelimiter"}, Functions: []string{"DumpFuncProps", "captureFuncDumpEntry", "dumpFilePreamble", "dumpFnPreamble", "sortFnInlHeurSlice", "AnalyzeFunc", "TearDown", "analyzeFunc", "revisitInlinability", "computeFuncProps", "runAnalyzersOnFunction", "propsForFunc", "fnFileLine", "Enabled", "UnitTesting"}},
 	}
 	for _, name := range []string{"analyze_func_callsites.go", "analyze_func_flags.go", "analyze_func_params.go", "analyze_func_returns.go", "callsite.go", "eclassify.go", "function_properties.go", "names.go", "score_callresult_uses.go", "scoring.go", "serialize.go", "trace_off.go", "actualexprpropbits_string.go", "cspropbits_string.go", "funcprop_string.go", "funcpropbits_string.go", "parampropbits_string.go", "pstate_string.go", "resultpropbits_string.go", "scoreadjusttyp_string.go"} {
 		units = append(units, Unit{Source: root + name, WholeFile: true})
@@ -36,8 +36,8 @@ func inlheurMigration() []Unit {
 			u.ContextParams = []string{"CallSiteTab.merge"}
 		}
 		if name == "analyze.go" {
-			u.Checks = map[string]string{"AnalyzeFunc": "checkAnalyze"}
-			u.Context.Fields = map[string]string{"fpmap": "fpmap"}
+			u.Checks = map[string]string{"AnalyzeFunc": "checkAnalyze", "DumpFuncProps": "checkDumpFunc"}
+			u.Context.Fields = map[string]string{"fpmap": "fpmap", "dumpBuffer": "dumpBuffer"}
 		}
 		if name == "scoring.go" {
 			u.Checks = map[string]string{"ScoreCalls": "checkFunc", "GetCallSiteScore": "checkCallScore", "LargestNegativeScoreAdjustment": "checkProps"}
@@ -55,6 +55,7 @@ func inlheurMigration() []Unit {
 		{Source: "src/cmd/compile/internal/typecheck/iimport.go", Variable: "HaveInlineBody", Field: "Typecheck.HaveInlineBody"},
 	}
 	units[0].Calls = []CallRule{
+		{Source: root + "analyze.go", Function: "emitDumpToFile", Method: "emitDump"},
 		{Source: "src/cmd/compile/internal/base/print.go", Function: "Fatalf", Method: "fatalf"},
 		{Source: "src/cmd/compile/internal/base/print.go", Function: "FatalfAt", Method: "fatalfAt"},
 		{Source: "src/cmd/compile/internal/ir/expr.go", Function: "StaticValue", Method: "Typecheck.IR.StaticValue"},

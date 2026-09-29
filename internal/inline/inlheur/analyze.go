@@ -8,9 +8,15 @@ package inlheur
 import (
 	"go-backend-ssa/internal/ir"
 
+	"cmp"
+	"encoding/json"
 	"fmt"
 
+	"io"
+
 	"path/filepath"
+	"slices"
+	"strings"
 )
 
 const (
@@ -253,6 +259,111 @@ func (syncgoCtx *Context) UnitTesting() bool {
 		syncgoCtx.Typecheck.IR.Debug.DumpInlCallSiteScores != 0
 }
 
+// DumpFuncProps computes and caches function properties for the func
+// 'fn', writing out a description of the previously computed set of
+// properties to the file given in 'dumpfile'. Used for the
+// "-d=dumpinlfuncprops=..." command line flag, intended for use
+// primarily in unit testing.
+func (syncgoCtx *Context) DumpFuncProps(fn *ir.Func, dumpfile string) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	syncgoCtx.checkDumpFunc(fn, dumpfile)
+	if fn != nil {
+		if fn.OClosure != nil {
+			// closures will be processed along with their outer enclosing func.
+			return
+		}
+		syncgoCtx.captureFuncDumpEntry(fn)
+		ir.VisitFuncAndClosures(fn, func(n ir.Node) {
+			if clo, ok := n.(*ir.ClosureExpr); ok {
+				syncgoCtx.captureFuncDumpEntry(clo.Func)
+			}
+		})
+	} else {
+		syncgoCtx.emitDump(dumpfile)
+	}
+}
+
+// captureFuncDumpEntry grabs the function properties object for 'fn'
+// and enqueues it for later dumping. Used for the
+// "-d=dumpinlfuncprops=..." command line flag, intended for use
+// primarily in unit testing.
+func (syncgoCtx *Context) captureFuncDumpEntry(fn *ir.Func) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	// avoid capturing compiler-generated equality funcs.
+	if strings.HasPrefix(fn.Sym().Name, ".eq.") {
+		return
+	}
+	funcInlHeur, ok := syncgoCtx.fpmap[fn]
+	if !ok {
+		// Missing entry is expected for functions that are too large
+		// to inline. We still want to write out call site scores in
+		// this case however.
+		funcInlHeur = fnInlHeur{cstab: syncgoCtx.callSiteTab}
+	}
+	if syncgoCtx.dumpBuffer == nil {
+		syncgoCtx.dumpBuffer = make(map[*ir.Func]fnInlHeur)
+	}
+	if _, ok := syncgoCtx.dumpBuffer[fn]; ok {
+		return
+	}
+	if debugTrace&debugTraceFuncs != 0 {
+		fmt.Fprintf(syncgoCtx.traceWriter(), "=-= capturing dump for %v:\n", fn)
+	}
+	syncgoCtx.dumpBuffer[fn] = funcInlHeur
+}
+
+// dumpFilePreamble writes out a file-level preamble for a given
+// Go function as part of a function properties dump.
+func dumpFilePreamble(w io.Writer) {
+	fmt.Fprintf(w, "// DO NOT EDIT (use 'go test -v -update-expected' instead.)\n")
+	fmt.Fprintf(w, "// See cmd/compile/internal/inline/inlheur/testdata/props/README.txt\n")
+	fmt.Fprintf(w, "// for more information on the format of this file.\n")
+	fmt.Fprintf(w, "// %s\n", preambleDelimiter)
+}
+
+// dumpFnPreamble writes out a function-level preamble for a given
+// Go function as part of a function properties dump. See the
+// README.txt file in testdata/props for more on the format of
+// this preamble.
+func (syncgoCtx *Context) dumpFnPreamble(w io.Writer, funcInlHeur *fnInlHeur, ecst encodedCallSiteTab, idx, atl uint) error {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	fmt.Fprintf(w, "// %s %s %d %d %d\n",
+		funcInlHeur.file, funcInlHeur.fname, funcInlHeur.line, idx, atl)
+	// emit props as comments, followed by delimiter
+	fmt.Fprintf(w, "%s// %s\n", funcInlHeur.props.ToString("// "), comDelimiter)
+	data, err := json.Marshal(funcInlHeur.props)
+	if err != nil {
+		return fmt.Errorf("marshal error %v\n", err)
+	}
+	fmt.Fprintf(w, "// %s\n", string(data))
+	syncgoCtx.dumpCallSiteComments(w, funcInlHeur.cstab, ecst)
+	fmt.Fprintf(w, "// %s\n", fnDelimiter)
+	return nil
+}
+
+// sortFnInlHeurSlice sorts a slice of fnInlHeur based on
+// the starting line of the function definition, then by name.
+func sortFnInlHeurSlice(sl []fnInlHeur) []fnInlHeur {
+	slices.SortStableFunc(sl, func(a, b fnInlHeur) int {
+		if a.line != b.line {
+			return cmp.Compare(a.line, b.line)
+		}
+		return strings.Compare(a.fname, b.fname)
+	})
+	return sl
+}
+
+// delimiters written to various preambles to make parsing of
+// dumps easier.
+const preambleDelimiter = "<endfilepreamble>"
+const fnDelimiter = "<endfuncpreamble>"
+const comDelimiter = "<endpropsdump>"
 const csDelimiter = "<endcallsites>"
 
 func (syncgoCtx *Context) syncgoInitVars0() {

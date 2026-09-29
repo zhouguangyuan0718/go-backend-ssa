@@ -1,5 +1,7 @@
 # M3 原生内联调用展开
 
+本篇记录该批提交时的边界；后续已接通 [原生去虚化与整包内联驱动](m3-interleaved.md)。
+
 本批将已有可内联判定接通到上游真正的展开算法：`inline.TryInlineCall → mkinlcall → noder.unifiedInlineCall`。返回值是原生 `ir.InlinedCallExpr`，其局部声明、初始化语句、返回变量、闭包和内联位置信息均由迁入代码构造。本批不提供替代的整包内联循环；原生 interleaved 去虚化/内联驱动、wrapper 生成、walk 和 SSA 仍待接入。
 
 ## 实现与对外使用

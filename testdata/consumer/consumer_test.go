@@ -182,7 +182,7 @@ func TestNativeSyntaxFromPublicModule(t *testing.T) {
 }
 
 func TestNativeCheckerFromPublicModule(t *testing.T) {
-	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return};func UseId(x int)int{return Id(x)}"), nil, nil, syntax.CheckBranches)
+	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return};func UseId(x int)int{return Id(x)};func Twice(x int)int{return Id(Id(x))}"), nil, nil, syntax.CheckBranches)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,6 +274,26 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 			t.Fatal("public native inline expansion failed")
 		}
 	})
+
+	writer.Interleaved.DevirtualizeAndInlinePackage(result, nil)
+	twice, err := writer.LookupFunc("example/p.Twice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expanded, calls, parens := 0, 0, 0
+	ir.VisitList(twice.Body, func(n ir.Node) {
+		switch n.Op() {
+		case ir.OINLCALL:
+			expanded++
+		case ir.OCALLFUNC:
+			calls++
+		case ir.OPAREN:
+			parens++
+		}
+	})
+	if expanded < 2 || calls != 0 || parens != 0 || graph.CurFunc != nil {
+		t.Fatal("public native package driver failed", expanded, calls, parens)
+	}
 
 }
 

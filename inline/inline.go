@@ -1,7 +1,7 @@
 // Package inline exposes the native compiler's inlinability and call-site
 // expansion algorithms. noder.NewContext binds InlineCall to its native reader.
 // TryInlineCall runs inside IR.WithFunc(caller, ...); install its non-nil result
-// in the caller's graph. The complete optimization driver is not yet integrated.
+// in the caller's graph. Package inline/interleaved exposes the native drivers.
 package inline
 
 import (

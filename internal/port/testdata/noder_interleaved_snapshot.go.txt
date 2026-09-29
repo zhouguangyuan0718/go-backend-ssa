@@ -1,0 +1,46 @@
+package noder
+import("fmt";"encoding/json";"encoding/binary";"os";"strings";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_PKGBITS";DRIVER_IMPORT EXPAND_RUNTIME DRIVER_INLINE_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.SplitN(os.Getenv("SYNCGO_TARGET"),"-",2)[0],8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ EXPERIMENT.NewInliner=strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-newinline")
+ RD_FLAG.LowerL=1;RD_FLAG.GenDwarfInl=2;ND_DEBUG.InlFuncsWithClosures=1
+ LINK.DwFixups=obj.NewDwarfFixupTable(LINK)
+ EXPAND_BIND
+ TC.HaveInlineBody=UP.unifiedHaveInlineBody
+ data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
+ pr:=UP.newPkgReader(pkgbits.NewPkgDecoder("example/p",string(data)));UP.localPkgReader=pr;UP.readPackage(pr,TY.LocalPkg,true)
+ pr.newReader(pkgbits.SectionMeta,pkgbits.PrivateRootIdx,pkgbits.SyncPrivate).pkgInit(TY.LocalPkg,TC.Target)
+ UP.readBodies(TC.Target,false,nil)
+
+ DRIVER_DUMP_SETUP
+ var profile *pgoir.Profile
+ if strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-pgo") {
+ ND_DEBUG.PGODevirtualize=2;ND_DEBUG.PGOInline=1
+ raw:="GO PREPROFILE V1\nexample/p.Unknown\nexample/p.A.M\n0 100\nexample/p.Indirect\nexample/p.Add\n0 90\n"
+ DRIVER_PROFILE
+ }
+ if strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-noinline"){RD_FLAG.LowerL=0}
+ if strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-single"){
+ INLINE.CanInlineFuncs(TC.Target.Funcs,nil)
+ fn,err:=UP.LookupFunc("example/p.Factory");if err!=nil{t.Fatal(err)}
+ DRIVER.DevirtualizeAndInlineFunc(fn,nil)
+ }else{DRIVER.DevirtualizeAndInlinePackage(TC.Target,profile)}
+ var out []string
+ for _,fn:=range TC.Target.Funcs{
+ if fn.Pos()==(src.XPos{}){t.Fatal("missing function position")}
+ out=append(out,fmt.Sprintf("func:%v:%t:%d",fn.Sym(),fn.Inl!=nil,len(fn.Body)))
+ ir.Visit(fn,func(n ir.Node){
+ out=append(out,fmt.Sprintf("node:%s:%d:%v:%s:%v",n.Op(),n.Typecheck(),n.Type(),LINK.PosTable.Pos(n.Pos()),n))
+ if a,ok:=n.(*ir.TypeAssertExpr);ok{out=append(out,fmt.Sprintf("nil-panic:%t",a.UseNilPanic))}
+ if a,ok:=n.(*ir.CallExpr);ok{out=append(out,fmt.Sprintf("call:%t:%t:%t",a.GoDefer,a.NoInline,a.IsDDD))}
+ })
+ for _,d:=range fn.Dcl{out=append(out,fmt.Sprintf("local:%v:%v:%d:%t:%t:%t",d.Sym(),d.Type(),d.Class,d.InlFormal(),d.InlLocal(),d.Curfn==fn))}
+ }
+ DRIVER_DUMP_READ
+ out=append(out,"props:"+dump)
+ for i:=0;i<UP.inlgen;i++{out=append(out,fmt.Sprintf("tree:%d:%d:%s:%s:%s",i,LINK.InlTree.Parent(i),LINK.InlTree.InlinedFunction(i).Name,LINK.InlTree.InlinedFuncName(i),LINK.PosTable.Pos(LINK.InlTree.CallPos(i))))}
+ for _,sym:=range LINK.Data{if strings.HasSuffix(sym.Name,"$abstract"){out=append(out,fmt.Sprintf("abstract:%s:%d:%d",sym.Name,sym.Type,sym.Attribute))}}
+ out=append(out,fmt.Sprintf("state:%d:%d:%d:%t",UP.inlgen,len(UP.todoBodies),len(UP.todoDicts),GRAPH.CurFunc==nil))
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

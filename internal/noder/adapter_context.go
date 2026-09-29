@@ -7,6 +7,7 @@ import (
 	errors "go-backend-ssa/internal/go/types/errors"
 	"go-backend-ssa/internal/inline"
 	"go-backend-ssa/internal/inline/inlheur"
+	"go-backend-ssa/internal/inline/interleaved"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/logopt"
 	"go-backend-ssa/internal/pgoir"
@@ -29,6 +30,7 @@ import (
 // Context owns the formerly process-wide inputs used by the selected noder
 // algorithms. The supplied Link and its position table belong to this instance.
 type Context struct {
+	Interleaved                                      *interleaved.Context
 	Inline                                           *inline.Context
 	StaticInit                                       *staticinit.Context
 	ReflectData                                      *reflectdata.Context
@@ -146,6 +148,7 @@ func NewContext(checker *types2.Context, tc *typecheck.Context) (*Context, error
 	c.Inline.PGO.PostLookupCleanup = c.PostLookupCleanup
 	c.Inline.PGO.LookupFunc = c.LookupFunc
 	c.Inline.InlineCall = c.unifiedInlineCall
+	c.Interleaved = interleaved.NewContext(c.Inline)
 	return c, nil
 }
 func (c *Context) checkShape(targ *types.Type, basic bool) {

@@ -4,7 +4,7 @@
 
 库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。每次调用拥有独立编译状态，返回结果在后续调用期间仍有效。
 
-当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口，并提供已检查 AST 到原生 Unified IR stub 的 writer，以及实例独立的原生 IR 图构造接口与 typecheck universe 初始化；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及本地 stub 到读取阶段原生包 IR 的入口和上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
+当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口，并提供已检查 AST 到原生 Unified IR stub 的 writer，以及实例独立的原生 IR 图构造接口与 typecheck universe 初始化；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及本地 stub 到读取阶段原生包 IR、原生整包去虚化/内联的入口和上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
 
 - 语言范围：Go 1.27；其他语言版本尚不支持。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
@@ -55,6 +55,7 @@
 38. [M3 原生包注册与读取](docs/m3-package-reader.md)：导入函数/方法查找、真实 PGO 绑定及本地包 IR 读取入口。
 39. [M3 原生函数符号](docs/m3-text-symbols.md)：InitLSym、文本属性、FuncID 及 DWARF 内联引用修正。
 40. [M3 原生内联调用展开](docs/m3-inline-expansion.md)：真实 InlinedCallExpr、导入函数体、闭包、副作用及实例回调绑定。
+41. [M3 原生去虚化与整包内联](docs/m3-interleaved.md)：静态/PGO 去虚化、原生固定点驱动、状态绑定及源码图差分。
 
 ## 当前可运行的工具
 

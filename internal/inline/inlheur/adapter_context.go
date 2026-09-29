@@ -15,6 +15,7 @@ type Context struct {
 	mayMustAdj              [4]struct{ may, must scoreAdjustTyp }
 	Typecheck               *typecheck.Context
 	PGO                     *pgoir.Context
+	dumpBuffer              map[*ir.Func]fnInlHeur
 	fpmap                   map[*ir.Func]fnInlHeur
 	adjValues               map[scoreAdjustTyp]int
 	resultFlagToPositiveAdj map[ResultPropBits]scoreAdjustTyp
@@ -63,3 +64,36 @@ func (c *Context) checkCallScore(fn *ir.Func, call *ir.CallExpr) {
 	}
 }
 func (c *Context) checkProps(fn *ir.Func, props *FuncProps) { c.checkFunc(fn) }
+
+func (c *Context) checkDumpFunc(fn *ir.Func, dumpfile string) {
+	if fn != nil {
+		c.checkFunc(fn)
+	}
+}
+
+// emitDump replaces only the command's file-opening boundary. The native
+// ordering and formatting below are retained; the host supplies TraceWriter.
+// dumpfile remains a driver enable flag and is never opened by the library.
+func (c *Context) emitDump(dumpfile string) {
+	outf := c.traceWriter()
+	dumpFilePreamble(outf)
+	atline := map[uint]uint{}
+	sl := make([]fnInlHeur, 0, len(c.dumpBuffer))
+	for _, e := range c.dumpBuffer {
+		sl = append(sl, e)
+		atline[e.line]++
+	}
+	sl = sortFnInlHeurSlice(sl)
+	prevline := uint(0)
+	for _, entry := range sl {
+		idx := uint(0)
+		if prevline == entry.line {
+			idx++
+		}
+		prevline = entry.line
+		if err := c.dumpFnPreamble(outf, &entry, nil, idx, atline[entry.line]); err != nil {
+			c.fatalf("function props dump: %v\n", err)
+		}
+	}
+	c.dumpBuffer = nil
+}
