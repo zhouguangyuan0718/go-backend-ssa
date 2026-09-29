@@ -121,4 +121,30 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 
 验证：全量 race、独立 consumer、两版参考切片的类型分类/身份映射/初始化差分、生成与升级检查通过。nil receiver、方法表达式、回调保活和 32 个并发 Universe 均有覆盖。`syncgo check` 验证 18 份产物；16 份 Go 文件跨补丁版本无内容变化。日志：`_work/m2-untyped-tests.log`。
 
-当前剩余主线：移植 Field/Struct/Signature 构造及必要访问器，再接入 CalcSize、延迟布局队列、算法分类和 InitTypes。完整预声明类型绑定仍未实现，现有 Scalar 是未命名节点入口；本批常量身份不等于已经完成 typecheck，更不等于源码到 SSA。
+第五批结束时的剩余主线：移植 Field/Struct/Signature 构造及必要访问器，再接入 CalcSize、延迟布局队列、算法分类和 InitTypes。完整预声明类型绑定仍未实现，现有 Scalar 是未命名节点入口；本批常量身份不等于已经完成 typecheck，更不等于源码到 SSA。
+
+## 第六批：Field、Struct、Signature 与后端访问器
+
+已直接移植 NewField/NewStruct/NewSignature、Field 的复制与标记方法，以及字段、参数、结果和结果 tuple 的访问器。公开 types/gcbridge 只增加原生 Field/Struct 的类型别名，未引入第二套字段或签名对象。
+
+Field 保持上游结构，不添加独立 owner；其 Type 和非 nil Sym 必须属于当前 Universe。NewField、NewStruct、NewSignature 在执行上游构造体之前检查字段图。通过同包 adapter 检查 nil 字段、外来类型和外来符号；NewSignature 的 nil receiver 和空参数/结果仍然合法。这里检查的是输入 Field 的 Type/Sym 归属，不是任意可变图的递归所有权证明。
+
+保留上游存储语义：NewStruct 接管字段 slice；NewSignature 将输入 slice 的条目复制到 allParams，但不复制 Field 对象；ResultsTuple 与 Results 共用对应字段区间。调用者不得事后通过公开 Field、Struct 或 slice 字段拼接外来对象。Field.Copy 是上游浅复制，类型和符号身份保持不变。
+
+后端可通过 `Fields/Field/FieldType/NumFields`、`Recvs/Params/Results`、`RecvParamsResults/RecvParams/ParamsResults`、`NumRecvs/NumParams/NumResults`、`Recv/Param/Result`、`IsVariadic/ResultsTuple` 读取真实对象。FieldType 也支持原有 tuple/results，无需手写解包模型。
+
+```go
+field := u.NewField(position.XPos{}, nil, value)
+record := u.NewStruct([]*types.Field{field})
+signature := u.NewSignature(nil, []*types.Field{field}, []*types.Field{field})
+// signature.Result(0) == field
+// signature.ResultsTuple().FieldType(0) == value
+```
+
+工具规则仍在 Go 中。Checks 将选定声明绑定到同目录参数校验方法；校验方法必须保留原始完整参数签名且无返回值。未命名/空白/variadic 参数尚不支持。receiver 校验也通过原对象 owner 调用，不创建全局 validator；上游签名变化或过于宽松的 adapter 类型会被拒绝。
+
+验证覆盖：位置/符号/类型身份、Field.Copy 元信息、HasShape/NotInHeap 传播、空签名、receiver、variadic、结果 tuple 存储共享、跨实例与 nil 输入拒绝、回调保活及 24 个并发 Universe。参考切片继续保留上游构造算法和全局初始化，比较 go1.27.0/1.27.1 下的 32/64 位字段与签名快照；参考 Fatalf 仍仅使用测试 panic 适配。
+
+完整 race、独立 consumer、两版上游差分、生成和升级检查通过；`syncgo check` 验证 18 份产物，16 份 Go 文件跨补丁版本无内容变化。日志：`_work/m2-signature-tests.log`。
+
+**边界：** Field.Offset 和 Struct/ResultsTuple 的布局仍未计算，保持上游 BADWIDTH/零 align；只加入了 widthCalculated 的查询及禁止改写已计算字段的原有保护。下一步是 CalcSize 的依赖闭包：延迟布局队列、算法分类、必要接口/方法集和诊断状态，然后接入 InitTypes。尚未打通源码到 SSA。

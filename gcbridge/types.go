@@ -13,3 +13,6 @@ type Pkg = types.Pkg
 type Sym = types.Sym
 type Object = types.Object
 type LinkSymbol = obj.LSym
+
+type Field = types.Field
+type Struct = types.Struct

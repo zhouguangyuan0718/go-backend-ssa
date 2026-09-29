@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m2-v5"
+const ToolVersion = "syncgo-m2-v6"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -42,7 +42,8 @@ type Unit struct {
 	ZeroValues   []string // Reviewed zero-valued struct globals replaced by fresh values.
 	ReadTables   []string // Constant array lookups localized in their consuming functions.
 	Context      *ContextRule
-	Calls        []CallRule // Reviewed external functions bound to context methods.
+	Calls        []CallRule        // Reviewed external functions bound to context methods.
+	Checks       map[string]string // Selected function/method -> context argument validator.
 }
 
 // CallRule derives the upstream signature from Source; no replacement package
@@ -116,6 +117,15 @@ func (p Plan) Validate() error {
 		for _, call := range u.Calls {
 			if u.Context == nil || !safePath(call.Source) || portPath(call.Source) == "" || !token.IsIdentifier(call.Function) || !token.IsIdentifier(call.Method) {
 				return fmt.Errorf("invalid external call binding")
+			}
+		}
+		for name, method := range u.Checks {
+			selected := false
+			for _, declaration := range append(append([]string(nil), u.Functions...), u.Declarations...) {
+				selected = selected || name == declaration
+			}
+			if u.Context == nil || !selected || !token.IsIdentifier(method) {
+				return fmt.Errorf("invalid entry check: %s", name)
 			}
 		}
 		pkg := path.Dir(output)

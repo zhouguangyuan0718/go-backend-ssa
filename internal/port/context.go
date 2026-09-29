@@ -174,10 +174,15 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				decls = append(decls, d)
 				continue
 			}
+			key := fn.Name.Name
+			if fn.Recv != nil {
+				key = receiverType(fn) + "." + key
+			}
+			check := units[i].Checks[key]
 			ctx := ast.Expr(ast.NewIdent(recv))
 			var guard []ast.Stmt
 			if fn.Recv != nil {
-				needs := false
+				needs := check != ""
 				refs := replacements(ctx)
 				ast.Inspect(fn, func(n ast.Node) bool {
 					if id, ok := n.(*ast.Ident); ok && refs[id] != nil {
@@ -235,6 +240,28 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			checks, err := ownedArgumentChecks(fn, info, owners, nodeText(fs, ctx))
 			if err != nil {
 				return err
+			}
+			if check != "" {
+				args := []string{}
+				for _, field := range fn.Type.Params.List {
+					if _, variadic := field.Type.(*ast.Ellipsis); variadic {
+						return fmt.Errorf("entry check on variadic function requires explicit adaptation: %s", key)
+					}
+					if len(field.Names) == 0 {
+						return fmt.Errorf("unnamed checked parameter: %s", key)
+					}
+					for _, name := range field.Names {
+						if name.Name == "_" {
+							return fmt.Errorf("blank checked parameter: %s", key)
+						}
+						args = append(args, name.Name)
+					}
+				}
+				stmt, err := contextStatements(nodeText(fs, ctx)+"."+check+"("+strings.Join(args, ",")+")", fn.Body.Lbrace)
+				if err != nil {
+					return err
+				}
+				checks = append(checks, stmt...)
 			}
 			// Preserve an upstream early nil-receiver return before consulting
 			// an owner. In particular Type.IsUntyped(nil) must remain false.

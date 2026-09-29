@@ -17,6 +17,8 @@ type Sym = compiler.Sym
 type Object = compiler.Object
 type ChanDir = compiler.ChanDir
 type Map = compiler.Map
+type Field = compiler.Field
+type Struct = compiler.Struct
 
 const (
 	Int8          = compiler.TINT8
@@ -45,6 +47,8 @@ const (
 	Array         = compiler.TARRAY
 	MapKind       = compiler.TMAP
 	Chan          = compiler.TCHAN
+	StructKind    = compiler.TSTRUCT
+	Func          = compiler.TFUNC
 	RecvOnly      = compiler.Crecv
 	SendOnly      = compiler.Csend
 	SendRecv      = compiler.Cboth

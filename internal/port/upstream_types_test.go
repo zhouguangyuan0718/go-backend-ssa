@@ -56,7 +56,7 @@ func Fatalf(format string, args ...any) { panic(fmt.Errorf(format, args...)) }
 		writeTestFile(t, dir, "internal/reference/types/"+filepath.Base(u.Source), string(raw))
 	}
 	snapshot := `package types
-import "fmt"
+import ("fmt";"go-backend-ssa/internal/cmd/src")
 func Snapshot(size int) []string {
  SETUP
  var out []string
@@ -87,6 +87,27 @@ func Snapshot(size int) []string {
  UP.NewPtrCacheEnabled=false
  fresh:=UP.newType(TBOOL)
  out=append(out,fmt.Sprintf("uncached:%t:%t",UP.NewPtr(fresh)==UP.NewPtr(fresh),UP.NewPtr(value)==p))
+ field:=UP.NewField(src.XPos{},nil,value)
+ field.Note="tag";field.SetNointerface(true)
+ copied:=field.Copy()
+ recordFields:=[]*Field{field}
+ record:=UP.NewStruct(recordFields)
+ out=append(out,fmt.Sprintf("field:%t:%t:%t:%s:%d",copied!=field,copied.Type==value,copied.Nointerface(),copied.Note,copied.Offset))
+ out=append(out,fmt.Sprintf("struct:%s:%d:%t:%t:%t:%t",record.Kind(),record.NumFields(),record.FieldType(0)==value,record.HasShape(),record.NotInHeap(),&record.Fields()[0]==&recordFields[0]))
+ recv:=UP.NewField(src.XPos{},nil,UP.NewPtr(record))
+ param:=UP.NewField(src.XPos{},nil,UP.NewSlice(value));param.SetIsDDD(true)
+ result:=UP.NewField(src.XPos{},nil,value)
+ params,results:=[]*Field{param},[]*Field{result}
+ signature:=UP.NewSignature(recv,params,results)
+ tuple:=signature.ResultsTuple()
+ out=append(out,fmt.Sprintf("signature:%s:%d:%d:%d:%t:%t:%t",signature.Kind(),signature.NumRecvs(),signature.NumParams(),signature.NumResults(),signature.Recv()==recv,signature.IsVariadic(),signature.HasShape()))
+ out=append(out,fmt.Sprintf("sections:%d:%d:%d:%t:%t:%t",len(signature.RecvParamsResults()),len(signature.RecvParams()),len(signature.ParamsResults()),tuple.IsFuncArgStruct(),tuple.Field(0)==result,&tuple.Fields()[0]==&signature.Results()[0]))
+ params[0]=field;results[0]=field
+ out=append(out,fmt.Sprintf("field identity:%t:%t:%t",signature.Param(0)==param,signature.Result(0)==result,UP.NewField(src.XPos{},nil,signature).IsMethod()))
+ empty:=UP.NewSignature(nil,nil,nil)
+ out=append(out,fmt.Sprintf("empty:%t:%d:%d:%d:%d:%t",empty.Recv()==nil,empty.NumRecvs(),empty.NumParams(),empty.NumResults(),empty.ResultsTuple().NumFields(),empty.IsVariadic()))
+ pair:=UP.NewTuple(value,UP.TypeMem);multi:=UP.NewResults([]*Type{value,UP.TypeMem})
+ out=append(out,fmt.Sprintf("backend fields:%t:%t:%d",pair.FieldType(1)==UP.TypeMem,multi.FieldType(0)==value,multi.NumFields()))
  return out
 }
 `

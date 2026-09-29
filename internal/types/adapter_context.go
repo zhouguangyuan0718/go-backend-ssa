@@ -4,6 +4,7 @@ package types
 
 import (
 	"fmt"
+	"go-backend-ssa/internal/cmd/src"
 	"go/constant"
 	"sync"
 )
@@ -102,3 +103,31 @@ func (u *Universe) Lookup(pkg *Pkg, name string) (*Sym, error) {
 // A violated compiler invariant aborts this call, never the embedding process.
 // This binds the original base.Fatalf signature; it is not a source diagnostic.
 func (u *Universe) fatalf(format string, args ...any) { panic(fmt.Errorf(format, args...)) }
+
+// Fields retain the upstream representation: ownership comes from Type and Sym,
+// without a second owner field or a wrapper around the native Field object.
+func (u *Universe) checkNewField(pos src.XPos, sym *Sym, typ *Type) {
+	if typ == nil || typ.universe != u {
+		panic("field type belongs to another or uninitialized compilation")
+	}
+	if sym != nil && sym.Universe() != u {
+		panic("field symbol belongs to another or uninitialized compilation")
+	}
+}
+
+func (u *Universe) checkFields(fields []*Field) {
+	for _, field := range fields {
+		if field == nil {
+			panic("nil field")
+		}
+		u.checkNewField(field.Pos, field.Sym, field.Type)
+	}
+}
+
+func (u *Universe) checkSignature(recv *Field, params, results []*Field) {
+	if recv != nil {
+		u.checkNewField(recv.Pos, recv.Sym, recv.Type)
+	}
+	u.checkFields(params)
+	u.checkFields(results)
+}

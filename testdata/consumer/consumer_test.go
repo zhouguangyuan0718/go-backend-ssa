@@ -107,3 +107,21 @@ func TestPublicConstantTypes(t *testing.T) {
 		t.Fatal("nil behavior changed")
 	}
 }
+
+func TestPublicSignatureGraph(t *testing.T) {
+	layout, _ := target.NewLayout("linux", "amd64")
+	u, _ := types.NewUniverse(layout)
+	value, _ := u.Scalar(types.Int)
+	field := u.NewField(position.XPos{}, nil, value)
+	record := u.NewStruct([]*types.Field{field})
+	signature := u.NewSignature(nil, []*types.Field{field}, []*types.Field{field})
+	var native *gcbridge.Field = signature.Result(0)
+	var nativeStruct *gcbridge.Struct = record.StructType()
+	if native != field || nativeStruct != record.StructType() || signature.NumParams() != 1 || signature.ResultsTuple().FieldType(0) != value {
+		t.Fatal("public signature graph lost native identity")
+	}
+	result := u.NewResults([]*types.Type{value, u.TypeMem})
+	if result.NumFields() != 2 || result.FieldType(1) != u.TypeMem {
+		t.Fatal("backend cannot inspect call results")
+	}
+}
