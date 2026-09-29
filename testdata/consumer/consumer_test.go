@@ -195,12 +195,19 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 		t.Fatal("checker bridge identity")
 	}
 	layout, _ := target.NewLayout("linux", "amd64")
-	universe, err := types.NewUniverse(layout)
+	link := &gcbridge.Link{Pathname: "/src", Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8}}}
+	universe, err := types.NewUniverseWithPositions(layout, &link.PosTable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	link := &gcbridge.Link{Pathname: "/src", Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8}}}
-	writer, err := noder.NewContext(state, universe, link)
+	graph := ir.NewContext(universe, link)
+	tc := typecheck.NewContext(graph)
+	tc.InitUniverse()
+	graph.Base.Flag.Lang = "go1.27"
+	graph.Base.Flag.Complete = true
+	graph.Debug.SyncFrames = -1
+	graph.Debug.RangeFuncCheck = 1
+	writer, err := noder.NewContext(state, tc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,6 +218,10 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	data, err := writer.WritePackage(p, info, []*syntax.File{file}, closures)
 	if err != nil || data == "" || p.Scope().Lookup("X").Type() != typ {
 		t.Fatalf("native writer/retained graph: %v", err)
+	}
+	shape := writer.Shapify(universe.Types[types.Int], false)
+	if shape.Universe() != universe || !shape.IsShape() || !shape.HasShape() || shape != writer.Shapify(universe.Types[types.Int], false) || writer.Flag != &graph.Base.Flag || writer.Debug != &graph.Debug || writer.Diagnostics != &graph.Diagnostics {
+		t.Fatal("public reader shaping/shared graph")
 	}
 	if p.Context() != state || state.PackageScope(nil) != state.Universe {
 		t.Fatal("explicit package scope ownership")

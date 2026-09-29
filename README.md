@@ -46,6 +46,7 @@
 29. [M3 原生哈希与相等比较](docs/m3-algorithms.md)：完整算法生成、闭包数据、实例缓存和公开 EqFor。
 30. [M3 原生静态数据](docs/m3-staticdata.md)：字符串、常量与 slice 初始化、实例计数器及并发函数值登记。
 31. [M3 原生类型描述符与 ITab](docs/m3-descriptors.md)：完整类型数据、方法表、接口转换、插件导出和基础类型写入。
+32. [M3 reader 字典与共享状态](docs/m3-reader-dictionaries.md)：字典解码、shape 处理、原生名称和共享 IR 配置/诊断。
 
 ## 当前可运行的工具
 

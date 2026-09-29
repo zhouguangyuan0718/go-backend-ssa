@@ -1,0 +1,55 @@
+package noder
+import("fmt";"encoding/json";"encoding/binary";"os";"strings";"testing";"IMPORT_TYPES";"IMPORT_TYPES2";"IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_PKGBITS";IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ var out []string
+ pos:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase("p.go","/src/p.go"),7,3))
+ named:=func(name string,under *types.Type)*types.Type{n:=GRAPH.NewDeclNameAt(pos,ir.OTYPE,TY.LocalPkg.Lookup(name));typ:=TY.NewNamed(n);n.SetType(typ);n.SetTypecheck(1);typ.SetUnderlying(under);return typ}
+ integer,str:=TY.Types[types.TINT],TY.Types[types.TSTRING]
+ declared:=named("Int",integer);nonheap:=named("Nonheap",TY.NewStruct(nil));nonheap.SetNotInHeap(true)
+ for _,typ:=range []*types.Type{integer,str,declared,TY.NewPtr(integer),TY.NewPtr(str),TY.NewPtr(nonheap),TY.NewSlice(integer),TY.NewMap(str,integer),TY.NewInterface(nil)}{for _,basic:=range []bool{false,true}{shape:=UP.Shapify(typ,basic);out=append(out,fmt.Sprintf("shape:%v:%t:%s:%v:%t:%t:%t",typ,basic,shape.Sym().Name,shape.Underlying(),shape.IsShape(),shape.HasShape(),shape==UP.Shapify(typ,basic)))}}
+ ND_DEBUG.MaxShapeLen=8
+ long:=TY.NewStruct([]*types.Field{TY.NewField(pos,TY.LocalPkg.Lookup(strings.Repeat("LongField",20)),integer)})
+ out=append(out,"hashed:"+UP.Shapify(long,false).Sym().Name)
+ ND_DEBUG.MaxShapeLen=0
+ for _,frames:=range []int{-1,0}{for _,entry:=range []struct{name string;imp,recv,explicit int}{{"F",0,0,2},{"Local·7",1,0,1},{"(*Box).M",0,1,2},{"Plain",0,0,0},{"Captured·1",1,0,0}}{
+ version:=pkgbits.V4;pw:=pkgbits.NewPkgEncoder(version,frames)
+ p:=pw.NewEncoder(pkgbits.SectionPkg,pkgbits.SyncPkgDef);p.String("");p.String("p");p.Len(0);pidx:=p.Flush()
+ typ:=pw.NewEncoder(pkgbits.SectionType,pkgbits.SyncTypeIdx);typ.Code(pkgbits.TypeBasic);typ.Len(int(types2.Int));tidx:=typ.Flush()
+ obj:=pw.NewEncoder(pkgbits.SectionObj,pkgbits.SyncObject1);obj.Sync(pkgbits.SyncEOF);oidx:=obj.Flush()
+ w:=pw.NewEncoder(pkgbits.SectionObjDict,pkgbits.SyncObject1)
+ w.Len(entry.imp);if version.Has(pkgbits.GenericMethods){w.Len(entry.recv)};w.Len(entry.explicit-entry.recv)
+ ti:=func(derived bool){w.Sync(pkgbits.SyncType);w.Bool(derived);if derived{w.Len(0)}else{w.Reloc(pkgbits.SectionType,tidx)}}
+ for range entry.explicit{ti(false)}
+ w.Len(1);w.Reloc(pkgbits.SectionType,tidx);if version.Has(pkgbits.DerivedInfoNeeded){w.Bool(false)}
+ nargs:=entry.imp+entry.explicit;for i:=0;i<nargs;i++{w.Bool(i==0)}
+ nmethod:=0;if nargs>0{nmethod=1};w.Len(nmethod)
+ if nmethod>0{w.Len(0);w.Sync(pkgbits.SyncSelector);w.Sync(pkgbits.SyncPkg);w.Reloc(pkgbits.SectionPkg,pidx);w.String("M")}
+ w.Len(1);w.Sync(pkgbits.SyncObject);if version.Has(pkgbits.DerivedFuncInstance){w.Bool(false)};w.Reloc(pkgbits.SectionObj,oidx);w.Len(1);ti(true)
+ w.Len(2);ti(true);ti(false);w.Len(1);ti(true);ti(false)
+ didx:=w.Flush();var buf strings.Builder;pw.DumpTo(&buf)
+ pr:=UP.newPkgReader(pkgbits.NewPkgDecoder("example/p",buf.String()))
+ for _,shaped:=range []bool{false,true}{
+ var implicits,explicits []*types.Type
+ if entry.imp>0{implicits=[]*types.Type{TY.NewPtr(integer)}}
+ for i:=0;i<entry.explicit;i++{typ:=integer;if i>0{typ=str};explicits=append(explicits,typ)}
+ dict,err:=pr.objDictIdx(TY.LocalPkg.Lookup(entry.name),didx,implicits,explicits,shaped);if err!=nil{t.Fatal(err)}
+ out=append(out,fmt.Sprintf("dict:%d:%s:%t:%s:%d:%d:%d:%d:%d:%d:%v",frames,entry.name,dict.shaped,dict.baseSym.Name,dict.implicits,dict.receivers,dict.subdictsOffset(),dict.rtypesOffset(),dict.itabsOffset(),dict.numWords(),dict.varType(DICT_ONLY)))
+ for _,arg:=range dict.targs{out=append(out,fmt.Sprintf("arg:%v:%t",arg,arg.HasShape()))}
+ for i,info:=range dict.derived{out=append(out,fmt.Sprintf("derived:%d:%d:%t",i,info.idx,dict.derivedTypes[i]==nil))}
+ for _,expr:=range dict.typeParamMethodExprs{out=append(out,fmt.Sprintf("method:%d:%v",expr.typeParamIdx,expr.method))}
+ for _,info:=range dict.subdicts{out=append(out,fmt.Sprintf("subdict:%d:%v",info.idx,info.explicits))}
+ for _,info:=range dict.rtypes{out=append(out,fmt.Sprintf("rtype:%d:%t",info.idx,info.derived))}
+ for _,info:=range dict.itabs{out=append(out,fmt.Sprintf("itab:%v:%v",info.typ,info.iface))}
+ out=append(out,fmt.Sprintf("input:%v:%v",implicits,explicits))
+ }
+ _,err:=pr.objDictIdx(TY.LocalPkg.Lookup(entry.name),didx,nil,[]*types.Type{integer,str,integer},false);out=append(out,fmt.Sprintf("arity:%v",err))
+ }}
+ dict:=&readerDict{targs:[]*types.Type{integer,str},receivers:1,typeParamMethodExprs:make([]readerMethodExprInfo,2),subdicts:make([]objInfo,3),rtypes:make([]typeInfo,4),itabs:make([]itabInfo,5)}
+ out=append(out,"mangle:"+dict.mangle(DICT_CONTEXT TY.LocalPkg.Lookup("(*Box).M")).Name)
+ param:=TY.NewField(pos,TY.LocalPkg.Lookup("args"),TY.NewSlice(str));param.SetIsDDD(true)
+ fn:=GRAPH.NewFunc(pos,pos,TY.LocalPkg.Lookup("ShapeSignature"),TY.NewSignature(TY.NewField(pos,TY.LocalPkg.Lookup("recv"),integer),[]*types.Field{param},[]*types.Field{TY.NewField(pos,nil,str)}))
+ shaped:=UP.shapeSig(fn,dict);out=append(out,fmt.Sprintf("signature:%v:%t:%t:%d:%d:%s:%d",shaped,shaped.HasShape(),shaped.IsVariadic(),fn.Type().NumParams(),shaped.NumParams(),shaped.Param(0).Sym.Name,shaped.Param(0).Type.Elem().NumElem()))
+ encoded,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(encoded))
+}

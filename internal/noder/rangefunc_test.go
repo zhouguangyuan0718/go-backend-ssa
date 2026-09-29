@@ -115,7 +115,7 @@ func TestRangeFuncChecksAndBoundaries(t *testing.T) {
 	}
 	var trace bytes.Buffer
 	c.Flag.W = 1
-	c.TraceWriter = &trace
+	c.Typecheck.IR.TraceWriter = &trace
 	rewriteAndWrite(t, c)
 	if trace.Len() == 0 {
 		t.Fatal("native AST dump not routed to instance writer")

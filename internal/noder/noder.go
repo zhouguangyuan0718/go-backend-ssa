@@ -30,7 +30,7 @@ func (syncgoCtx *Context) trimFilename(b *syntax.PosBase) string {
 		if b.IsFileBase() {
 			dir = syncgoCtx.Ctxt.Pathname
 		}
-		filename = syncgoCtx.absFile(dir, filename, syncgoCtx.Flag.TrimPath)
+		filename = syncgoCtx.absFile(dir, filename, syncgoCtx.Base.Flag.TrimPath)
 	}
 	return filename
 }
@@ -104,7 +104,7 @@ func (syncgoCtx *Context) checkEmbed(decl *syntax.VarDecl, haveEmbed, withinFunc
 	case withinFunc:
 		return errors.New("go:embed cannot apply to var inside func")
 	case !syncgoCtx.allowsGoVersion(1, 16):
-		return fmt.Errorf("go:embed requires go1.16 or later (-lang was set to %s; check go.mod)", syncgoCtx.Flag.Lang)
+		return fmt.Errorf("go:embed requires go1.16 or later (-lang was set to %s; check go.mod)", syncgoCtx.Base.Flag.Lang)
 
 	default:
 		return nil

@@ -83,7 +83,7 @@ func Migration() Plan {
 			},
 			{Source: "src/cmd/compile/internal/types/fmt.go", Declarations: []string{"fmtMode", "fmtGo", "Sym.Format", "Sym.String", "Type.Format", "Type.String", "Type.LinkString", "Type.NameString"},
 				ContextFrom: map[string]ContextSource{"Sym.Format": {Argument: "s", Resolver: "formatUniverse"}, "Sym.String": {Argument: "s", Resolver: "formatUniverse"}},
-				Functions:   []string{"sconv", "sconv2", "symfmt", "pkgqual", "tconv", "tconv2", "formatParams", "fldconv", "SplitVargenSuffix", "TypeHash"},
+				Functions:   []string{"sconv", "sconv2", "symfmt", "pkgqual", "tconv", "tconv2", "formatParams", "fldconv", "SplitVargenSuffix", "SplitMethSuffix", "TypeHash"},
 				Nullable:    map[string][]string{"tconv": {"t"}, "tconv2": {"t"}, "pkgqual": {"pkg"}, "Type.Format": {"t"}, "Type.String": {"t"}, "Type.LinkString": {"t"}, "Type.NameString": {"t"}},
 				Context: &ContextRule{Type: "Universe", Constructor: "newUniverse", Adapter: "adapter_context.go", Fields: map[string]string{
 					"BuiltinPkg": "BuiltinPkg", "LocalPkg": "LocalPkg", "UnsafePkg": "UnsafePkg", "BlankSym": "BlankSym", "NumImport": "NumImport", "BasicTypeNames": "BasicTypeNames", "fmtBufferPool": "fmtBufferPool",

@@ -6,6 +6,8 @@
 package noder
 
 import (
+	"encoding/hex"
+	"fmt"
 	"go/constant"
 
 	"go-backend-ssa/internal/go/pkgbits"
@@ -16,6 +18,8 @@ import (
 
 	"go-backend-ssa/internal/ir"
 
+	"go-backend-ssa/internal/cmd/hash"
+	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
 
 	"go-backend-ssa/internal/cmd/src"
@@ -420,6 +424,264 @@ func (r *reader) objInfo() objInfo {
 	return objInfo{idx, explicits}
 }
 
+// mangle shapes the non-shaped symbol sym under the current dictionary.
+func (dict *readerDict) mangle(syncgoCtx *Context, sym *types.Sym) *types.Sym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if !dict.hasTypeParams() {
+		return sym
+	}
+
+	var buf strings.Builder
+	// If sym is a locally defined generic type, we need the suffix to
+	// stay at the end after mangling so that types/fmt.go can strip it
+	// out again when writing the type's runtime descriptor (#54456).
+	n0, vsuff := syncgoCtx.Types.SplitVargenSuffix(sym.Name)
+	n1, msuff := syncgoCtx.Types.SplitMethSuffix(sym.Name)
+
+	// Methods are never locally defined.
+	var n string
+	syncgoCtx.assert(vsuff == "" || msuff == "")
+	if vsuff != "" {
+		n = n0
+	} else {
+		n = n1
+	}
+
+	var j int
+	syncgoCtx.assert(dict.implicits == 0 || dict.receivers == 0)
+	if msuff != "" {
+		j = dict.receivers // consume receiver type arguments
+	} else {
+		j = len(dict.targs) // consume all type arguments
+	}
+
+	// put type arguments inside parenthesis; (*T)[int] -> (*T[int])
+	n, ok := strings.CutSuffix(n, ")")
+
+	// type arguments, if any
+	buf.WriteString(n)
+	if j > 0 {
+		buf.WriteByte('[')
+		for i := 0; i < j; i++ {
+			if i > 0 {
+				if i == dict.implicits {
+					buf.WriteByte(';')
+				} else {
+					buf.WriteByte(',')
+				}
+			}
+			buf.WriteString(dict.targs[i].LinkString())
+		}
+		buf.WriteByte(']')
+	}
+
+	if ok {
+		buf.WriteString(")")
+	}
+
+	buf.WriteString(vsuff)
+	buf.WriteString(msuff)
+
+	// method arguments, if any
+	if msuff != "" {
+		buf.WriteByte('[')
+		for i := j; i < len(dict.targs); i++ {
+			if i > j {
+				buf.WriteByte(',')
+			}
+			buf.WriteString(dict.targs[i].LinkString())
+		}
+		buf.WriteByte(']')
+	}
+
+	return sym.Pkg.Lookup(buf.String())
+}
+
+// Shapify returns the shape type for targ.
+//
+// If basic is true, then the type argument is used to instantiate a
+// type parameter whose constraint is a basic interface.
+func (syncgoCtx *Context) Shapify(targ *types.Type, basic bool) *types.Type {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	syncgoCtx.checkShape(targ, basic)
+	if targ.Kind() == types.TFORW {
+		if targ.IsFullyInstantiated() {
+			// For recursive instantiated type argument, it may  still be a TFORW
+			// when shapifying happens. If we don't have targ's underlying type,
+			// shapify won't work. The worst case is we end up not reusing code
+			// optimally in some tricky cases.
+			if syncgoCtx.Typecheck.IR.Debug.Shapify != 0 {
+				syncgoCtx.warn("skipping shaping of recursive type %v", targ)
+			}
+			if targ.HasShape() {
+				return targ
+			}
+		} else {
+			syncgoCtx.fatalf("%v is missing its underlying type", targ)
+		}
+	}
+	// For fully instantiated shape interface type, use it as-is. Otherwise, the instantiation
+	// involved recursive generic interface may cause mismatching in function signature, see issue #65362.
+	if targ.Kind() == types.TINTER && targ.IsFullyInstantiated() && targ.HasShape() {
+		return targ
+	}
+
+	// When a pointer type is used to instantiate a type parameter
+	// constrained by a basic interface, we know the pointer's element
+	// type can't matter to the generated code. In this case, we can use
+	// an arbitrary pointer type as the shape type. (To match the
+	// non-unified frontend, we use `*byte`.)
+	//
+	// Otherwise, we simply use the type's underlying type as its shape.
+	//
+	// TODO(mdempsky): It should be possible to do much more aggressive
+	// shaping still; e.g., collapsing all pointer-shaped types into a
+	// common type, collapsing scalars of the same size/alignment into a
+	// common type, recursively shaping the element types of composite
+	// types, and discarding struct field names and tags. However, we'll
+	// need to start tracking how type parameters are actually used to
+	// implement some of these optimizations.
+	under := targ.Underlying()
+	if basic && targ.IsPtr() && !targ.Elem().NotInHeap() {
+		under = syncgoCtx.Types.NewPtr(syncgoCtx.Types.Types[types.TUINT8])
+	}
+
+	// Hash long type names to bound symbol name length seen by users,
+	// particularly for large protobuf structs (#65030).
+	uls := under.LinkString()
+	if syncgoCtx.Typecheck.IR.Debug.MaxShapeLen != 0 &&
+		len(uls) > syncgoCtx.Typecheck.IR.Debug.MaxShapeLen {
+		h := hash.Sum32([]byte(uls))
+		uls = hex.EncodeToString(h[:])
+	}
+
+	sym := syncgoCtx.Types.ShapePkg.Lookup(uls)
+	if sym.Def == nil {
+		name := syncgoCtx.Typecheck.IR.NewDeclNameAt(under.Pos(), ir.OTYPE, sym)
+		typ := syncgoCtx.Types.NewNamed(name)
+		typ.SetUnderlying(under)
+		sym.Def = typed(typ, name)
+	}
+	res := sym.Def.Type()
+	syncgoCtx.assert(res.IsShape())
+	syncgoCtx.assert(res.HasShape())
+	return res
+}
+
+// objDictIdx reads and returns the specified object dictionary.
+func (pr *pkgReader) objDictIdx(sym *types.Sym, idx index, implicits, explicits []*types.Type, shaped bool) (*readerDict, error) {
+	if pr == nil || pr.compilation == nil {
+		panic("receiver has no compilation owner")
+	}
+	pr.compilation.checkDictArgs(sym, idx, implicits, explicits, shaped)
+	r := pr.newReader(pkgbits.SectionObjDict, idx, pkgbits.SyncObject1)
+
+	dict := readerDict{
+		shaped: shaped,
+	}
+
+	nimplicits := r.Len()
+	nreceivers := 0
+	if r.Version().Has(pkgbits.GenericMethods) {
+		nreceivers = r.Len()
+	}
+	nexplicits := r.Len() + nreceivers
+
+	if nimplicits > len(implicits) || nexplicits != len(explicits) {
+		return nil, fmt.Errorf("%v has %v+%v params, but instantiated with %v+%v args", sym, nimplicits, nexplicits, len(implicits), len(explicits))
+	}
+
+	dict.targs = append(implicits[:nimplicits:nimplicits], explicits...)
+	dict.implicits = nimplicits
+	dict.receivers = nreceivers
+
+	// Within the compiler, we can just skip over the type parameters.
+	for range dict.targs[dict.implicits:] {
+		// Skip past bounds without actually evaluating them.
+		r.typInfo()
+	}
+
+	dict.derived = make([]derivedInfo, r.Len())
+	dict.derivedTypes = make([]*types.Type, len(dict.derived))
+	for i := range dict.derived {
+		dict.derived[i] = derivedInfo{idx: r.Reloc(pkgbits.SectionType)}
+		if r.Version().Has(pkgbits.DerivedInfoNeeded) {
+			pr.compilation.assert(!r.Bool())
+		}
+	}
+
+	// Runtime dictionary information; private to the compiler.
+
+	// If any type argument is already shaped, then we're constructing a
+	// shaped object, even if not explicitly requested (i.e., calling
+	// objIdx with shaped==true). This can happen with instantiating
+	// types that are referenced within a function body.
+	for _, targ := range dict.targs {
+		if targ.HasShape() {
+			dict.shaped = true
+			break
+		}
+	}
+
+	// And if we're constructing a shaped object, then shapify all type
+	// arguments.
+	for i, targ := range dict.targs {
+		basic := r.Bool()
+		if dict.shaped {
+			dict.targs[i] = pr.compilation.Shapify(targ, basic)
+		}
+	}
+
+	dict.baseSym = dict.mangle(pr.compilation, sym)
+
+	dict.typeParamMethodExprs = make([]readerMethodExprInfo, r.Len())
+	for i := range dict.typeParamMethodExprs {
+		typeParamIdx := r.Len()
+		method := r.selector()
+
+		dict.typeParamMethodExprs[i] = readerMethodExprInfo{typeParamIdx, method}
+	}
+
+	dict.subdicts = make([]objInfo, r.Len())
+	for i := range dict.subdicts {
+		dict.subdicts[i] = r.objInfo()
+	}
+
+	dict.rtypes = make([]typeInfo, r.Len())
+	for i := range dict.rtypes {
+		dict.rtypes[i] = r.typInfo()
+	}
+
+	dict.itabs = make([]itabInfo, r.Len())
+	for i := range dict.itabs {
+		dict.itabs[i] = itabInfo{typ: r.typInfo(), iface: r.typInfo()}
+	}
+
+	return &dict, nil
+}
+
+func (r *reader) recvTypeParamNames() {
+	r.Sync(pkgbits.SyncTypeParamNames)
+
+	for range r.dict.targs[r.dict.implicits : r.dict.implicits+r.dict.receivers] {
+		r.pos()
+		r.localIdent()
+	}
+}
+
+func (r *reader) typeParamNames() {
+	r.Sync(pkgbits.SyncTypeParamNames)
+
+	for range r.dict.targs[r.dict.implicits+r.dict.receivers:] {
+		r.pos()
+		r.localIdent()
+	}
+}
+
 func (r *reader) qualifiedIdent() (pkg *types.Pkg, sym *types.Sym) {
 	r.Sync(pkgbits.SyncSym)
 	pkg = r.pkg()
@@ -462,4 +724,87 @@ func (dict *readerDict) hasTypeParams() bool {
 func (r *reader) pragmaFlag() ir.PragmaFlag {
 	r.Sync(pkgbits.SyncPragma)
 	return ir.PragmaFlag(r.Int())
+}
+
+// typeParamMethodExprsOffset returns the offset of the runtime
+// dictionary's type parameter method expressions section, in words.
+func (dict *readerDict) typeParamMethodExprsOffset() int {
+	return 0
+}
+
+// subdictsOffset returns the offset of the runtime dictionary's
+// subdictionary section, in words.
+func (dict *readerDict) subdictsOffset() int {
+	return dict.typeParamMethodExprsOffset() + len(dict.typeParamMethodExprs)
+}
+
+// rtypesOffset returns the offset of the runtime dictionary's rtypes
+// section, in words.
+func (dict *readerDict) rtypesOffset() int {
+	return dict.subdictsOffset() + len(dict.subdicts)
+}
+
+// itabsOffset returns the offset of the runtime dictionary's itabs
+// section, in words.
+func (dict *readerDict) itabsOffset() int {
+	return dict.rtypesOffset() + len(dict.rtypes)
+}
+
+// numWords returns the total number of words that comprise dict's
+// runtime dictionary variable.
+func (dict *readerDict) numWords() int64 {
+	return int64(dict.itabsOffset() + len(dict.itabs))
+}
+
+// varType returns the type of dict's runtime dictionary variable.
+func (dict *readerDict) varType(syncgoCtx *Context) *types.Type {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	return syncgoCtx.Types.NewArray(syncgoCtx.Types.Types[types.TUINTPTR], dict.numWords())
+}
+
+// dictParamName is the name of the synthetic dictionary parameter
+// added to shaped functions.
+//
+// N.B., this variable name is known to Delve:
+// https://github.com/go-delve/delve/blob/cb91509630529e6055be845688fd21eb89ae8714/pkg/proc/eval.go#L28
+const dictParamName = typecheck.LocalDictName
+
+// shapeSig returns a copy of fn's signature, except adding a
+// dictionary parameter and promoting the receiver parameter (if any)
+// to a normal parameter.
+//
+// The parameter types.Fields are all copied too, so their Nname
+// fields can be initialized for use by the shape function.
+//
+// All signatures returned by shapeSig are marked as shaped.
+func (syncgoCtx *Context) shapeSig(fn *ir.Func, dict *readerDict) *types.Type {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	sig := fn.Nname.Type()
+	oldRecv := sig.Recv()
+
+	var recv *types.Field
+	if oldRecv != nil {
+		recv = syncgoCtx.Types.NewField(oldRecv.Pos, oldRecv.Sym, oldRecv.Type)
+	}
+
+	params := make([]*types.Field, 1+sig.NumParams())
+	params[0] = syncgoCtx.Types.NewField(fn.Pos(), fn.Sym().Pkg.Lookup(dictParamName), syncgoCtx.Types.NewPtr(dict.varType(syncgoCtx)))
+	for i, param := range sig.Params() {
+		d := syncgoCtx.Types.NewField(param.Pos, param.Sym, param.Type)
+		d.SetIsDDD(param.IsDDD())
+		params[1+i] = d
+	}
+
+	results := make([]*types.Field, sig.NumResults())
+	for i, result := range sig.Results() {
+		results[i] = syncgoCtx.Types.NewField(result.Pos, result.Sym, result.Type)
+	}
+
+	typ := syncgoCtx.Types.NewSignature(recv, params, results)
+	typ.SetHasShape(true)
+	return typ
 }

@@ -36,6 +36,9 @@ func prepareUpstreamWriter(t *testing.T, s *Source, dir string) {
 		// This harness compares writer bytes using the original types2 graph.
 		// The native reader uses compiler types/IR and is compared separately
 		// through the full-toolchain overlay in upstream_ir_test.go.
+		if path.Base(u.Source) == "helpers.go" {
+			u.Functions = []string{"idealType", "isTypeParam", "isNotInHeap"}
+		}
 		if path.Base(u.Source) == "reader.go" {
 			continue
 		}
@@ -117,7 +120,7 @@ func WriteChecked(pkg *types2.Package,info *types2.Info,files []*syntax.File,arc
 }
 `)
 	header := `package compare
-import("fmt";"strings";"testing";"go-backend-ssa/internal/cmd/obj";"go-backend-ssa/internal/cmd/sys";"go-backend-ssa/internal/types";pc "go-backend-ssa/internal/types2";ps "go-backend-ssa/internal/syntax";pn "go-backend-ssa/internal/noder";rc "go-backend-ssa/internal/reference/types2";rs "go-backend-ssa/internal/reference/syntax";rn "go-backend-ssa/internal/reference/noder")
+import("fmt";"strings";"testing";"go-backend-ssa/internal/cmd/obj";"go-backend-ssa/internal/cmd/sys";"go-backend-ssa/internal/types";"go-backend-ssa/internal/typecheck";"go-backend-ssa/internal/ir";pc "go-backend-ssa/internal/types2";ps "go-backend-ssa/internal/syntax";pn "go-backend-ssa/internal/noder";rc "go-backend-ssa/internal/reference/types2";rs "go-backend-ssa/internal/reference/syntax";rn "go-backend-ssa/internal/reference/noder")
 `
 	template := `
 type NAMEImports struct{unsafe,dep *TC.Package}
@@ -135,7 +138,7 @@ func NAME(t *testing.T,source,arch string,frames,checks int)string{
  WRITE
 }
 `
-	library := strings.NewReplacer("NAME", "writePorted", "TC", "pc", "SYN", "ps", "SIZES", `ctxt.SizesFor("gc",arch)`, "UNSAFE", "ctxt.Unsafe", "WRITE", `ptr:=8;if arch=="386"{ptr=4};link:=&obj.Link{Pathname:"/src",Arch:&obj.LinkArch{Arch:&sys.Arch{Name:arch,PtrSize:ptr,RegSize:ptr}}};c,err:=pn.NewContext(ctxt,types.NewUniverse(ptr,ptr,1<<50),link);if err!=nil{t.Fatal(err)};c.Debug.SyncFrames=frames;c.Debug.RangeFuncCheck=checks;closures,err:=c.RewriteRangeFuncs(pkg,info,[]*ps.File{file});if err!=nil{t.Fatal(err)};data,err:=c.WritePackage(pkg,info,[]*ps.File{file},closures);if err!=nil{t.Fatal(err)};return data`).Replace(template)
+	library := strings.NewReplacer("NAME", "writePorted", "TC", "pc", "SYN", "ps", "SIZES", `ctxt.SizesFor("gc",arch)`, "UNSAFE", "ctxt.Unsafe", "WRITE", `ptr:=8;if arch=="386"{ptr=4};link:=&obj.Link{Pathname:"/src",Arch:&obj.LinkArch{Arch:&sys.Arch{Name:arch,PtrSize:ptr,RegSize:ptr}}};u:=types.NewUniverseWithPositions(ptr,ptr,1<<50,&link.PosTable);graph:=ir.NewContext(u,link);tc:=typecheck.NewContext(graph);tc.InitUniverse();graph.Base.Flag.Lang="go1.27";graph.Base.Flag.Complete=true;c,err:=pn.NewContext(ctxt,tc);if err!=nil{t.Fatal(err)};c.Debug.SyncFrames=frames;c.Debug.RangeFuncCheck=checks;closures,err:=c.RewriteRangeFuncs(pkg,info,[]*ps.File{file});if err!=nil{t.Fatal(err)};data,err:=c.WritePackage(pkg,info,[]*ps.File{file},closures);if err!=nil{t.Fatal(err)};return data`).Replace(template)
 	reference := strings.NewReplacer("NAME", "writeReference", "TC", "rc", "SYN", "rs", "SIZES", `rc.SizesFor("gc",arch)`, "UNSAFE", "rc.Unsafe", "WRITE", `return rn.WriteChecked(pkg,info,[]*rs.File{file},arch,frames,checks)`).Replace(template)
 	tests := `
 func TestNativeWriterBytes(t *testing.T){

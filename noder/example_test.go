@@ -3,9 +3,11 @@ package noder_test
 import (
 	"fmt"
 	"go-backend-ssa/gcbridge"
+	"go-backend-ssa/ir"
 	"go-backend-ssa/noder"
 	"go-backend-ssa/syntax"
 	"go-backend-ssa/target"
+	"go-backend-ssa/typecheck"
 	"go-backend-ssa/types"
 	"go-backend-ssa/types2"
 	"strings"
@@ -37,12 +39,19 @@ func ExampleNewContext() {
 	if err != nil {
 		panic(err)
 	}
-	universe, err := types.NewUniverse(layout)
+	link := &gcbridge.Link{Pathname: "/src", Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8}}}
+	universe, err := types.NewUniverseWithPositions(layout, &link.PosTable)
 	if err != nil {
 		panic(err)
 	}
-	link := &gcbridge.Link{Pathname: "/src", Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8}}}
-	writer, err := noder.NewContext(checker, universe, link)
+	graph := ir.NewContext(universe, link)
+	tc := typecheck.NewContext(graph)
+	tc.InitUniverse()
+	graph.Base.Flag.Lang = "go1.27"
+	graph.Base.Flag.Complete = true
+	graph.Debug.SyncFrames = -1
+	graph.Debug.RangeFuncCheck = 1
+	writer, err := noder.NewContext(checker, tc)
 	if err != nil {
 		panic(err)
 	}

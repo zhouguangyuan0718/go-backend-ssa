@@ -8,10 +8,19 @@ package noder
 import (
 	"go/constant"
 
+	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/syntax"
 
+	"go-backend-ssa/internal/types"
 	"go-backend-ssa/internal/types2"
 )
+
+// typed returns n after setting its type to typ.
+func typed(typ *types.Type, n ir.Node) ir.Node {
+	n.SetType(typ)
+	n.SetTypecheck(1)
+	return n
+}
 
 // Statements
 

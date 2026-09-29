@@ -6,6 +6,7 @@ import (
 	errors "go-backend-ssa/internal/go/types/errors"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/rangefunc"
+	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
 	"go-backend-ssa/internal/types2"
 	"go/version"
@@ -21,19 +22,20 @@ import (
 // Context owns the formerly process-wide inputs used by the selected noder
 // algorithms. The supplied Link and its position table belong to this instance.
 type Context struct {
+	Base          *base.LinkContext
 	checked       *types2.Package
 	info          *types2.Info
 	rangeClosures map[*syntax.FuncLit]bool
 
 	Ctxt                                          *obj.Link
-	Flag                                          base.CmdFlags
+	Flag                                          *base.CmdFlags
 	GOROOT                                        string
 	Checker                                       *types2.Context
 	Types                                         *types.Universe
-	Debug                                         base.DebugFlags
+	Debug                                         *base.DebugFlags
 	GOARCH                                        string
-	TraceWriter                                   io.Writer
-	Diagnostics                                   diagnostic.Collector
+	Typecheck                                     *typecheck.Context
+	Diagnostics                                   *diagnostic.Collector
 	anyTypeName, comparableTypeName, runeTypeName *types2.TypeName
 	unOps                                         [syntax.And + 1]ir.Op
 	binOps                                        [syntax.Shr + 1]ir.Op
@@ -52,7 +54,8 @@ func NewPosMap(link *obj.Link, trimPath, goroot string) *PosMap {
 	if link == nil {
 		panic("nil native Link")
 	}
-	c := &Context{}
+	c := &Context{Base: base.NewLinkContext(link)}
+	c.Flag = &c.Base.Flag
 	c.Ctxt = link
 	c.Flag.TrimPath = trimPath
 	c.GOROOT = goroot
@@ -61,14 +64,14 @@ func NewPosMap(link *obj.Link, trimPath, goroot string) *PosMap {
 func (m *posMap) XPos(pos syntax.Pos) src.XPos             { return m.makeXPos(pos) }
 func (m *posMap) TrimFilename(base *syntax.PosBase) string { return m.compilation.trimFilename(base) }
 
-type discardTrace struct{}
-
-func (discardTrace) Write(p []byte) (int, error) { return len(p), nil }
 func (c *Context) traceWriter() io.Writer {
-	if c.TraceWriter != nil {
-		return c.TraceWriter
+	if c.Typecheck != nil && c.Typecheck.IR.TraceWriter != nil {
+		return c.Typecheck.IR.TraceWriter
 	}
-	return discardTrace{}
+	return io.Discard
+}
+func (c *Context) warn(format string, args ...any) {
+	c.Diagnostics.Add(diagnostic.Warning, "", c.Ctxt.PosTable.Pos(c.Types.Pos), fmt.Sprintf(format, args...))
 }
 func (c *Context) errorfAt(pos src.XPos, code errors.Code, format string, args ...any) {
 	c.Diagnostics.Add(diagnostic.Error, code.String(), c.Ctxt.PosTable.Pos(pos), fmt.Sprintf(format, args...))
@@ -98,21 +101,39 @@ func (c *Context) tracePrintln(args ...any) (int, error) {
 }
 func (c *Context) tracePrint(args ...any) (int, error) { return fmt.Fprint(c.traceWriter(), args...) }
 
-// NewContext binds native checker, compiler type and object instances. Inputs
-// remain caller-owned and must not be mutated concurrently with writing.
-func NewContext(checker *types2.Context, compilerTypes *types.Universe, link *obj.Link) (*Context, error) {
-	if checker == nil || compilerTypes == nil || link == nil || link.Arch == nil || link.Arch.Arch == nil {
-		return nil, fmt.Errorf("noder requires checker, compiler types and native target Link")
+// NewContext binds the source checker to the existing native IR/typecheck graph.
+// Flags, debugging and diagnostics are shared with that graph. Initialize its
+// compiler universe first; configuration remains owned by the caller.
+func NewContext(checker *types2.Context, tc *typecheck.Context) (*Context, error) {
+	if checker == nil || tc == nil || tc.IR == nil || tc.IR.Base == nil || tc.IR.Types == nil || tc.IR.Base.Ctxt == nil {
+		return nil, fmt.Errorf("noder requires a checker and native IR/typecheck instance")
 	}
-	if link.Arch.PtrSize != compilerTypes.PointerSize() || link.Arch.RegSize != compilerTypes.RegisterSize() {
-		return nil, fmt.Errorf("noder target layout mismatch")
+	graph := tc.IR
+	u, link := graph.Types, graph.Base.Ctxt
+	if link.Arch == nil || link.Arch.Arch == nil || u.PosTable != &link.PosTable || link.Arch.PtrSize != u.PointerSize() || link.Arch.RegSize != u.RegisterSize() {
+		return nil, fmt.Errorf("noder target/position mismatch")
 	}
-	c := &Context{Checker: checker, Types: compilerTypes, Ctxt: link, GOARCH: link.Arch.Name}
-	c.Flag.Lang = "go1.27"
-	c.Flag.Complete = true
-	c.Debug.SyncFrames = -1
-	c.Debug.RangeFuncCheck = 1
+	if u.Types[types.TINT] == nil || u.Types[types.TINT].Obj() == nil {
+		return nil, fmt.Errorf("noder requires initialized native compiler types")
+	}
+	c := &Context{Base: graph.Base, Checker: checker, Typecheck: tc, Types: u, Ctxt: link, GOARCH: link.Arch.Name, Flag: &graph.Base.Flag, Debug: &graph.Debug, Diagnostics: &graph.Diagnostics}
+	c.initContext()
 	return c, nil
+}
+func (c *Context) checkShape(targ *types.Type, basic bool) {
+	if targ == nil || targ.Universe() != c.Types {
+		panic("shape type belongs to another or uninitialized compilation")
+	}
+}
+func (c *Context) checkDictArgs(sym *types.Sym, idx index, implicits, explicits []*types.Type, shaped bool) {
+	if sym == nil || sym.Universe() != c.Types {
+		panic("dictionary symbol belongs to another or uninitialized compilation")
+	}
+	for _, args := range [][]*types.Type{implicits, explicits} {
+		for _, typ := range args {
+			c.checkShape(typ, false)
+		}
+	}
 }
 
 // validateCheckedPackage checks the low-level input ownership and Info contract.
@@ -143,7 +164,7 @@ func (c *Context) RewriteRangeFuncs(pkg *types2.Package, info *types2.Info, file
 		return nil, err
 	}
 	r := rangefunc.NewContext(c.Checker)
-	r.Flag, r.Debug, r.TraceWriter = c.Flag, c.Debug, c.TraceWriter
+	r.Flag, r.Debug, r.TraceWriter = *c.Flag, *c.Debug, c.traceWriter()
 	return r.Rewrite(pkg, info, files), nil
 }
 
@@ -170,17 +191,18 @@ func (c *Context) WritePackage(pkg *types2.Package, info *types2.Info, files []*
 	if err != nil {
 		return "", err
 	}
-	c.Diagnostics = diagnostic.Collector{}
+	diagnosticStart := len(c.Diagnostics.Diagnostics())
 	c.checked, c.info, c.rangeClosures = pkg, info, rangeClosures
 	defer func() { c.checked = nil; c.info = nil; c.rangeClosures = nil }()
-	c.initContext()
 	noders := make([]*noder, len(files))
 	for i, file := range files {
 		noders[i] = &noder{file: file}
 	}
 	data = c.writePkgStub(posMap{compilation: c}, noders)
-	if c.Diagnostics.HasErrors() {
-		return "", fmt.Errorf("noder: %s", c.Diagnostics.Diagnostics()[0])
+	for _, d := range c.Diagnostics.Diagnostics()[diagnosticStart:] {
+		if d.Severity == diagnostic.Error {
+			return "", fmt.Errorf("noder: %s", d)
+		}
 	}
 	return data, nil
 }

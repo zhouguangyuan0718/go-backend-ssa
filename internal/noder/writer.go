@@ -110,7 +110,7 @@ func (syncgoCtx *Context) newPkgWriter(m posMap, pkg *types2.Package, info *type
 		panic("uninitialized compilation")
 	}
 	return &pkgWriter{
-		PkgEncoder: pkgbits.NewPkgEncoder(uirVersion, syncgoCtx.Debug.SyncFrames),
+		PkgEncoder: pkgbits.NewPkgEncoder(uirVersion, syncgoCtx.Typecheck.IR.Debug.SyncFrames),
 
 		m:                     m,
 		curpkg:                pkg,
@@ -908,7 +908,7 @@ func (w *writer) doObj(wext *writer, obj types2.Object) pkgbits.CodeObj {
 		return pkgbits.ObjConst
 
 	case *types2.Func:
-		if w.compilation.Flag.LowerH > 0 {
+		if w.compilation.Base.Flag.LowerH > 0 {
 			// Unified IR panics are the worst; this is a huge help in debugging them.
 			defer func() {
 				if p := recover(); p != nil {
@@ -1246,7 +1246,7 @@ func (w *writer) funcExt(obj *types2.Func) {
 			w.p.errorf(decl, "go:uintptrkeepalive requires go:nosplit")
 		}
 	} else {
-		if w.compilation.Flag.Complete || decl.Name.Value == "init" {
+		if w.compilation.Base.Flag.Complete || decl.Name.Value == "init" {
 			// Linknamed functions are allowed to have no body. Hopefully
 			// the linkname target has a body. See issue 23311.
 			// Wasmimport functions are also allowed to have no body.
@@ -1724,7 +1724,7 @@ func (w *writer) distinctVars(stmt *syntax.ForStmt) bool {
 	if w == nil || w.compilation == nil {
 		panic("receiver has no compilation owner")
 	}
-	lv := w.compilation.Debug.LoopVar
+	lv := w.compilation.Typecheck.IR.Debug.LoopVar
 	fileVersion := w.p.info.FileVersions[stmt.Pos().FileBase()]
 	is122 := fileVersion == "" || version.Compare(fileVersion, "go1.22") >= 0
 

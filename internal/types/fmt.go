@@ -10,7 +10,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strconv"
-
+	"strings"
 	"sync"
 
 	"go-backend-ssa/internal/cmd/hash"
@@ -673,6 +673,19 @@ func (syncgoCtx *Universe) SplitVargenSuffix(name string) (base, suffix string) 
 	const dot = "·"
 	if i >= len(dot) && name[i-len(dot):i] == dot {
 		i -= len(dot)
+		return name[:i], name[i:]
+	}
+	return name, ""
+}
+
+// SplitMethSuffix returns name split into a defining type name and a .m
+// suffix, if any.
+func (syncgoCtx *Universe) SplitMethSuffix(name string) (tname, suffix string) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	i := strings.LastIndex(name, ".")
+	if i >= 0 {
 		return name[:i], name[i:]
 	}
 	return name, ""

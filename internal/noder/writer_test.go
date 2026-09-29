@@ -4,7 +4,9 @@ import (
 	"go-backend-ssa/internal/cmd/obj"
 	"go-backend-ssa/internal/cmd/sys"
 	"go-backend-ssa/internal/go/pkgbits"
+	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/syntax"
+	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
 	"go-backend-ssa/internal/types2"
 	"strings"
@@ -29,7 +31,16 @@ func checked(t *testing.T, c *types2.Context, source string) (*types2.Package, *
 func writerContext(t *testing.T) *Context {
 	t.Helper()
 	link := &obj.Link{Pathname: "/src", Arch: &obj.LinkArch{Arch: &sys.Arch{Name: "amd64", PtrSize: 8, RegSize: 8}}}
-	c, err := NewContext(types2.NewContext(), types.NewUniverse(8, 8, 1<<50), link)
+	u := types.NewUniverseWithPositions(8, 8, 1<<50, &link.PosTable)
+	u.LocalPkg = u.NewPkg("example/p", "p")
+	graph := ir.NewContext(u, link)
+	tc := typecheck.NewContext(graph)
+	tc.InitUniverse()
+	graph.Base.Flag.Lang = "go1.27"
+	graph.Base.Flag.Complete = true
+	graph.Debug.SyncFrames = -1
+	graph.Debug.RangeFuncCheck = 1
+	c, err := NewContext(types2.NewContext(), tc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +110,7 @@ func TestConcurrentWritersAndRetainedTypes(t *testing.T) {
 	}
 	wg.Wait()
 }
-func TestWriterDiagnosticRecovery(t *testing.T) {
+func TestWriterDiagnosticsRetainSharedHistory(t *testing.T) {
 	c := writerContext(t)
 	bad, bi, bf := checked(t, c.Checker, `package p;func F()`)
 	if data, err := c.WritePackage(bad, bi, bf, nil); err == nil || data != "" || !strings.Contains(err.Error(), "missing function body") {
@@ -107,7 +118,7 @@ func TestWriterDiagnosticRecovery(t *testing.T) {
 	}
 	diagnostics := c.Diagnostics.Diagnostics()
 	good, gi, gf := checked(t, c.Checker, `package p;func F(){}`)
-	if data, err := c.WritePackage(good, gi, gf, nil); err != nil || data == "" || c.Diagnostics.HasErrors() {
+	if data, err := c.WritePackage(good, gi, gf, nil); err != nil || data == "" || len(c.Diagnostics.Diagnostics()) != len(diagnostics) {
 		t.Fatalf("recovery: %v", err)
 	}
 	if len(diagnostics) != 1 || bad.Scope().Lookup("F") == nil {

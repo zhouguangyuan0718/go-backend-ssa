@@ -6,18 +6,30 @@ func noderMigration() []Unit {
 	}
 	return []Unit{
 		{Source: "src/cmd/compile/internal/noder/reader.go",
-			Functions: []string{"newPkgReader", "setType", "setValue"},
-			Declarations: []string{"pkgReader", "pkgReaderIndex", "reader", "readerDict", "readerMethodExprInfo",
+			Functions: []string{"newPkgReader", "setType", "setValue", "Shapify", "shapeSig"},
+			Declarations: []string{"dictParamName", "pkgReader.objDictIdx", "readerDict.mangle", "reader.recvTypeParamNames", "reader.typeParamNames", "readerDict.typeParamMethodExprsOffset", "readerDict.subdictsOffset", "readerDict.rtypesOffset", "readerDict.itabsOffset", "readerDict.numWords", "readerDict.varType", "pkgReader", "pkgReaderIndex", "reader", "readerDict", "readerMethodExprInfo",
 				"pkgReader.newReader", "pkgReader.posBaseIdx", "pkgReader.pkgIdx",
 				"reader.pos", "reader.origPos", "reader.pos0", "reader.posBase", "reader.inlPosBase", "reader.inlPos", "reader.pkg", "reader.doPkg", "reader.typInfo", "reader.objInfo", "reader.qualifiedIdent", "reader.localIdent", "reader.selector", "reader.hasTypeParams", "readerDict.hasTypeParams", "reader.pragmaFlag"},
-			Context: context(), Owner: &OwnerRule{Types: []string{"pkgReader", "reader"}, Context: "Context", Field: "compilation"},
+			ContextParams: []string{"readerDict.mangle", "readerDict.varType"},
+			Checks:        map[string]string{"Shapify": "checkShape", "pkgReader.objDictIdx": "checkDictArgs"},
+			Context:       context(), Owner: &OwnerRule{Types: []string{"pkgReader", "reader"}, Context: "Context", Field: "compilation"},
 			State: []StateRule{
 				{Source: "src/internal/buildcfg/cfg.go", Variable: "GOROOT", Field: "GOROOT"},
+				{Source: "src/cmd/compile/internal/types/type.go", Variable: "Types", Field: "Types.Types"},
+				{Source: "src/cmd/compile/internal/types/type.go", Variable: "ShapePkg", Field: "Types.ShapePkg"},
 				{Source: "src/cmd/compile/internal/types/fmt.go", Variable: "BuiltinPkg", Field: "Types.BuiltinPkg"},
 				{Source: "src/cmd/compile/internal/types/fmt.go", Variable: "UnsafePkg", Field: "Types.UnsafePkg"},
 				{Source: "src/cmd/compile/internal/types/fmt.go", Variable: "LocalPkg", Field: "Types.LocalPkg"},
 			}, Calls: []CallRule{
 				{Source: "src/cmd/compile/internal/types/pkg.go", Function: "NewPkg", Method: "Types.NewPkg"},
+				{Source: "src/cmd/compile/internal/types/type.go", Function: "NewNamed", Method: "Types.NewNamed"},
+				{Source: "src/cmd/compile/internal/types/type.go", Function: "NewPtr", Method: "Types.NewPtr"},
+				{Source: "src/cmd/compile/internal/types/type.go", Function: "NewField", Method: "Types.NewField"},
+				{Source: "src/cmd/compile/internal/types/type.go", Function: "NewSignature", Method: "Types.NewSignature"},
+				{Source: "src/cmd/compile/internal/types/type.go", Function: "NewArray", Method: "Types.NewArray"},
+				{Source: "src/cmd/compile/internal/types/fmt.go", Function: "SplitMethSuffix", Method: "Types.SplitMethSuffix"},
+				{Source: "src/cmd/compile/internal/ir/name.go", Function: "NewDeclNameAt", Method: "Typecheck.IR.NewDeclNameAt"},
+				{Source: "src/cmd/compile/internal/base/print.go", Function: "Warn", Method: "warn"},
 			}},
 
 		{Source: "src/cmd/compile/internal/noder/noder.go", Functions: []string{"trimFilename", "checkEmbed"}, Declarations: []string{"noder", "linkname", "pragmas", "pragmas.Nointerface", "WasmImport", "WasmExport", "pragmaPos", "pragmaEmbed"},
@@ -26,13 +38,13 @@ func noderMigration() []Unit {
 				c.Fields = map[string]string{"unOps": "unOps", "binOps": "binOps"}
 				return c
 			}(),
-			State: []StateRule{{Source: "src/cmd/compile/internal/base/link.go", Variable: "Ctxt", Field: "Ctxt"}, {Source: "src/cmd/compile/internal/base/flag.go", Variable: "Flag", Field: "Flag"}},
+			State: []StateRule{{Source: "src/cmd/compile/internal/base/link.go", Variable: "Ctxt", Field: "Ctxt"}, {Source: "src/cmd/compile/internal/base/flag.go", Variable: "Flag", Field: "Base.Flag"}},
 			Calls: []CallRule{{Source: "src/cmd/internal/objabi/line.go", Function: "AbsFile", Method: "absFile"}}},
 		{Source: "src/cmd/compile/internal/noder/posmap.go", WholeFile: true, Context: context(), Owner: &OwnerRule{Types: []string{"posMap"}, Context: "Context", Field: "compilation"}},
 		{Source: "src/cmd/compile/internal/noder/codes.go", WholeFile: true},
 		{Source: "src/cmd/compile/internal/noder/lex.go", Declarations: []string{"funcPragmas"}},
 		{Source: "src/cmd/compile/internal/noder/quirks.go", Functions: []string{"typeExprEndPos", "lastFieldType"}, Context: context()},
-		{Source: "src/cmd/compile/internal/noder/helpers.go", Functions: []string{"idealType", "isTypeParam", "isNotInHeap"}, Context: context()},
+		{Source: "src/cmd/compile/internal/noder/helpers.go", Functions: []string{"idealType", "isTypeParam", "isNotInHeap", "typed"}, Context: context()},
 		{Source: "src/cmd/compile/internal/noder/types.go", Functions: []string{"deref2"}, Context: context()},
 		{Source: "src/cmd/compile/internal/noder/unified.go", Declarations: []string{"uirVersion"}, Functions: []string{"writePkgStub"}, Context: context(), Calls: []CallRule{
 			{Source: "src/cmd/compile/internal/noder/irgen.go", Function: "checkFiles", Method: "checkedFiles"},
@@ -47,7 +59,7 @@ func noderMigration() []Unit {
 			Owner:         &OwnerRule{Types: []string{"pkgWriter", "writer", "writerDict", "declCollector"}, Context: "Context", Field: "compilation"},
 			ContextParams: []string{"objInfo.*"},
 			State: []StateRule{
-				{Source: "src/cmd/compile/internal/base/debug.go", Variable: "Debug", Field: "Debug"},
+				{Source: "src/cmd/compile/internal/base/debug.go", Variable: "Debug", Field: "Typecheck.IR.Debug"},
 				{Source: "src/internal/buildcfg/cfg.go", Variable: "GOARCH", Field: "GOARCH"},
 				{Source: "src/cmd/compile/internal/types2/universe.go", Variable: "Universe", Field: "Checker.Universe"},
 				{Source: "src/cmd/compile/internal/types2/universe.go", Variable: "Unsafe", Field: "Checker.Unsafe"},

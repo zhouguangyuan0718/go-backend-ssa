@@ -15,7 +15,7 @@ stub, err := writer.WritePackage(pkg, info, files, closures)
 
 - 上游的全局 `runtimePkg` 是重写器为 `deferrangefunc/panicrangestate` 构造的符号包，并非完整 runtime 包。其原生初始化表达式现在绑定调用者已有的 types2.Context，每次重写创建独立 helper Package；无进程共享类型图。
 - `types2.Universe` 和 NewVar/NewParam/NewFunc/NewSignatureType/NewTuple/NewPackage/CoreType 等原生入口，均使用相同 checker 实例。
-- 原生 rewriter 保存 Context 所有权。零位置 nopos 改为零值表达式；CmdFlags/DebugFlags 来自当前 noder.Context；AST 调试输出写入当前 TraceWriter，nil 丢弃，不写进程 stderr。
+- 原生 rewriter 保存 Context 所有权。零位置 nopos 改为零值表达式；CmdFlags/DebugFlags 来自当前 noder.Context；AST 调试输出写入共享 IR.TraceWriter，nil 丢弃，不写进程 stderr。
 - `Debug.RangeFuncCheck` 默认值为 1，与上游 flag 初始化一致。显式设为 0 时保留上游关闭迭代器误用检查的行为；调试选项不再通过全局传播。
 
 ## 调用契约
