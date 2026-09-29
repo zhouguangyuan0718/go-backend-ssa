@@ -1,0 +1,27 @@
+package noder
+import("encoding/json";"encoding/binary";"fmt";"os";"sort";"testing";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_IR";"IMPORT_TYPES";"IMPORT_TYPECHECK";"IMPORT_PKGBITS";BODY_TYPES2 PGO_HOOK_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{"amd64",8,binary.LittleEndian}
+ SETUP
+ PGO_HOOK_BIND
+ data,err:=os.ReadFile(BODY_IMPORT_PATH);if err!=nil{t.Fatal(err)}
+ dep:=TY.NewPkg("example/dep","")
+ pr:=UP.newPkgReader(pkgbits.NewPkgDecoder(dep.Path,string(data)))
+ UP.readPackage(pr,dep,false)
+ var out []string
+ out=append(out,fmt.Sprintf("package:%s:%s:%t",dep.Path,dep.Name,dep.Lookup(".inittask").Def!=nil))
+ var objects,bodies []string
+ for sym:=range UP.objReader{objects=append(objects,sym.Pkg.Path+"."+sym.Name)}
+ for sym:=range UP.importBodyReader{bodies=append(bodies,sym.Pkg.Path+"."+sym.Name)}
+ sort.Strings(objects);sort.Strings(bodies);out=append(out,fmt.Sprint("objects:",objects),fmt.Sprint("bodies:",bodies))
+ for _,name:=range []string{"example/dep.Exported","example/dep.Number.M","example/dep.(*Number).P","example/dep.State","example/dep.Alias.M","example/dep.I.M","example/dep.Missing","example/dep.Generic","unknown/pkg.F","badname"}{
+  fn,err:=PGO_LOOKUP(name)
+  if err!=nil{message:=err.Error();if name=="unknown/pkg.F"{message="unknown package"};out=append(out,"lookup:"+name+":"+message);continue}
+  again,err:=PGO_LOOKUP(name);if err!=nil||again!=fn{t.Fatal("lookup identity")}
+  cost:=int32(-1);if fn.Inl!=nil{cost=fn.Inl.Cost}
+  out=append(out,fmt.Sprintf("lookup:%s:%v:%v:%d:%d:%t:%t",name,fn.Sym(),fn.Type(),cost,len(fn.Body),fn.Nname.Defn==nil,TC.HaveInlineBody(fn)))
+ }
+ PGO_CLEANUP()
+ out=append(out,fmt.Sprintf("pending:%d:%d:%d",len(UP.todoBodies),len(UP.todoDicts),len(TC.Target.Funcs)))
+ bytes,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(bytes))
+}

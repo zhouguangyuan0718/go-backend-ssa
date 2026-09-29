@@ -6,17 +6,68 @@
 package noder
 
 import (
+	"fmt"
 	"go-backend-ssa/internal/go/pkgbits"
+	"go-backend-ssa/internal/go/types/errors"
 
 	"strings"
 
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/pgoir"
+
+	"go-backend-ssa/internal/types"
+
+	"go-backend-ssa/internal/cmd/src"
 )
 
 // uirVersion is the unified IR version to use for encoding/decoding.
 // Use V4 for generic methods.
 const uirVersion = pkgbits.V4
+
+// LookupFunc returns the ir.Func for an arbitrary full symbol name if
+// that function exists in the set of available export data.
+//
+// This allows lookup of arbitrary functions and methods that aren't otherwise
+// referenced by the local package and thus haven't been read yet.
+//
+// TODO(prattmic): Does not handle instantiation of generic types. Currently
+// profiles don't contain the original type arguments, so we won't be able to
+// create the runtime dictionaries.
+//
+// TODO(prattmic): Hit rate of this function is usually fairly low, and errors
+// are only used when debug logging is enabled. Consider constructing cheaper
+// errors by default.
+func (syncgoCtx *Context) LookupFunc(fullName string) (*ir.Func, error) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	pkgPath, symName, err := ir.ParseLinkFuncName(fullName)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing symbol name %q: %v", fullName, err)
+	}
+
+	pkg, ok := syncgoCtx.Types.PkgMap()[pkgPath]
+	if !ok {
+		return nil, fmt.Errorf("pkg %s doesn't exist in %v", pkgPath, syncgoCtx.Types.PkgMap())
+	}
+
+	// Symbol naming is ambiguous. We can't necessarily distinguish between
+	// a method and a closure. e.g., is foo.Bar.func1 a closure defined in
+	// function Bar, or a method on type Bar? Thus we must simply attempt
+	// to lookup both.
+
+	fn, err := syncgoCtx.lookupFunction(pkg, symName)
+	if err == nil {
+		return fn, nil
+	}
+
+	fn, mErr := syncgoCtx.lookupMethod(pkg, symName)
+	if mErr == nil {
+		return fn, nil
+	}
+
+	return nil, fmt.Errorf("%s is not a function (%v) or method (%v)", fullName, err, mErr)
+}
 
 // PostLookupCleanup performs cleanup operations needed
 // after a series of calls to LookupFunc, specifically invoking
@@ -27,6 +78,77 @@ func (syncgoCtx *Context) PostLookupCleanup() {
 		panic("uninitialized compilation")
 	}
 	syncgoCtx.readBodies(syncgoCtx.Typecheck.Target, false, nil)
+}
+
+func (syncgoCtx *Context) lookupFunction(pkg *types.Pkg, symName string) (*ir.Func, error) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	sym := pkg.Lookup(symName)
+
+	// TODO(prattmic): Enclosed functions (e.g., foo.Bar.func1) are not
+	// present in objReader, only as OCLOSURE nodes in the enclosing
+	// function.
+	pri, ok := syncgoCtx.objReader[sym]
+	if !ok {
+		return nil, fmt.Errorf("func sym %v missing objReader", sym)
+	}
+
+	node, err := pri.pr.objIdxMayFail(pri.idx, nil, nil, false)
+	if err != nil {
+		return nil, fmt.Errorf("func sym %v lookup error: %w", sym, err)
+	}
+	name := node.(*ir.Name)
+	if name.Op() != ir.ONAME || name.Class != ir.PFUNC {
+		return nil, fmt.Errorf("func sym %v refers to non-function name: %v", sym, name)
+	}
+	return name.Func, nil
+}
+
+func (syncgoCtx *Context) lookupMethod(pkg *types.Pkg, symName string) (*ir.Func, error) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	// N.B. readPackage creates a Sym for every object in the package to
+	// initialize objReader and importBodyReader, even if the object isn't
+	// read.
+	//
+	// However, objReader is only initialized for top-level objects, so we
+	// must first lookup the type and use that to find the method rather
+	// than looking for the method directly.
+	typ, meth, err := ir.LookupMethodSelector(pkg, symName)
+	if err != nil {
+		return nil, fmt.Errorf("error looking up method symbol %q: %v", symName, err)
+	}
+
+	pri, ok := syncgoCtx.objReader[typ]
+	if !ok {
+		return nil, fmt.Errorf("type sym %v missing objReader", typ)
+	}
+
+	node, err := pri.pr.objIdxMayFail(pri.idx, nil, nil, false)
+	if err != nil {
+		return nil, fmt.Errorf("func sym %v lookup error: %w", typ, err)
+	}
+	name := node.(*ir.Name)
+	if name.Op() != ir.OTYPE {
+		return nil, fmt.Errorf("type sym %v refers to non-type name: %v", typ, name)
+	}
+	if name.Alias() {
+		return nil, fmt.Errorf("type sym %v refers to alias", typ)
+	}
+	if name.Type().IsInterface() {
+		return nil, fmt.Errorf("type sym %v refers to interface type", typ)
+	}
+
+	for _, m := range name.Type().Methods() {
+		if m.Sym == meth {
+			fn := m.Nname.(*ir.Name).Func
+			return fn, nil
+		}
+	}
+
+	return nil, fmt.Errorf("method %s missing from method set of %v", symName, typ)
 }
 
 // readBodies iteratively expands all pending dictionaries and
@@ -166,4 +288,75 @@ func (syncgoCtx *Context) writePkgStub(m posMap, noders []*noder) string {
 	syncgoCtx.retainCheckedPackage(pkg)
 
 	return sb.String()
+}
+
+// readPackage reads package export data from pr to populate
+// importpkg.
+//
+// localStub indicates whether pr is reading the stub export data for
+// the local package, as opposed to relocated export data for an
+// import.
+func (syncgoCtx *Context) readPackage(pr *pkgReader, importpkg *types.Pkg, localStub bool) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if pr != nil {
+		if syncgoCtx == nil || pr == nil || pr.compilation != syncgoCtx {
+			panic("argument belongs to another or uninitialized compilation")
+		}
+	}
+	{
+		r := pr.newReader(pkgbits.SectionMeta, pkgbits.PublicRootIdx, pkgbits.SyncPublic)
+
+		pkg := r.pkg()
+		// This error can happen if "go tool compile" is called with wrong "-p" flag, see issue #54542.
+		if pkg != importpkg {
+			syncgoCtx.errorfAt(syncgoCtx.Types.AutogeneratedPos, errors.BadImportPath, "mismatched import path, have %q (%p), want %q (%p)", pkg.Path, pkg, importpkg.Path, importpkg)
+			syncgoCtx.errorExit()
+		}
+
+		if r.Version().Has(pkgbits.HasInit) {
+			r.Bool()
+		}
+
+		for i, n := 0, r.Len(); i < n; i++ {
+			r.Sync(pkgbits.SyncObject)
+			if r.Version().Has(pkgbits.DerivedFuncInstance) {
+				syncgoCtx.assert(!r.Bool())
+			}
+			idx := r.Reloc(pkgbits.SectionObj)
+			syncgoCtx.assert(r.Len() == 0)
+
+			path, name, code := r.p.PeekObj(idx)
+			if code != pkgbits.ObjStub {
+				syncgoCtx.objReader[syncgoCtx.Types.NewPkg(path, "").Lookup(name)] = pkgReaderIndex{pr, idx, nil, nil, nil}
+			}
+		}
+
+		r.Sync(pkgbits.SyncEOF)
+	}
+
+	if !localStub {
+		r := pr.newReader(pkgbits.SectionMeta, pkgbits.PrivateRootIdx, pkgbits.SyncPrivate)
+
+		if r.Bool() {
+			sym := importpkg.Lookup(".inittask")
+			task := syncgoCtx.Typecheck.IR.NewNameAt((src.XPos{}), sym, nil)
+			task.Class = ir.PEXTERN
+			sym.Def = task
+		}
+
+		for i, n := 0, r.Len(); i < n; i++ {
+			path := r.String()
+			name := r.String()
+			idx := r.Reloc(pkgbits.SectionBody)
+
+			sym := syncgoCtx.Types.NewPkg(path, "").Lookup(name)
+			if _, ok := syncgoCtx.importBodyReader[sym]; !ok {
+				syncgoCtx.importBodyReader[sym] = pkgReaderIndex{pr, idx, nil, nil, nil}
+			}
+		}
+
+		r.Sync(pkgbits.SyncEOF)
+	}
 }

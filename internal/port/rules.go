@@ -153,7 +153,7 @@ func Migration() Plan {
 			},
 			{
 				Source:       "src/cmd/compile/internal/types/pkg.go",
-				Functions:    []string{"InternString", "NewPkg"},
+				Functions:    []string{"InternString", "NewPkg", "PkgMap"},
 				Declarations: []string{"Pkg", "Pkg.Lookup", "Pkg.LookupOK", "Pkg.LookupBytes", "Pkg.LookupNum", "Pkg.Selector"},
 				Owner:        &OwnerRule{Types: []string{"Pkg"}, Context: "Universe", Field: "universe"},
 				Context: &ContextRule{

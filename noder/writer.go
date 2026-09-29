@@ -10,7 +10,9 @@ import (
 // original noder writer and migrated reader algorithms. One Context is used serially; independent Contexts
 // support concurrent and nested calls without process-wide compiler state.
 // WritePackage consumes checked/prepared ASTs and returns the native package
-// stub bitstream. This is not yet a compiler IR or SSA construction entry point.
+// stub bitstream. RegisterPackage and ReadLocalPackage expose the native reader
+// stages and return the existing package IR. The complete compiler pipeline,
+// including wrapper generation and SSA construction, is not yet integrated.
 type Context = compiler.Context
 
 // NewContext requires an initialized native compiler universe and shared Link

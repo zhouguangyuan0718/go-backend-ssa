@@ -3,6 +3,7 @@ package noder
 import (
 	"fmt"
 	"go-backend-ssa/diagnostic"
+	"go-backend-ssa/internal/go/pkgbits"
 	errors "go-backend-ssa/internal/go/types/errors"
 	"go-backend-ssa/internal/inline"
 	"go-backend-ssa/internal/inline/inlheur"
@@ -143,6 +144,7 @@ func NewContext(checker *types2.Context, tc *typecheck.Context) (*Context, error
 	tc.HaveInlineBody = c.unifiedHaveInlineBody
 	c.Inline = inline.NewContext(tc, inlheur.NewContext(tc, pgoir.NewContext(tc)), logopt.NewContext())
 	c.Inline.PGO.PostLookupCleanup = c.PostLookupCleanup
+	c.Inline.PGO.LookupFunc = c.LookupFunc
 	return c, nil
 }
 func (c *Context) checkShape(targ *types.Type, basic bool) {
@@ -276,4 +278,49 @@ func (c *Context) ReadBodies(duringInlining bool, profile *pgoir.Profile) {
 		panic("body profile belongs to another compilation")
 	}
 	c.readBodies(c.Typecheck.Target, duringInlining, profile)
+}
+
+// RegisterPackage registers the native unified bitstream in this compilation.
+// localStub selects WritePackage's local stub; false selects finalized import
+// data (without the archive/export header). Register each package once. Import
+// declarations and inline bodies are decoded lazily by the native reader.
+// Invalid data or compiler diagnostics abort with a panic, never process exit.
+func (c *Context) RegisterPackage(pkg *types.Pkg, data string, localStub bool) {
+	if pkg == nil || pkg.Universe() != c.Types {
+		panic("registered package belongs to another compilation")
+	}
+	if localStub && (pkg != c.Types.LocalPkg || c.localPkgReader != nil) {
+		panic("local package stub must be registered once for the compilation's local package")
+	}
+	decoder := pkgbits.NewPkgDecoder(pkg.Path, data)
+	decoder.TraceWriter = c.traceWriter()
+	pr := c.newPkgReader(decoder)
+	c.readPackage(pr, pkg, localStub)
+	if localStub {
+		c.localPkgReader = pr
+	}
+}
+
+// ReadLocalPackage performs the reader portion of unified on a local stub:
+// register its objects, read package initialization, and drain dictionaries and
+// function bodies. It returns the existing native Target. Configure runtime,
+// reflection and static initialization on this graph before calling. Wrapper
+// generation and the complete unified/optimization driver are not run here.
+func (c *Context) ReadLocalPackage(data string) *ir.Package {
+	if c.ReflectData == nil || c.ReflectData.Typecheck != c.Typecheck || c.StaticInit == nil || c.StaticInit.Typecheck != c.Typecheck || c.StaticInit.ReflectData != c.ReflectData {
+		panic("local package reading requires shared reflection and static initialization contexts")
+	}
+	c.RegisterPackage(c.Types.LocalPkg, data, true)
+	c.localPkgReader.newReader(pkgbits.SectionMeta, pkgbits.PrivateRootIdx, pkgbits.SyncPrivate).pkgInit(c.Types.LocalPkg, c.Typecheck.Target)
+	c.ReadBodies(false, nil)
+	return c.Typecheck.Target
+}
+
+func (c *Context) errorExit() {
+	for _, d := range c.Diagnostics.Diagnostics() {
+		if d.Severity == diagnostic.Error {
+			panic(fmt.Errorf("noder: %s", d))
+		}
+	}
+	panic("noder: compilation aborted")
 }

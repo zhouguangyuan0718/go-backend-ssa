@@ -55,6 +55,13 @@ func (syncgoCtx *Universe) NewPkg(path, name string) *Pkg {
 	return p
 }
 
+func (syncgoCtx *Universe) PkgMap() map[string]*Pkg {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	return syncgoCtx.packages
+}
+
 func (pkg *Pkg) Lookup(name string) *Sym {
 	s, _ := pkg.LookupOK(name)
 	return s

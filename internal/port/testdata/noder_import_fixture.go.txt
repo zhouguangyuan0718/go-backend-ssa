@@ -1,0 +1,13 @@
+package dep
+
+type Number int
+func(n Number)M(x int)int{return int(n)+x}
+func(n *Number)P(x int)int{return int(*n)+x}
+type Alias=Number
+type I interface{M(int)int}
+type Box[T any]struct{V T}
+func(b Box[T])Get()T{return b.V}
+func Generic[T any](x T)T{return x}
+func Exported(x int)int{return x+1}
+var State=Exported(3)
+func init(){State++}

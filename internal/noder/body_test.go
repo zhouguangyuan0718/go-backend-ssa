@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"go-backend-ssa/internal/cmd/objabi"
-	"go-backend-ssa/internal/go/pkgbits"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/objw"
 	"go-backend-ssa/internal/reflectdata"
@@ -44,24 +43,18 @@ func readTestSourceMode(t *testing.T, c *Context, source string, duringInlining 
 	if err != nil {
 		t.Fatal(err)
 	}
-	pr := c.newPkgReader(pkgbits.NewPkgDecoder(pkg.Path(), data))
-	c.localPkgReader = pr
+	c.RegisterPackage(c.Types.LocalPkg, data, true)
 	found := map[string]*ir.Name{}
-	for i := range pr.NumElems(pkgbits.SectionName) {
-		r := pr.newReader(pkgbits.SectionName, index(i), pkgbits.SyncObject1)
-		_, sym := r.qualifiedIdent()
-		tag := pkgbits.CodeObj(r.Code(pkgbits.SyncCodeObj))
-		if tag == pkgbits.ObjStub || sym.Pkg != c.Types.LocalPkg {
+	for _, name := range names {
+		sym := c.Types.LocalPkg.Lookup(name)
+		pri, ok := c.objReader[sym]
+		if !ok {
 			continue
 		}
-		for _, name := range names {
-			if sym.Name == name {
-				n := pr.objIdx(index(i), nil, nil, false).(*ir.Name)
-				found[name] = n
-				if n.Class == ir.PFUNC {
-					c.Typecheck.Target.Funcs = append(c.Typecheck.Target.Funcs, n.Func)
-				}
-			}
+		n := pri.pr.objIdx(pri.idx, nil, nil, false).(*ir.Name)
+		found[name] = n
+		if n.Class == ir.PFUNC {
+			c.Typecheck.Target.Funcs = append(c.Typecheck.Target.Funcs, n.Func)
 		}
 	}
 	if len(found) != len(names) {
@@ -128,15 +121,22 @@ func TestConcurrentNativeReaderRetainsBodies(t *testing.T) {
 	for range 8 {
 		wg.Go(func() {
 			c := bodyContext(t)
-			old := readTestSource(t, c, `package p;func Id[T any](v T)T{return v};func F(v int)func()int{return func()int{return Id(v)}};func init(){}`, "F", "init")
-			fn := old["F"].Func
+			initializeTestPackage(t, c, `package p;func Id[T any](v T)T{return v};func F(v int)func()int{return func()int{return Id(v)}};func init(){}`)
+			fn, err := c.LookupFunc("example/p.F")
+			if err != nil {
+				t.Fatal(err)
+			}
 			node := fn.Body[0]
 			before := fmt.Sprint(node)
-			name := old["init"].Sym().Name
+			name := c.Typecheck.Target.Inits[0].Sym().Name
 			dictData := append([]byte(nil), c.Ctxt.Data[0].P...)
 			other := bodyContext(t)
-			fresh := readTestSource(t, other, `package p;func F(v string)string{return v};func init(){}`, "F", "init")
-			if node != fn.Body[0] || fmt.Sprint(node) != before || old["F"].Sym() == fresh["F"].Sym() || name != "init.0" || fresh["init"].Sym().Name != "init.0" || !bytes.Equal(dictData, c.Ctxt.Data[0].P) {
+			initializeTestPackage(t, other, `package p;func F(v string)string{return v};func init(){}`)
+			fresh, err := other.LookupFunc("example/p.F")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if node != fn.Body[0] || fmt.Sprint(node) != before || fn.Sym() == fresh.Sym() || name != "init.0" || other.Typecheck.Target.Inits[0].Sym().Name != "init.0" || !bytes.Equal(dictData, c.Ctxt.Data[0].P) {
 				t.Error("retained body/dictionary/init name changed")
 			}
 			if c.Typecheck.IR.CurFunc != nil || len(c.todoBodies) != 0 || len(c.todoDicts) != 0 {
@@ -196,12 +196,7 @@ func initializeTestPackage(t *testing.T, c *Context, source string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pr := c.newPkgReader(pkgbits.NewPkgDecoder(pkg.Path(), data))
-	c.localPkgReader = pr
-	r := pr.newReader(pkgbits.SectionMeta, pkgbits.PrivateRootIdx, pkgbits.SyncPrivate)
-	target := c.Typecheck.Target
-	r.pkgInit(c.Types.LocalPkg, target)
-	c.ReadBodies(false, nil)
+	c.ReadLocalPackage(data)
 
 }
 

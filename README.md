@@ -4,7 +4,7 @@
 
 库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。每次调用拥有独立编译状态，返回结果在后续调用期间仍有效。
 
-当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口，并提供已检查 AST 到原生 Unified IR stub 的 writer，以及实例独立的原生 IR 图构造接口与 typecheck universe 初始化；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
+当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口，并提供已检查 AST 到原生 Unified IR stub 的 writer，以及实例独立的原生 IR 图构造接口与 typecheck universe 初始化；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及本地 stub 到读取阶段原生包 IR 的入口和上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
 
 - 语言范围：Go 1.27；其他语言版本尚不支持。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
@@ -52,6 +52,7 @@
 35. [M3 原生调用图](docs/m3-callgraph.md)：函数强连通分量、实例 profile 归属和原生流格式。
 36. [M3 原生内联启发式](docs/m3-inline-heuristics.md)：局部重赋值分析、函数属性、调用点评分及实例日志。
 37. [M3 原生可内联判定与函数体驱动](docs/m3-native-inlining.md)：真实成本/PGO 决策、hash 状态解耦和生产 readBodies。
+38. [M3 原生包注册与读取](docs/m3-package-reader.md)：导入函数/方法查找、真实 PGO 绑定及本地包 IR 读取入口。
 
 ## 当前可运行的工具
 
@@ -96,7 +97,7 @@ go test -race ./...
 
 ## 当前公开基础设施
 
-`inline` 提供原生可内联判定与成本/PGO 政策，`noder.Context.ReadBodies`运行实例函数体队列驱动，`inline/inlheur` 提供原生函数属性与调用点评分，`logopt` 提供实例优化日志记录与读取；`pgo` 暴露原生预处理 profile 流格式，`pgoir` 提供已有 IR 图的 profile 归属（生产 noder 的任意导入函数查找绑定尚未接通）；`position` 暴露上游位置对象，`diagnostic` 提供实例诊断收集，`target` 提供显式布局输入；`ir` 提供原生节点和实例构造入口，`typecheck` 提供原生 IR 检查与改写，`objw` 提供原生符号数据和重定位写入，`staticdata` 提供原生静态数据和函数值符号，`staticinit` 提供原生静态初始化调度及 map 初始化分离，`rttype` 提供目标运行时布局和原生写入游标，`reflectdata` 提供原生类型描述符、ITab、运行时类型引用、map 布局、GC 位图写入和相等函数选择，`bitvec/typebits` 提供原生位图及类型指针槽扫描，`types` 提供 Universe 和包符号查找，`gcbridge` 共用位置及 Type/Pkg/Sym 对象。见 [独立 consumer 示例](testdata/consumer/consumer_test.go)。每次编译需独立创建位置表和 base；XPos 必须用原表解码。同一实例的可变操作由调用方串行。
+`inline` 提供原生可内联判定与成本/PGO 政策，`noder.Context.ReadBodies` 运行实例函数体队列驱动，`inline/inlheur` 提供原生函数属性与调用点评分，`logopt` 提供实例优化日志记录与读取；`pgo` 暴露原生预处理 profile 流格式，`pgoir` 提供已有 IR 图的 profile 归属（noder 已绑定原生函数查找，依赖数据需事先注册）；`position` 暴露上游位置对象，`diagnostic` 提供实例诊断收集，`target` 提供显式布局输入；`ir` 提供原生节点和实例构造入口，`typecheck` 提供原生 IR 检查与改写，`objw` 提供原生符号数据和重定位写入，`staticdata` 提供原生静态数据和函数值符号，`staticinit` 提供原生静态初始化调度及 map 初始化分离，`rttype` 提供目标运行时布局和原生写入游标，`reflectdata` 提供原生类型描述符、ITab、运行时类型引用、map 布局、GC 位图写入和相等函数选择，`bitvec/typebits` 提供原生位图及类型指针槽扫描，`types` 提供 Universe 和包符号查找，`gcbridge` 共用位置及 Type/Pkg/Sym 对象。见 [独立 consumer 示例](testdata/consumer/consumer_test.go)。每次编译需独立创建位置表和 base；XPos 必须用原表解码。同一实例的可变操作由调用方串行。
 
 后端当前可直接使用实例中的上游 SSA 类型和构造函数：
 
@@ -119,4 +120,4 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 
 类型布局入口示例见 [独立消费者测试](testdata/consumer/consumer_test.go)。先创建 Universe，再调用原生 `u.InitTypes(defTypeName)`；回调为传入的 Sym/Type 提供宿主的 `types.Object`。随后可直接调用 `Type.Size/Alignment/Registers/HasPointers` 与 `u.CalcSize/PtrDataSize/AlgType/Identical`。当前不提供假 `ir.Name`；宿主绑定契约及失败处理见 M2 文档。
 
-源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub；实验性 midway 和 compiler directives 尚未接入。尚无 SSA 构造入口。
+源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；完整 unified 尾部、wrapper 生成、实验性 midway 和 compiler directives 尚未接入。尚无 SSA 构造入口。

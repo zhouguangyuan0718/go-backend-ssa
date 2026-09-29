@@ -6,11 +6,17 @@ func TestSyncgoNativeSnapshot(t *testing.T){
  switch {case strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-fips"):LINK.Pkgpath="crypto/internal/fips140/testinit";case strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-nooutline"):ND_DEBUG.WrapGlobalMapCtl=1;case strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-stressoutline"):ND_DEBUG.WrapGlobalMapCtl=2}
  var out []string
  data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
- pr:=UP.newPkgReader(pkgbits.NewPkgDecoder("example/p",string(data)));UP.localPkgReader=pr
+ pr:=UP.newPkgReader(pkgbits.NewPkgDecoder("example/p",string(data)));UP.localPkgReader=pr;UP.readPackage(pr,TY.LocalPkg,true)
  wanted:=map[string]bool{};for _,s:=range []string{"RecF","RecI","Node","Alias","Rounded","Complex","Add","Closure","Generic","Control","Range","Method","Composite","Calls","Branch","Capture"}{wanted[s]=true}
  for i:=range pr.NumElems(pkgbits.SectionName){r:=pr.newReader(pkgbits.SectionName,index(i),pkgbits.SyncObject1);_,sym:=r.qualifiedIdent();tag:=pkgbits.CodeObj(r.Code(pkgbits.SyncCodeObj));if tag==pkgbits.ObjStub||sym.Pkg!=TY.LocalPkg||!wanted[sym.Name]{continue};n:=pr.objIdx(index(i),nil,nil,false).(*ir.Name);delete(wanted,sym.Name);out=append(out,fmt.Sprintf("decl:%v:%v:%v:%v:%t",n.Sym(),n.Op(),n.Type(),n.Val(),n.Alias()));if sym.Name!="init"&&pr.objIdx(index(i),nil,nil,false)!=n{t.Fatal("object cache identity")}}
  if len(wanted)!=0{t.Fatal("missing",wanted)}
  pr.newReader(pkgbits.SectionMeta,pkgbits.PrivateRootIdx,pkgbits.SyncPrivate).pkgInit(TY.LocalPkg,TC.Target)
+ var registered []string
+ for sym:=range UP.objReader {registered=append(registered,sym.Pkg.Path+"."+sym.Name)}
+ sort.Strings(registered);out=append(out,fmt.Sprint("registered:",registered))
+ for _,name:=range []string{"example/p.Add","example/p.Number.M","example/p.(*Number).M","example/p.RecI.M","example/p.Alias.M","example/p.Missing","missing/pkg.F","badname"}{
+  fn,err:=UP.LookupFunc(name);if err!=nil{out=append(out,"lookup:"+name+":error")}else{out=append(out,fmt.Sprintf("lookup:%s:%v:%t",name,fn.Sym(),fn.Type().Recv()!=nil))}
+ }
  HEUR_SETUP
  duringInlining:=strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"inline")&&!strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"newinline")
  LINK.Flag_linkshared=strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"sharedinline")

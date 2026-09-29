@@ -1,10 +1,16 @@
 package noder_test
 
 import (
+	"encoding/binary"
 	"fmt"
 	"go-backend-ssa/gcbridge"
 	"go-backend-ssa/ir"
 	"go-backend-ssa/noder"
+	"go-backend-ssa/objw"
+	"go-backend-ssa/reflectdata"
+	"go-backend-ssa/rttype"
+	"go-backend-ssa/staticdata"
+	"go-backend-ssa/staticinit"
 	"go-backend-ssa/syntax"
 	"go-backend-ssa/target"
 	"go-backend-ssa/typecheck"
@@ -39,14 +45,16 @@ func ExampleNewContext() {
 	if err != nil {
 		panic(err)
 	}
-	link := &gcbridge.Link{Pathname: "/src", Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8}}}
+	link := &gcbridge.Link{Pathname: "/src", Pkgpath: "example/p", Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8, ByteOrder: binary.LittleEndian}}}
 	universe, err := types.NewUniverseWithPositions(layout, &link.PosTable)
 	if err != nil {
 		panic(err)
 	}
+	universe.LocalPkg = universe.NewPkg("example/p", "p")
 	graph := ir.NewContext(universe, link)
 	tc := typecheck.NewContext(graph)
 	tc.InitUniverse()
+	tc.InitRuntime()
 	graph.Base.Flag.Lang = "go1.27"
 	graph.Base.Flag.Complete = true
 	graph.Debug.SyncFrames = -1
@@ -63,6 +71,19 @@ func ExampleNewContext() {
 	if err != nil {
 		panic(err)
 	}
+	ow := objw.NewContext(universe, link, "linux")
+	rt := rttype.NewContext(ow)
+	rt.Init()
+	writer.ReflectData = reflectdata.NewContext(tc, rt, staticdata.NewContext(graph, ow))
+	writer.StaticInit = staticinit.NewContext(tc, writer.ReflectData)
+	target := writer.ReadLocalPackage(stub)
+	sum, err := writer.LookupFunc("example/p.Sum")
+	if err != nil {
+		panic(err)
+	}
 	fmt.Println(len(stub) > 0, pkg.Scope().Lookup("X").Type())
-	// Output: true int
+	fmt.Println(target == tc.Target, len(sum.Body) > 0)
+	// Output:
+	// true int
+	// true true
 }

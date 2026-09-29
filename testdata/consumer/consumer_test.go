@@ -201,14 +201,16 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 		t.Fatal("checker bridge identity")
 	}
 	layout, _ := target.NewLayout("linux", "amd64")
-	link := &gcbridge.Link{Pathname: "/src", Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8}}}
+	link := &gcbridge.Link{Pathname: "/src", Pkgpath: "example/p", Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8, ByteOrder: binary.LittleEndian}}}
 	universe, err := types.NewUniverseWithPositions(layout, &link.PosTable)
 	if err != nil {
 		t.Fatal(err)
 	}
+	universe.LocalPkg = universe.NewPkg("example/p", "p")
 	graph := ir.NewContext(universe, link)
 	tc := typecheck.NewContext(graph)
 	tc.InitUniverse()
+	tc.InitRuntime()
 	graph.Base.Flag.Lang = "go1.27"
 	graph.Base.Flag.Complete = true
 	graph.Debug.SyncFrames = -1
@@ -232,6 +234,22 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	if p.Context() != state || state.PackageScope(nil) != state.Universe {
 		t.Fatal("explicit package scope ownership")
 	}
+	ow := objw.NewContext(universe, link, "linux")
+	rt := rttype.NewContext(ow)
+	rt.Init()
+	writer.ReflectData = reflectdata.NewContext(tc, rt, staticdata.NewContext(graph, ow))
+	writer.StaticInit = staticinit.NewContext(tc, writer.ReflectData)
+	result := writer.ReadLocalPackage(data)
+	sum, err := writer.LookupFunc("example/p.Sum")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != tc.Target || len(sum.Body) == 0 || sum.Typecheck() != 1 || p.Scope().Lookup("X").Type() != typ {
+		t.Fatal("public source to package IR or retained source types")
+	}
+	graph.Base.Flag.LowerL = 1
+	writer.Inline.CanInlineFuncs(result.Funcs, nil)
+
 }
 
 func TestNativeObjectGraph(t *testing.T) {
@@ -519,7 +537,7 @@ func TestNativeStaticDataPublicAPI(t *testing.T) {
 }
 
 // This consumer supplies native lookup hooks for its already-built local graph.
-// It does not claim that production noder import lookup has been connected.
+// Production noder bindings are exercised by the reader integration tests.
 func TestPublicCallGraph(t *testing.T) {
 	layout, _ := target.NewLayout("linux", "amd64")
 	link := &gcbridge.Link{}
