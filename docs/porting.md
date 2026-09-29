@@ -121,6 +121,8 @@ IR 迁移需要保留 `miniNode → miniExpr/miniStmt → 具体节点` 的值�
 
 `Unit.ContextFrom` 用于必须保持签名的原生函数/方法（例如格式化接口）。规则指明原始参数或接收者名称，以及手写 adapter 中的实例解析函数。工具验证参数存在，在函数体中取得实例；调用方、函数值和接口签名保持不变，正文的状态访问使用该实例。解析函数的输入和返回契约随最终输出一起接受类型检查，nil 实例被拒绝，不产生默认全局实例。
 
-回归见 [embedded_owner_test.go](../internal/port/embedded_owner_test.go)：多层嵌入、分配/复制、回调、固定接口签名、16 个并发实例，以及路径或参数漂移拒绝。这些规则是原生 IR 迁移的准备工作；当前尚未迁入完整 Node/Name/Func 图。后续依次接入 IR 节点和格式化、原生符号/ABI 绑定，以及 reader/typecheck，不以工具规则测试代替编译器验收。
+回归见 [embedded_owner_test.go](../internal/port/embedded_owner_test.go)：多层嵌入、分配/复制、回调、固定接口签名、16 个并发实例，以及路径或参数漂移拒绝。这些规则现已用于 [原生 Node/Name/Func 图](m3-ir.md)；真实 IR 另有官方源码差分、并发与独立 consumer 验证，工具规则测试不代替编译器验收。
 
 `ContextRule.Selective` 可以按文件设置：同一包仍共用一个实例类型、构造方式和初始化序列，但仅对标记文件删去不需要状态的函数绑定。这用于保留 types.CompareSyms/IsExported 等无状态入口，同时将同文件里的 Sym.LinksymABI 绑定到原生符号实例；规则仍通过整个包的类型身份计算依赖。
+
+`ReadTables` 支持常量元素的 array 和 slice，保留原始字面量类型并在使用函数内局部化。仅索引读取和 len 被接受；slice 的写入、append、传递或返回整体等仍拒绝。原生 IR 的 OpNames/OpPrec 因而保持原始内容和索引语义，无需共享可变全局表。

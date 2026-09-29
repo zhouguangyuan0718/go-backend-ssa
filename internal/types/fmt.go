@@ -28,6 +28,40 @@ const (
 	fmtTypeIDName
 )
 
+// Sym
+
+// Format implements formatting for a Sym.
+// The valid formats are:
+//
+//	%v	Go syntax: Name for symbols in the local package, PkgName.Name for imported symbols.
+//	%+v	Debug syntax: always include PkgName. prefix even for local names.
+//	%S	Short syntax: Name only, no matter what.
+func (s *Sym) Format(f fmt.State, verb rune) {
+	syncgoCtx := formatUniverse(s)
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	mode := fmtGo
+	switch verb {
+	case 'v', 'S':
+		if verb == 'v' && f.Flag('+') {
+			mode = fmtDebug
+		}
+		fmt.Fprint(f, syncgoCtx.sconv(s, verb, mode))
+
+	default:
+		fmt.Fprintf(f, "%%!%c(*types.Sym=%p)", verb, s)
+	}
+}
+
+func (s *Sym) String() string {
+	syncgoCtx := formatUniverse(s)
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	return syncgoCtx.sconv(s, 0, fmtGo)
+}
+
 // See #16897 for details about performance implications
 // before changing the implementation of sconv.
 func (syncgoCtx *Universe) sconv(s *Sym, verb rune, mode fmtMode) string {

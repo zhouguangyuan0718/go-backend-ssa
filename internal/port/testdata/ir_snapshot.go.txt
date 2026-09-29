@@ -1,0 +1,33 @@
+package ir
+import("fmt";"encoding/json";"testing";"bytes";"go/constant";"IMPORT_TYPES";"IMPORT_OBJ";"IMPORT_SRC";IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ SETUP
+ TY.InitTypes(func(s *types.Sym,typ *types.Type)types.Object{n:=UP.NewDeclNameAt(src.XPos{},OTYPE,s);n.SetType(typ);n.SetTypecheck(1);s.Def=n;return n})
+ pos:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase("sample.go","/src/sample.go"),7,3))
+ typ:=TY.Types[types.TINT]
+ x:=UP.NewNameAt(pos,TY.LocalPkg.Lookup("x"),typ);x.Class=PAUTO
+ lit:=UP.NewBasicLit(pos,typ,constant.MakeInt64(42))
+ mul:=UP.NewBinaryExpr(pos,OMUL,x,lit);mul.SetType(typ);mul.SetTypecheck(1)
+ add:=UP.NewBinaryExpr(pos,OADD,mul,UP.NewInt(pos,1));add.SetType(typ);add.SetTypecheck(1)
+ ret:=UP.NewReturnStmt(pos,[]Node{add})
+ cp:=DeepCopy(src.XPos{},ret).(*ReturnStmt)
+ var ops []string;Visit(cp,func(n Node){ops=append(ops,n.Op().String())})
+ var out []string
+ out=append(out,fmt.Sprintf("%v|%L|%v|%v",ret,add,ops,Nodes{ret,cp}))
+ out=append(out,fmt.Sprintf("copy:%t:%t:%t:%t",cp!=ret,cp.Results[0]!=add,cp.Results[0].(*BinaryExpr).X.(*BinaryExpr).X==x,cp.Results[0].(*BinaryExpr).X.(*BinaryExpr).Y==lit))
+ out=append(out,fmt.Sprintf("builtin:%t:%t:%v:%d",typ.Obj()==UP.TypeNode(typ),typ.Obj().Sym().Def==typ.Obj(),typ,typ.Size()))
+ var dump bytes.Buffer;UP.FDumpList(&dump,"body",Nodes{ret});out=append(out,dump.String())
+ sig:=TY.NewSignature(nil,[]*types.Field{TY.NewField(pos,TY.LocalPkg.Lookup("arg"),typ)},[]*types.Field{TY.NewField(pos,nil,typ)})
+ fn:=UP.NewFunc(pos,pos,TY.LocalPkg.Lookup("F"),sig);fn.DeclareParams(true)
+ out=append(out,fmt.Sprintf("func:%s:%s:%s:%s:%t:%t",FuncName(fn),LinkFuncName(fn),fn.Linksym().Name,fn.Linksym().ABI(),fn.Nname.Func==fn,fn.Dcl[0].Curfn==fn))
+ for _,p:=range fn.Dcl{out=append(out,fmt.Sprintf("param:%v:%v:%d:%t",p.Sym(),p.Class,p.FrameOffset(),p.Type()==typ))}
+ var pkg Package
+ clo:=UP.NewClosureFunc(pos,pos,OCLOSURE,TY.NewSignature(nil,nil,nil),fn,&pkg,1)
+ cap:=UP.NewClosureVar(pos,clo,fn.Dcl[0])
+ out=append(out,fmt.Sprintf("closure:%v:%t:%t:%t:%t",clo.Sym(),clo.ClosureParent==fn,cap.Outer==fn.Dcl[0],cap.Canonical()==fn.Dcl[0],pkg.Funcs[0]==clo))
+ UP.WithFunc(fn,func(){out=append(out,fmt.Sprintf("scope:%t:%t",UP.CurFunc==fn,POS==pos))})
+ out=append(out,fmt.Sprintf("restored:%t:%t",UP.CurFunc==nil,POS==(src.XPos{})))
+ out=append(out,fmt.Sprintf("constants:%v:%v:%v:%t:%t",UP.NewZero(pos,typ),UP.NewOne(pos,typ),UP.NewString(pos,"go"),UP.ConstOverflow(constant.MakeInt64(128),TY.Types[types.TINT8]),UP.ConstOverflow(constant.MakeInt64(127),TY.Types[types.TINT8])))
+ for _,name:=range []string{"F","F#YWJjZGVmZ2g=#func1","F#short#func1"}{n:=UP.NewNameAt(pos,TY.LocalPkg.Lookup(name),typ);out=append(out,n.DiagName())}
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

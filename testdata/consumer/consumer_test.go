@@ -1,8 +1,10 @@
 package consumer
 
 import (
+	"fmt"
 	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/gcbridge"
+	"go-backend-ssa/ir"
 	"go-backend-ssa/noder"
 	"go-backend-ssa/position"
 	"go-backend-ssa/syntax"
@@ -264,5 +266,38 @@ func TestCompilerLinkSymbols(t *testing.T) {
 	inlined := link.PosTable.XPos(position.Make(callee, 20, 3))
 	if link.OutermostPos(inlined).Line() != 10 || link.InnermostPos(inlined).Line() != 20 {
 		t.Fatal("native inline position API")
+	}
+}
+
+func TestNativeIRPublicGraph(t *testing.T) {
+	layout, _ := target.NewLayout("linux", "amd64")
+	link := &gcbridge.Link{}
+	u, err := types.NewUniverseWithPositions(layout, &link.PosTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := ir.NewContext(u, link)
+	u.InitTypes(func(s *types.Sym, typ *types.Type) types.Object {
+		n := c.NewDeclNameAt(position.XPos{}, ir.OTYPE, s)
+		n.SetType(typ)
+		n.SetTypecheck(1)
+		s.Def = n
+		return n
+	})
+	typ := u.Types[types.Int]
+	if _, ok := typ.Obj().(*ir.Name); !ok {
+		t.Fatal("builtin type is not bound to native ir.Name")
+	}
+	value := c.NewBasicLit(position.XPos{}, typ, constant.MakeInt64(3))
+	expr := c.NewBinaryExpr(position.XPos{}, ir.OADD, value, value)
+	var node ir.Node = expr
+	dup := ir.DeepCopy(position.XPos{}, node).(*ir.BinaryExpr)
+	if dup == expr || dup.X != value || dup.Y != value || fmt.Sprint(dup) != "3 + 3" {
+		t.Fatal("native copy or interface differs")
+	}
+	count := 0
+	ir.Visit(dup, func(ir.Node) { count++ })
+	if count != 3 {
+		t.Fatal(count)
 	}
 }

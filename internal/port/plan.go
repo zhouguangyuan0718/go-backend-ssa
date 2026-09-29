@@ -46,7 +46,7 @@ type Unit struct {
 	Owner          *OwnerRule
 	WholeFile      bool     // Preserve types, constants and existing receivers.
 	ZeroValues     []string // Reviewed zero-valued struct globals replaced by fresh values.
-	ReadTables     []string // Constant array lookups localized in their consuming functions.
+	ReadTables     []string // Constant array/slice lookups localized in their consuming functions.
 	State          []StateRule
 	ReceiverState  *ReceiverStateRule
 	Context        *ContextRule

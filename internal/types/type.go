@@ -1371,6 +1371,23 @@ func (syncgoCtx *Universe) NewStruct(fields []*Field) *Type {
 	return t
 }
 
+func (syncgoCtx *Universe) FloatForComplex(t *Type) *Type {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if syncgoCtx == nil || t == nil || t.universe != syncgoCtx {
+		panic("argument belongs to another or uninitialized compilation")
+	}
+	switch t.Kind() {
+	case TCOMPLEX64:
+		return syncgoCtx.Types[TFLOAT32]
+	case TCOMPLEX128:
+		return syncgoCtx.Types[TFLOAT64]
+	}
+	syncgoCtx.fatalf("unexpected type: %v", t)
+	return nil
+}
+
 func (t *Type) IsSIMD() bool {
 	return t.isSIMD
 }

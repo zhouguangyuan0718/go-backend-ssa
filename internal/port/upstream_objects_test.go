@@ -16,6 +16,7 @@ func testUpstreamObjectDeclarations(t *testing.T, s *Source, r *Rendered) {
 	t.Helper()
 	testUpstreamObjectMethods(t, s, r)
 	units := objectDeclarations()
+	units = append(units, Unit{Source: "src/cmd/compile/internal/ir/node.go", Declarations: []string{"Op", "PragmaFlag"}})
 	units = append(units, Unit{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Link", "LinkArch", "Prog", "LSym", "Addr"}})
 	imports := Migration().importMap(s.Pin.TargetModule)
 	for _, u := range units {

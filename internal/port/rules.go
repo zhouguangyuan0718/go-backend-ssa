@@ -59,10 +59,6 @@ func Migration() Plan {
 			{Source: "src/cmd/internal/objabi/symkind.go", Declarations: []string{"SymKind", "Sxxx"}},
 			{Source: "src/cmd/internal/objabi/reloctype.go", Declarations: []string{"RelocType"}},
 			{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Addr", "AddrName", "AddrPos", "AddrType", "As", "Attribute", "Func", "LSym", "Link", "LinkArch", "OperandPos", "Prog", "Reloc", "ABI", "ABI0", "ABISet", "ABISetCallable", "AttrDuplicateOK", "symOnce", "Attribute.load", "Attribute.Set", "Attribute.ABI", "Attribute.SetABI", "Attribute.Static", "ABISet.Set", "ABISet.Get", "ABISet.String"}, Functions: []string{"ABISetOf", "ParseABI"}},
-			{
-				Source:    "src/cmd/compile/internal/ir/func.go",
-				Functions: []string{"ParseLinkFuncName", "splitPkg", "escapedImportPathOK", "modPathOK"},
-			},
 			{Source: "src/internal/goexperiment/flags.go", Declarations: []string{"Flags"}},
 			{Source: "src/internal/buildcfg/exp.go", Declarations: []string{"ExperimentFlags"}},
 			{Source: "src/internal/types/errors/codes.go", WholeFile: true},
@@ -85,16 +81,17 @@ func Migration() Plan {
 				Nullable:  map[string][]string{"Identical": {"t1", "t2"}, "IdenticalIgnoreTags": {"t1", "t2"}, "IdenticalStrict": {"t1", "t2"}, "identical": {"t1", "t2"}},
 				Context:   &ContextRule{Type: "Universe", Constructor: "newUniverse", Adapter: "adapter_context.go"},
 			},
-			{Source: "src/cmd/compile/internal/types/fmt.go", Declarations: []string{"fmtMode", "fmtGo", "Type.Format", "Type.String", "Type.LinkString", "Type.NameString"},
-				Functions: []string{"sconv", "sconv2", "symfmt", "pkgqual", "tconv", "tconv2", "formatParams", "fldconv", "SplitVargenSuffix"},
-				Nullable:  map[string][]string{"tconv": {"t"}, "tconv2": {"t"}, "pkgqual": {"pkg"}, "Type.Format": {"t"}, "Type.String": {"t"}, "Type.LinkString": {"t"}, "Type.NameString": {"t"}},
+			{Source: "src/cmd/compile/internal/types/fmt.go", Declarations: []string{"fmtMode", "fmtGo", "Sym.Format", "Sym.String", "Type.Format", "Type.String", "Type.LinkString", "Type.NameString"},
+				ContextFrom: map[string]ContextSource{"Sym.Format": {Argument: "s", Resolver: "formatUniverse"}, "Sym.String": {Argument: "s", Resolver: "formatUniverse"}},
+				Functions:   []string{"sconv", "sconv2", "symfmt", "pkgqual", "tconv", "tconv2", "formatParams", "fldconv", "SplitVargenSuffix"},
+				Nullable:    map[string][]string{"tconv": {"t"}, "tconv2": {"t"}, "pkgqual": {"pkg"}, "Type.Format": {"t"}, "Type.String": {"t"}, "Type.LinkString": {"t"}, "Type.NameString": {"t"}},
 				Context: &ContextRule{Type: "Universe", Constructor: "newUniverse", Adapter: "adapter_context.go", Fields: map[string]string{
 					"BuiltinPkg": "BuiltinPkg", "LocalPkg": "LocalPkg", "UnsafePkg": "UnsafePkg", "BlankSym": "BlankSym", "NumImport": "NumImport", "BasicTypeNames": "BasicTypeNames", "fmtBufferPool": "fmtBufferPool",
 				}},
 				Calls: []CallRule{{Source: "src/cmd/compile/internal/base/print.go", Function: "Fatalf", Method: "fatalf"}, {Source: "src/cmd/compile/internal/base/print.go", Function: "Assertf", Method: "assertf"}},
 			},
 			{Source: "src/cmd/compile/internal/types/type.go",
-				Functions: []string{"newType", "NewTuple", "newSSA", "newSIMD", "newResults", "NewResults", "NewPtr", "NewSlice", "NewArray", "NewMap", "NewChan", "NewField", "NewStruct", "NewSignature", "fieldsHasShape", "CompareFields", "NewChanArgs", "NewFuncArgs", "NewInterface", "FakeRecv", "FakeRecvType", "NewNamed"},
+				Functions: []string{"FloatForComplex", "newType", "NewTuple", "newSSA", "newSIMD", "newResults", "NewResults", "NewPtr", "NewSlice", "NewArray", "NewMap", "NewChan", "NewField", "NewStruct", "NewSignature", "fieldsHasShape", "CompareFields", "NewChanArgs", "NewFuncArgs", "NewInterface", "FakeRecv", "FakeRecvType", "NewNamed"},
 				Declarations: []string{
 					"Object", "Kind", "Txxx", "ChanDir", "Crecv", "Type", "typeNotInHeap",
 					"Map", "Forward", "Func", "Struct", "Interface", "Ptr", "ChanArgs", "FuncArgs", "Chan", "Tuple", "Results", "Array", "Slice", "Field", "fields", "fieldIsDDD",
@@ -127,7 +124,7 @@ func Migration() Plan {
 						"UntypedString": "UntypedString", "UntypedBool": "UntypedBool",
 						"UntypedInt": "UntypedInt", "UntypedRune": "UntypedRune", "UntypedFloat": "UntypedFloat", "UntypedComplex": "UntypedComplex",
 						"UntypedTypes": "UntypedTypes", "DefaultKinds": "DefaultKinds",
-						"ComparableType": "ComparableType", "recvType": "recvType", "ShapePkg": "ShapePkg", "IsInt": "IsInt", "IsFloat": "IsFloat", "IsComplex": "IsComplex",
+						"ComparableType": "ComparableType", "recvType": "recvType", "ShapePkg": "ShapePkg", "IsSimple": "IsSimple", "IsInt": "IsInt", "IsFloat": "IsFloat", "IsComplex": "IsComplex",
 					},
 				},
 			},
@@ -151,7 +148,7 @@ func Migration() Plan {
 			{
 				Source:       "src/cmd/compile/internal/types/pkg.go",
 				Functions:    []string{"InternString", "NewPkg"},
-				Declarations: []string{"Pkg", "Pkg.Lookup", "Pkg.LookupOK", "Pkg.LookupBytes", "Pkg.LookupNum"},
+				Declarations: []string{"Pkg", "Pkg.Lookup", "Pkg.LookupOK", "Pkg.LookupBytes", "Pkg.LookupNum", "Pkg.Selector"},
 				Owner:        &OwnerRule{Types: []string{"Pkg"}, Context: "Universe", Field: "universe"},
 				Context: &ContextRule{
 					Type: "Universe", Constructor: "newUniverse",
@@ -175,6 +172,7 @@ func Migration() Plan {
 		}
 	}
 	plan.Units = append(plan.Units, linkMigration()...)
+	plan.Units = append(plan.Units, irMigration()...)
 	plan.Units = append(plan.Units, types2Migration()...)
 	plan.Units = append(plan.Units, pkgbitsMigration()...)
 	plan.Units = append(plan.Units, rangefuncMigration()...)

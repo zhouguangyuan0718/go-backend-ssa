@@ -6,6 +6,7 @@ package types
 import (
 	"fmt"
 	compiler "go-backend-ssa/internal/types"
+	"go-backend-ssa/position"
 	"go-backend-ssa/target"
 )
 
@@ -85,3 +86,12 @@ const (
 	ACPLX128  = compiler.ACPLX128
 	ASPECIAL  = compiler.ASPECIAL
 )
+
+// NewUniverseWithPositions shares an existing native position namespace from
+// construction onward. Pass &link.PosTable when integrating native IR or noder.
+func NewUniverseWithPositions(layout target.Layout, positions *position.Table) (*Universe, error) {
+	if !layout.Valid() || positions == nil {
+		return nil, fmt.Errorf("explicit target layout and position table required")
+	}
+	return compiler.NewUniverseWithPositions(layout.PointerSize(), layout.RegisterSize(), layout.MaxWidth(), positions), nil
+}

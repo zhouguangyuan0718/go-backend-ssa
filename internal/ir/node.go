@@ -7,6 +7,107 @@
 
 package ir
 
+import (
+	"fmt"
+	"go/constant"
+
+	"go-backend-ssa/internal/cmd/src"
+	"go-backend-ssa/internal/types"
+)
+
+// A Node is the abstract interface to an IR node.
+type Node interface {
+	// Formatting
+	// For debugging output, use one of
+	//  Dump/FDump/DumpList/FDumplist (in fmt.go)
+	//  DumpAny/FDumpAny (in dump.go)
+	Format(s fmt.State, verb rune)
+
+	// Source position.
+	Pos() src.XPos
+	SetPos(x src.XPos)
+
+	// For making copies. For Copy and SepCopy.
+	copy() Node
+
+	doChildren(func(Node) bool) bool
+	doChildrenWithHidden(func(Node) bool) bool
+	editChildren(func(Node) Node)
+	editChildrenWithHidden(func(Node) Node)
+
+	// Abstract graph structure, for generic traversals.
+	Op() Op
+	Init() Nodes
+
+	// Fields specific to certain Ops only.
+	Type() *types.Type
+	SetType(t *types.Type)
+	Name() *Name
+	Sym() *types.Sym
+	Val() constant.Value
+	SetVal(v constant.Value)
+
+	// Storage for analysis passes.
+	Esc() uint16
+	SetEsc(x uint16)
+
+	// Typecheck values:
+	//  0 means the node is not typechecked
+	//  1 means the node is completely typechecked
+	//  2 means typechecking of the node is in progress
+	Typecheck() uint8
+	SetTypecheck(x uint8)
+	NonNil() bool
+	MarkNonNil()
+}
+
+// Line returns n's position as a string. If n has been inlined,
+// it uses the outermost position where n has been inlined.
+func (syncgoCtx *Context) Line(n Node) string {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	return syncgoCtx.Base.FmtPos(n.Pos())
+}
+
+func IsSynthetic(n Node) bool {
+	name := n.Sym().Name
+	return name[0] == '.' || name[0] == '~'
+}
+
+// IsAutoTmp indicates if n was created by the compiler as a temporary,
+// based on the setting of the .AutoTemp flag in n's Name.
+func IsAutoTmp(n Node) bool {
+	if n == nil || n.Op() != ONAME {
+		return false
+	}
+	return n.Name().AutoTemp()
+}
+
+// MayBeShared reports whether n may occur in multiple places in the AST.
+// Extra care must be taken when mutating such a node.
+func MayBeShared(n Node) bool {
+	switch n.Op() {
+	case ONAME, OLITERAL, ONIL, OTYPE:
+		return true
+	}
+	return false
+}
+
+type InitNode interface {
+	Node
+	PtrInit() *Nodes
+	SetInit(x Nodes)
+}
+
+func TakeInit(n Node) Nodes {
+	init := n.Init()
+	if len(init) != 0 {
+		n.(InitNode).SetInit(nil)
+	}
+	return init
+}
+
 //go:generate stringer -type=Op -trimprefix=O node.go
 
 type Op uint8
@@ -213,6 +314,125 @@ const (
 	OEND
 )
 
+// IsCmp reports whether op is a comparison operation (==, !=, <, <=,
+// >, or >=).
+func (op Op) IsCmp() bool {
+	switch op {
+	case OEQ, ONE, OLT, OLE, OGT, OGE:
+		return true
+	}
+	return false
+}
+
+// Nodes is a slice of Node.
+type Nodes []Node
+
+// ToNodes returns s as a slice of Nodes.
+func ToNodes[T Node](s []T) Nodes {
+	res := make(Nodes, len(s))
+	for i, n := range s {
+		res[i] = n
+	}
+	return res
+}
+
+// Append appends entries to Nodes.
+func (n *Nodes) Append(a ...Node) {
+	if len(a) == 0 {
+		return
+	}
+	*n = append(*n, a...)
+}
+
+// Prepend prepends entries to Nodes.
+// If a slice is passed in, this will take ownership of it.
+func (n *Nodes) Prepend(a ...Node) {
+	if len(a) == 0 {
+		return
+	}
+	*n = append(a, *n...)
+}
+
+// Take clears n, returning its former contents.
+func (n *Nodes) Take() []Node {
+	ret := *n
+	*n = nil
+	return ret
+}
+
+// Copy returns a copy of the content of the slice.
+func (n Nodes) Copy() Nodes {
+	if n == nil {
+		return nil
+	}
+	c := make(Nodes, len(n))
+	copy(c, n)
+	return c
+}
+
+// NameQueue is a FIFO queue of *Name. The zero value of NameQueue is
+// a ready-to-use empty queue.
+type NameQueue struct {
+	ring       []*Name
+	head, tail int
+}
+
+// Empty reports whether q contains no Names.
+func (q *NameQueue) Empty() bool {
+	return q.head == q.tail
+}
+
+// PushRight appends n to the right of the queue.
+func (q *NameQueue) PushRight(n *Name) {
+	if len(q.ring) == 0 {
+		q.ring = make([]*Name, 16)
+	} else if q.head+len(q.ring) == q.tail {
+		// Grow the ring.
+		nring := make([]*Name, len(q.ring)*2)
+		// Copy the old elements.
+		part := q.ring[q.head%len(q.ring):]
+		if q.tail-q.head <= len(part) {
+			part = part[:q.tail-q.head]
+			copy(nring, part)
+		} else {
+			pos := copy(nring, part)
+			copy(nring[pos:], q.ring[:q.tail%len(q.ring)])
+		}
+		q.ring, q.head, q.tail = nring, 0, q.tail-q.head
+	}
+
+	q.ring[q.tail%len(q.ring)] = n
+	q.tail++
+}
+
+// PopLeft pops a Name from the left of the queue. It panics if q is
+// empty.
+func (q *NameQueue) PopLeft() *Name {
+	if q.Empty() {
+		panic("dequeue empty")
+	}
+	n := q.ring[q.head%len(q.ring)]
+	q.head++
+	return n
+}
+
+// NameSet is a set of Names.
+type NameSet map[*Name]struct{}
+
+// Has reports whether s contains n.
+func (s NameSet) Has(n *Name) bool {
+	_, isPresent := s[n]
+	return isPresent
+}
+
+// Add adds n to s.
+func (s *NameSet) Add(n *Name) {
+	if *s == nil {
+		*s = make(map[*Name]struct{})
+	}
+	(*s)[n] = struct{}{}
+}
+
 type PragmaFlag uint16
 
 const (
@@ -239,4 +459,133 @@ const (
 
 	RegisterParams // TODO(register args) remove after register abi is working
 
+)
+
+func IsConst(n Node, ct constant.Kind) bool {
+	return ConstType(n) == ct
+}
+
+// IsNil reports whether n represents the universal untyped zero value "nil".
+func IsNil(n Node) bool {
+	return n != nil && n.Op() == ONIL
+}
+
+func IsBlank(n Node) bool {
+	if n == nil {
+		return false
+	}
+	return n.Sym().IsBlank()
+}
+
+// IsMethod reports whether n is a method.
+// n must be a function or a method.
+func IsMethod(n Node) bool {
+	return n.Type().Recv() != nil
+}
+
+// HasUniquePos reports whether n has a unique position that can be
+// used for reporting error messages.
+//
+// It's primarily used to distinguish references to named objects,
+// whose Pos will point back to their declaration position rather than
+// their usage position.
+func (syncgoCtx *Context) HasUniquePos(n Node) bool {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	switch n.Op() {
+	case ONAME:
+		return false
+	case OLITERAL, ONIL, OTYPE:
+		if n.Sym() != nil {
+			return false
+		}
+	}
+
+	if !n.Pos().IsKnown() {
+		if syncgoCtx.Base.Flag.K != 0 {
+			syncgoCtx.warn("setlineno: unknown position (line 0)")
+		}
+		return false
+	}
+
+	return true
+}
+
+func (syncgoCtx *Context) SetPos(n Node) src.XPos {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	lno := syncgoCtx.Types.Pos
+	if n != nil && syncgoCtx.HasUniquePos(n) {
+		syncgoCtx.Types.Pos = n.Pos()
+	}
+	return lno
+}
+
+// The result of InitExpr MUST be assigned back to n, e.g.
+//
+//	n.X = InitExpr(init, n.X)
+func (syncgoCtx *Context) InitExpr(init []Node, expr Node) Node {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if len(init) == 0 {
+		return expr
+	}
+
+	n, ok := expr.(InitNode)
+	if !ok || MayBeShared(n) {
+		// Introduce OCONVNOP to hold init list.
+		n = syncgoCtx.NewConvExpr(syncgoCtx.Types.Pos, OCONVNOP, nil, expr)
+		n.SetType(expr.Type())
+		n.SetTypecheck(1)
+	}
+
+	n.PtrInit().Prepend(init...)
+	return n
+}
+
+// what's the outer value that a write to n affects?
+// outer value means containing struct or array.
+func (syncgoCtx *Context) OuterValue(n Node) Node {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	for {
+		switch nn := n; nn.Op() {
+		case OXDOT:
+			syncgoCtx.fatalfAt(n.Pos(), "OXDOT in OuterValue: %v", n)
+		case ODOT:
+			nn := nn.(*SelectorExpr)
+			n = nn.X
+			continue
+		case OPAREN:
+			nn := nn.(*ParenExpr)
+			n = nn.X
+			continue
+		case OCONVNOP:
+			nn := nn.(*ConvExpr)
+			n = nn.X
+			continue
+		case OINDEX:
+			nn := nn.(*IndexExpr)
+			if nn.X.Type() == nil {
+				syncgoCtx.fatalf("OuterValue needs type for %v", nn.X)
+			}
+			if nn.X.Type().IsArray() {
+				n = nn.X
+				continue
+			}
+		}
+
+		return n
+	}
+}
+
+const (
+	EscUnknown = iota
+	EscNone    // Does not escape to heap, result, or parameters.
+	EscHeap    // Reachable from the heap
+	EscNever   // By construction will not escape.
 )

@@ -9,8 +9,8 @@ import (
 	"reflect"
 )
 
-// Offset and name tables contain constant array elements. Localize the table
-// once per consuming function, retaining the upstream array type and indexing.
+// Offset and name tables contain constant array or slice elements. Localize the table
+// once per consuming function, retaining the upstream table type and indexing.
 // Only len(table) and indexed reads are accepted, never writes or escapes.
 func localizeReadTables(fs *token.FileSet, files []*ast.File, info *types.Info, units []Unit) error {
 	tables := map[types.Object]*ast.ValueSpec{}
@@ -35,11 +35,16 @@ func localizeReadTables(fs *token.FileSet, files []*ast.File, info *types.Info, 
 					if !ok {
 						return fmt.Errorf("read table requires array literal")
 					}
-					array, ok := info.TypeOf(literal).(*types.Array)
-					if !ok {
-						return fmt.Errorf("read table requires array type")
+					var elem types.Type
+					switch table := info.TypeOf(literal).(type) {
+					case *types.Array:
+						elem = table.Elem()
+					case *types.Slice:
+						elem = table.Elem()
+					default:
+						return fmt.Errorf("read table requires array or slice type")
 					}
-					basic, ok := array.Elem().Underlying().(*types.Basic)
+					basic, ok := elem.Underlying().(*types.Basic)
 					if !ok || basic.Info()&(types.IsInteger|types.IsString) == 0 {
 						return fmt.Errorf("read table requires integer or string elements")
 					}

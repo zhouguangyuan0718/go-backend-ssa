@@ -11,7 +11,7 @@ import (
 func TestReadTableLocalizationAndRejections(t *testing.T) {
 	source := `package p
 var index=[...]uint8{0,3,8}
-var names=[...]string{"invalid","int","string"}
+var names=[]string{"invalid","int","string"}
 type Kind int
 func(k Kind)String()string{if k<0||int(k)>=len(names){return "unknown"};return names[k]}
 func Read(i int)uint8{return index[i]}
@@ -45,6 +45,8 @@ func TestRead(t *testing.T){if Read(1)!=3||Count()!=3||Closure()()!=8||Shadow()!
 		t.Fatalf("%v\n%s", err, out)
 	}
 	for name, extra := range map[string]string{
+		"slice escape": "func Bad()[]string{return names}",
+		"slice append": "func Bad(){names=append(names,\"x\")}",
 		"string write": "func Bad(){names[0]=\"changed\"}",
 		"write":        "func Bad(){index[0]=9}", "paren write": "func Bad(){(index[0])=9}", "increment": "func Bad(){index[0]++}",
 		"address": "func Bad()*uint8{return &(index[0])}", "slice": "func Bad()[]uint8{return index[:]}", "copy": "func Bad()[3]uint8{return index}",

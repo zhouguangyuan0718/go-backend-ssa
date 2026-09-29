@@ -105,6 +105,17 @@ func (pkg *Pkg) LookupNum(prefix string, n int) *Sym {
 	return pkg.LookupBytes(b)
 }
 
+// Selector looks up a selector identifier.
+func (pkg *Pkg) Selector(name string) *Sym {
+	if pkg == nil || pkg.universe == nil {
+		panic("receiver has no compilation owner")
+	}
+	if IsExported(name) {
+		pkg = pkg.universe.LocalPkg
+	}
+	return pkg.Lookup(name)
+}
+
 func (syncgoCtx *Universe) InternString(b []byte) string {
 	if syncgoCtx == nil {
 		panic("uninitialized compilation")

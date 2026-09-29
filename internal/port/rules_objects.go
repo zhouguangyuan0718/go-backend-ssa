@@ -17,6 +17,5 @@ func objectDeclarations() []Unit {
 		{Source: "src/cmd/internal/obj/dwarf.go", Declarations: []string{"DwarfFixupTable", "declOffset", "fnState", "relFixup", "symFixups"}},
 		{Source: "src/cmd/internal/obj/inl.go", Declarations: []string{"InlTree", "InlinedCall", "InlTree.Add", "InlTree.AllParents", "InlTree.Parent", "InlTree.InlinedFunction", "InlTree.InlinedFuncName", "InlTree.InlinedFuncPkg", "InlTree.CallPos", "Link.OutermostPos", "Link.InnermostPos", "Link.AllPos"}},
 		{Source: "src/cmd/internal/obj/plist.go", Declarations: []string{"ProgAlloc"}},
-		{Source: "src/cmd/compile/internal/ir/node.go", Declarations: []string{"Op", "PragmaFlag", "OXXX", "Nointerface"}},
 	}
 }
