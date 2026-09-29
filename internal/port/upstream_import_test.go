@@ -10,9 +10,13 @@ import (
 
 // Produce finalized export data with the fixed official compiler. Only tests
 // invoke this process; both readers consume exactly the same untouched payload.
-func prepareNativeImport(t *testing.T, root, dir string, newInliner bool) {
+func prepareNativeImport(t *testing.T, root, dir string, newInliner bool, fixtures ...string) {
 	t.Helper()
-	source, err := os.ReadFile(filepath.Join(root, "internal/port/testdata/noder_import_fixture.go.txt"))
+	fixture := "noder_import_fixture.go.txt"
+	if len(fixtures) > 0 {
+		fixture = fixtures[0]
+	}
+	source, err := os.ReadFile(filepath.Join(root, "internal/port/testdata", fixture))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -182,7 +182,7 @@ func TestNativeSyntaxFromPublicModule(t *testing.T) {
 }
 
 func TestNativeCheckerFromPublicModule(t *testing.T) {
-	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return};func UseId(x int)int{return Id(x)};func Twice(x int)int{return Id(Id(x))}"), nil, nil, syntax.CheckBranches)
+	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return};func UseId(x int)int{return Id(x)};func Twice(x int)int{return Id(Id(x))};type Number int;func(n Number)M(x int)int{return int(n)+x};func Method(n Number)func(int)int{return n.M}"), nil, nil, syntax.CheckBranches)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,6 +293,17 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	})
 	if expanded < 2 || calls != 0 || parens != 0 || graph.CurFunc != nil {
 		t.Fatal("public native package driver failed", expanded, calls, parens)
+	}
+
+	writer.MakeWrappers(result)
+	var methodWrapper *ir.Func
+	for _, fn := range result.Funcs {
+		if fn.Sym().Name == "Number.M-fm" {
+			methodWrapper = fn
+		}
+	}
+	if methodWrapper == nil || !methodWrapper.Wrapper() || !methodWrapper.Needctxt() || len(methodWrapper.ClosureVars) != 1 || methodWrapper.Nname.Defn != methodWrapper {
+		t.Fatal("public native wrapper generation failed")
 	}
 
 }

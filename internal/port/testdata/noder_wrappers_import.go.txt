@@ -1,0 +1,4 @@
+package dep
+type D int
+func(d D)M(x int)int{return int(d)+x}
+func Factory(d D)func(int)int{return d.M}

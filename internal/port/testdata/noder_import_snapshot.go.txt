@@ -1,5 +1,5 @@
 package noder
-import("encoding/json";"encoding/binary";"fmt";"os";"sort";"testing";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_IR";"IMPORT_TYPES";"IMPORT_TYPECHECK";"IMPORT_PKGBITS";BODY_TYPES2 PGO_HOOK_IMPORT IMPORT_BASE)
+import("encoding/json";"encoding/binary";"fmt";"os";"sort";"testing";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_IR";"IMPORT_TYPES";"IMPORT_TYPECHECK";"IMPORT_PKGBITS";BODY_TYPES2 AUTO_IMPORT PGO_HOOK_IMPORT IMPORT_BASE)
 func TestSyncgoNativeSnapshot(t *testing.T){
  target:=struct{arch string;size int;order binary.ByteOrder}{"amd64",8,binary.LittleEndian}
  SETUP

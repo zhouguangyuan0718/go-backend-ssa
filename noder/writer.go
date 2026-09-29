@@ -12,8 +12,9 @@ import (
 // WritePackage consumes checked/prepared ASTs and returns the native package
 // stub bitstream. RegisterPackage and ReadLocalPackage expose the native reader
 // stages and return the existing package IR. Inline is bound to the native
-// function-body reader for call-site expansion. The complete compiler pipeline,
-// including wrapper generation and SSA construction, is not yet integrated.
+// function-body reader for call-site expansion. Run Interleaved on the package,
+// then MakeWrappers once to generate and optimize native method wrappers.
+// The complete compiler pipeline through SSA construction is not yet integrated.
 type Context = compiler.Context
 
 // NewContext requires an initialized native compiler universe and shared Link

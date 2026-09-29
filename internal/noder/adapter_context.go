@@ -328,3 +328,19 @@ func (c *Context) errorExit() {
 	}
 	panic("noder: compilation aborted")
 }
+
+// MakeWrappers is a native, once-per-package phase after package inlining.
+// Validate the host graph before native symbol flags or queues are changed.
+func (c *Context) checkWrapperTarget(target *ir.Package) {
+	if target == nil || target != c.Typecheck.Target {
+		panic("wrapper package is not this compilation's target")
+	}
+	if c.ReflectData == nil || c.ReflectData.Typecheck != c.Typecheck || c.Interleaved == nil || c.Interleaved.Inline != c.Inline {
+		panic("wrapper generation requires shared reflection and inlining contexts")
+	}
+	for _, fn := range target.Funcs {
+		if fn == nil || !c.Typecheck.IR.OwnsNode(fn) {
+			panic("wrapper input belongs to another compilation")
+		}
+	}
+}

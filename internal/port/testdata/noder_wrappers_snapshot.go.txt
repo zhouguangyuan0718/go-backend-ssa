@@ -1,0 +1,54 @@
+package noder
+import("fmt";"encoding/json";"encoding/binary";"os";"strings";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_PKGBITS";WRAPPER_IMPORT EXPAND_RUNTIME DRIVER_INLINE_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.SplitN(os.Getenv("SYNCGO_TARGET"),"-",2)[0],8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ EXPERIMENT.NewInliner=strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-newinline")
+ RD_FLAG.LowerL=1;RD_FLAG.GenDwarfInl=2;ND_DEBUG.InlFuncsWithClosures=1
+ LINK.DwFixups=obj.NewDwarfFixupTable(LINK)
+ EXPAND_BIND
+ TC.HaveInlineBody=UP.unifiedHaveInlineBody
+ data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
+ pr:=UP.newPkgReader(pkgbits.NewPkgDecoder("example/p",string(data)));UP.localPkgReader=pr;UP.readPackage(pr,TY.LocalPkg,true)
+ pr.newReader(pkgbits.SectionMeta,pkgbits.PrivateRootIdx,pkgbits.SyncPrivate).pkgInit(TY.LocalPkg,TC.Target)
+ UP.readBodies(TC.Target,false,nil)
+
+ fn,err:=UP.LookupFunc("example/p.(*T).P");if err!=nil{t.Fatal(err)};fn.Pragma|=ir.Noinline
+ TY.LocalPkg.Lookup("N").Def.Type().SetNotInHeap(true)
+ if strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-noinline"){RD_FLAG.LowerL=0}
+ if strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-dynlink"){LINK.Flag_dynlink=true}
+ if strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-runtime"){LINK.Pkgpath="runtime"}
+
+ var imported *types.Pkg
+ if strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-import"){
+ data,err:=os.ReadFile(BODY_IMPORT_PATH);if err!=nil{t.Fatal(err)}
+ imported=TY.NewPkg("example/dep","")
+ ipr:=UP.newPkgReader(pkgbits.NewPkgDecoder(imported.Path,string(data)));UP.readPackage(ipr,imported,false)
+ callee,err:=UP.LookupFunc("example/dep.Factory");if err!=nil{t.Fatal(err)}
+ caller,err:=UP.LookupFunc("example/p.ImportedCaller");if err!=nil{t.Fatal(err)}
+ GRAPH.WithFunc(caller,func(){
+ arg:=TC.Expr(GRAPH.NewConvExpr(caller.Pos(),ir.OCONV,imported.Lookup("D").Def.Type(),caller.Dcl[0]))
+ caller.Body[0].(*ir.ReturnStmt).Results[0]=TC.Call(caller.Pos(),callee.Nname,[]ir.Node{arg},false)
+ })
+ }
+ DRIVER.DevirtualizeAndInlinePackage(TC.Target,nil)
+ before:=len(TC.Target.Funcs)
+ UP.MakeWrappers(TC.Target)
+ var out []string
+ out=append(out,fmt.Sprintf("functions:%d:%d",before,len(TC.Target.Funcs)))
+ for _,fn:=range TC.Target.Funcs{
+ if fn.Pos()==(src.XPos{}){t.Fatal("missing function position")}
+ out=append(out,fmt.Sprintf("func:%v:%v:%t:%t:%t:%t:%t:%t:%d",fn.Sym(),fn.Type(),fn.Wrapper(),fn.Dupok(),fn.Needctxt(),fn.Sym().Siggen(),fn.Sym().Uniq(),fn.Nname.Defn==fn,len(fn.Body)))
+ ir.Visit(fn,func(n ir.Node){
+ out=append(out,fmt.Sprintf("node:%s:%d:%v:%s:%v",n.Op(),n.Typecheck(),n.Type(),LINK.PosTable.Pos(n.Pos()),n))
+ if a,ok:=n.(*ir.CallExpr);ok{out=append(out,fmt.Sprintf("call:%t:%t:%t",a.GoDefer,a.NoInline,a.IsDDD))}
+ })
+ for _,d:=range fn.Dcl{out=append(out,fmt.Sprintf("local:%v:%v:%d:%t:%t:%t",d.Sym(),d.Type(),d.Class,d.InlFormal(),d.InlLocal(),d.Curfn==fn))}
+ for _,d:=range fn.ClosureVars{out=append(out,fmt.Sprintf("capture:%v:%v:%t:%t:%t:%t",d.Sym(),d.Type(),d.Curfn==fn,d.Byval(),d.Outer!=nil,d.IsClosureVar()))}
+ }
+ for i:=0;i<UP.inlgen;i++{out=append(out,fmt.Sprintf("tree:%d:%d:%s:%s:%s",i,LINK.InlTree.Parent(i),LINK.InlTree.InlinedFunction(i).Name,LINK.InlTree.InlinedFuncName(i),LINK.PosTable.Pos(LINK.InlTree.CallPos(i))))}
+ for _,sym:=range LINK.Data{if strings.HasSuffix(sym.Name,"$abstract"){out=append(out,fmt.Sprintf("abstract:%s:%d:%d",sym.Name,sym.Type,sym.Attribute))}}
+ if imported!=nil{sym:=imported.Lookup("D.M-fm");if sym.Def==nil{t.Fatal("missing imported method value declaration")};fn:=sym.Def.(*ir.Name).Func;out=append(out,fmt.Sprintf("import:%v:%t:%t:%d:%d:%v",sym,sym.Uniq(),fn.Needctxt(),len(fn.Body),len(fn.ClosureVars),fn.ClosureVars[0].Type()))}
+ out=append(out,fmt.Sprintf("state:%d:%d:%d:%t:%d:%d:%d:%d",UP.inlgen,len(UP.todoBodies),len(UP.todoDicts),GRAPH.CurFunc==nil,len(UP.needWrapperTypes),len(UP.haveWrapperTypes),len(UP.needMethodValueWrappers),len(UP.haveMethodValueWrappers)))
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

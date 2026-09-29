@@ -77,6 +77,9 @@ func ExampleNewContext() {
 	writer.ReflectData = reflectdata.NewContext(tc, rt, staticdata.NewContext(graph, ow))
 	writer.StaticInit = staticinit.NewContext(tc, writer.ReflectData)
 	target := writer.ReadLocalPackage(stub)
+	writer.Flag.LowerL = 1
+	writer.Interleaved.DevirtualizeAndInlinePackage(target, nil)
+	writer.MakeWrappers(target)
 	sum, err := writer.LookupFunc("example/p.Sum")
 	if err != nil {
 		panic(err)

@@ -1,5 +1,7 @@
 # M3 原生去虚化与整包内联
 
+本篇记录该批提交时的边界；后续已接通 [原生方法包装函数生成](m3-wrappers.md)。
+
 本批接通 `noder.Context.Interleaved.DevirtualizeAndInlinePackage` 与 `DevirtualizeAndInlineFunc`，直接执行 Go 1.27 的原生固定点驱动。此前已经可以展开一个调用；现在由迁入驱动组织全包可内联判定、调用点评分、静态去虚化、内联后的赋值分析更新、重复展开及最终清理。
 
 完整源码到 SSA、原生编译器回接仍未完成。本批结果是优化后的原生包 IR；wrapper 生成、后续 IR 优化、escape/walk 和 SSA 构造仍按后续阶段推进。

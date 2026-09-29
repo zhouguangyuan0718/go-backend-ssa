@@ -5,7 +5,7 @@ package port
 func noderReaderMigration(context *ContextRule) Unit {
 	u := Unit{Source: "src/cmd/compile/internal/noder/reader.go",
 		ContextParams: []string{"readerDict.mangle", "readerDict.varType"},
-		Checks:        map[string]string{"Shapify": "checkShape", "pkgReader.objDictIdx": "checkDictArgs"},
+		Checks:        map[string]string{"MakeWrappers": "checkWrapperTarget", "Shapify": "checkShape", "pkgReader.objDictIdx": "checkDictArgs"},
 		Context:       context, Owner: &OwnerRule{Types: []string{"pkgReader", "reader"}, Context: "Context", Field: "compilation"},
 		State: []StateRule{
 			{Source: "src/internal/buildcfg/cfg.go", Variable: "GOROOT", Field: "GOROOT"},
@@ -26,7 +26,7 @@ func noderReaderMigration(context *ContextRule) Unit {
 			{Source: "src/cmd/compile/internal/base/print.go", Function: "Warn", Method: "warn"},
 		}}
 
-	u.Functions = []string{"newPkgReader", "setType", "setValue", "Shapify", "bodyReaderFor", "block", "syntheticSig", "shapedMethodExpr", "unifiedHaveInlineBody", "setBasePos", "shapeSig", "unifiedInlineCall", "expandInline"}
+	u.Functions = []string{"newPkgReader", "setType", "setValue", "Shapify", "bodyReaderFor", "block", "syntheticSig", "shapedMethodExpr", "unifiedHaveInlineBody", "setBasePos", "shapeSig", "unifiedInlineCall", "expandInline", "MakeWrappers", "wrapType", "methodWrapper", "wrapMethodValue", "newWrapperFunc", "finishWrapperFunc", "newWrapperType", "addTailCall"}
 	u.ContextFrom = map[string]ContextSource{"reader.openScope": {Argument: "r", Resolver: "scopeReaderContext"}}
 	u.Declarations = []string{
 		"reader.pkgInit", "reader.pkgInitOrder",
@@ -171,6 +171,7 @@ func noderReaderMigration(context *ContextRule) Unit {
 		StateRule{Source: "src/cmd/compile/internal/types/type.go", Variable: "UntypedString", Field: "Types.UntypedString"},
 	)
 	u.Calls = append(u.Calls,
+		CallRule{Source: "src/cmd/compile/internal/inline/interleaved/interleaved.go", Function: "DevirtualizeAndInlineFunc", Method: "Interleaved.DevirtualizeAndInlineFunc"},
 		CallRule{Source: "src/cmd/compile/internal/inline/inl.go", Function: "CalleeEffects", Method: "Inline.CalleeEffects"},
 		CallRule{Source: "src/cmd/compile/internal/staticinit/sched.go", Function: "OutlineMapInits", Method: "StaticInit.OutlineMapInits"},
 		CallRule{Source: "src/cmd/compile/internal/base/print.go", Function: "WarnfAt", Method: "warnfAt"},
