@@ -91,6 +91,16 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	if context == nil {
 		return nil
 	}
+	derived, err := contextSourceFunctions(files, info, units)
+	if err != nil {
+		return err
+	}
+	for obj := range derived {
+		delete(functions, obj)
+	}
+	if err := validateEmbeddedOwners(info, owners); err != nil {
+		return err
+	}
 	for obj := range external {
 		delete(functions, obj) // Explicit bindings take precedence over generated methods.
 	}
@@ -355,7 +365,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				decls = append(decls, d)
 				continue
 			}
-			if context.Selective && fn.Recv == nil && fn.Name.Name != "init" && functions[info.Defs[fn.Name]] == "" {
+			if context.Selective && fn.Recv == nil && fn.Name.Name != "init" && functions[info.Defs[fn.Name]] == "" && derived[info.Defs[fn.Name]].Resolver == "" {
 				decls = append(decls, d)
 				continue
 			}
@@ -367,7 +377,13 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			nullable := append([]string(nil), units[i].Nullable[key]...)
 			ctx := ast.Expr(ast.NewIdent(recv))
 			var guard []ast.Stmt
-			if parameterMethods[info.Defs[fn.Name]] {
+			if source := derived[info.Defs[fn.Name]]; source.Resolver != "" {
+				var err error
+				guard, err = contextStatements("syncgoCtx := "+source.Resolver+"("+source.Argument+"); if syncgoCtx == nil {panic(\"uninitialized compilation\")}", fn.Body.Lbrace)
+				if err != nil {
+					return err
+				}
+			} else if parameterMethods[info.Defs[fn.Name]] {
 				for _, field := range fn.Type.Params.List {
 					if len(field.Names) == 0 {
 						field.Names = []*ast.Ident{{Name: "_", NamePos: field.Pos()}}

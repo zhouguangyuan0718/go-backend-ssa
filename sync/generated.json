@@ -2,7 +2,7 @@
   "schema_version": 1,
   "tool": "syncgo-m3-v8",
   "commit": "862c888e612ac346c7c4d99c9392bdfd265f33b0",
-  "plan_sha256": "641e6c3f62065927b78287e8604fa1ab36f40c2d2a23d38cd900b58a9f01b2dd",
+  "plan_sha256": "12ae52668df46e4d6a0d6368d5d21e95771665a6f83a9f78b0ea9ccfcb84283c",
   "files": [
     {
       "output": "internal/cmd/src/pos.go",

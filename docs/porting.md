@@ -112,3 +112,13 @@ SSA 的 _gen、rewrite 规则和相关生成依赖必须与源提交一致。可
 宿主方法/入口校验的签名比较忽略局部参数和结果名称（包括回调参数），仍严格比较类型、返回值及 variadic。多个上游入口可以共享相同类型的校验函数，不必为了 `fs`/`methods` 的命名差异复制 adapter。
 
 `ReceiverStateRule` 把少量全局状态移入上游已有的私有 receiver 结构，当前用于 syntax 的 scanner/labelScope/printer/dumper。保留源方法签名和算法；有明确 init 方法时在其中重置状态、执行原有初始化循环，否则在原有 keyed literal/builtin new 构造处分配状态。可推断的初始化形式仅支持新建 struct 指针及常量 byte slice，其他类型须有显式声明。固定数组 len/cap 的常量值来自 go/types；运行时全局访问必须发生在匹配的 receiver 方法内，否则拒绝生成。字段冲突、未初始化零值构造、未审核的 initializer/构造形式及初始化规则失配也会报错。此规则不为 AST 增加第二套 owner 或新的公开 parser 对象。
+
+## 原生 IR 的嵌入归属与固定签名
+
+IR 迁移需要保留 `miniNode → miniExpr/miniStmt → 具体节点` 的值嵌入关系。`OwnerRule.Embedded` 为派生类型指定到共同基类的路径，例如 `"AddrExpr": "miniExpr.miniNode"`；只有基类添加实例字段。工具通过原始 go/types 信息校验路径、字段嵌入方式和最终归属声明，在 new、字面量及显式零值局部变量中补全基类初始化。原生 `c := *n` 复制自然保留归属，不重复绑定或清空旧对象。
+
+目前接受本包具名结构的值嵌入；指针嵌入、非嵌入路径以及将任意表达式作为基类初始化值均拒绝，避免隐式改变其他实例的归属。若上游引入这些形式，需要审计后扩展规则。原始 keyed/unkeyed 字面量均保留字段含义。
+
+`Unit.ContextFrom` 用于必须保持签名的原生函数/方法（例如格式化接口）。规则指明原始参数或接收者名称，以及手写 adapter 中的实例解析函数。工具验证参数存在，在函数体中取得实例；调用方、函数值和接口签名保持不变，正文的状态访问使用该实例。解析函数的输入和返回契约随最终输出一起接受类型检查，nil 实例被拒绝，不产生默认全局实例。
+
+回归见 [embedded_owner_test.go](../internal/port/embedded_owner_test.go)：多层嵌入、分配/复制、回调、固定接口签名、16 个并发实例，以及路径或参数漂移拒绝。这些规则是原生 IR 迁移的准备工作；当前尚未迁入完整 Node/Name/Func 图。后续依次接入 IR 节点和格式化、原生符号/ABI 绑定，以及 reader/typecheck，不以工具规则测试代替编译器验收。

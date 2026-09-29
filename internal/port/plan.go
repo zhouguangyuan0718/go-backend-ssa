@@ -34,7 +34,12 @@ type Plan struct {
 	Units        []Unit
 }
 
+// ContextSource keeps a native signature, deriving its instance from a reviewed
+// argument/receiver through a typed adapter resolver.
+type ContextSource struct{ Argument, Resolver string }
+
 type Unit struct {
+	ContextFrom    map[string]ContextSource
 	Source         string
 	Functions      []string
 	Declarations   []string // Types, complete constant groups, and Receiver.Method names.
@@ -67,7 +72,8 @@ type ReceiverStateRule struct {
 }
 
 type OwnerRule struct {
-	Existing       bool // Bind an existing *Context field instead of adding one.
+	Embedded       map[string]string // Type -> path to an embedded value carrying Field; add no duplicate field.
+	Existing       bool              // Bind an existing *Context field instead of adding one.
 	Types          []string
 	Context, Field string
 }
@@ -157,6 +163,14 @@ func (p Plan) Validate() error {
 				seen[field] = true
 			}
 		}
+		for name, binding := range u.ContextFrom {
+			if u.Context == nil || !memberPath(name) || !token.IsIdentifier(binding.Argument) || binding.Argument == "_" || !token.IsIdentifier(binding.Resolver) || binding.Resolver == "_" {
+				return fmt.Errorf("invalid context source: %s", name)
+			}
+			if u.ContextMethods[name] != "" {
+				return fmt.Errorf("context source cannot rename function: %s", name)
+			}
+		}
 		for source, target := range u.ContextMethods {
 			if u.Context == nil || !token.IsIdentifier(source) || !token.IsIdentifier(target) {
 				return fmt.Errorf("invalid context method name: %s", source)
@@ -220,6 +234,11 @@ func (p Plan) Validate() error {
 					return fmt.Errorf("invalid owner type %s", name)
 				}
 				seen[name] = true
+			}
+			for name, path := range owner.Embedded {
+				if !seen[name] || !memberPath(path) || owner.Existing {
+					return fmt.Errorf("invalid embedded owner rule: %s", name)
+				}
 			}
 			if u.Context != nil && u.Context.Type != owner.Context {
 				return fmt.Errorf("owner/context mismatch")
