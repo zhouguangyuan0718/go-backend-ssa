@@ -19,6 +19,7 @@ import (
 	"go-backend-ssa/position"
 	"go-backend-ssa/reflectdata"
 	"go-backend-ssa/rttype"
+	"go-backend-ssa/ssagen"
 	"go-backend-ssa/staticdata"
 	"go-backend-ssa/staticinit"
 	"go-backend-ssa/syntax"
@@ -321,6 +322,22 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	initialization.MakeTask()
 	if len(initialization.InstrumentGlobalsMap) != 0 || graph.CurFunc != nil || pkginit.GetRedzoneSizeForGlobal(33) != 63 {
 		t.Fatal("public initialization state or redzone calculation failed")
+	}
+
+	universe.Experiment.RegabiWrappers = true
+	backend := ssagen.NewContext(tc)
+	backend.ReadFile = func(string) ([]byte, error) { return []byte("ref example/p.Twice ABI0\n"), nil }
+	symABIs := backend.NewSymABIs()
+	symABIs.ReadSymABIs("input.symabis")
+	symABIs.GenABIWrappers()
+	wrappers := 0
+	for _, fn := range result.Funcs {
+		if fn.Sym().Name == "Twice" && fn.ABI == gcbridge.ABI0 && fn.ABIWrapper() {
+			wrappers++
+		}
+	}
+	if wrappers != 1 || graph.CurFunc != nil {
+		t.Fatal("public ABI wrapper generation failed", wrappers)
 	}
 
 }

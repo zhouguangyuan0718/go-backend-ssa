@@ -1,5 +1,7 @@
 # M3 原生包初始化任务
 
+后续已接入 [原生 ABI wrappers](m3-abi-wrappers.md)；本文记录包初始化阶段边界。
+
 本批迁入完整 `pkginit/init.go` 和 `pkginit/initAsanGlobals.go`。对外提供 `pkginit.NewContext(reader).MakeTask()`，沿用上游对包变量静态初始化、用户 init、导入包依赖及 ASan 全局变量登记的处理。
 
 执行顺序与上游保持一致：整包内联、方法包装、loopvar、MakeTask，随后才是尚待接入的 ABI wrappers、deadlocals、escape、slice、walk 和 SSA。本批仍未实现完整 SSA 入口或上游编译器替换。

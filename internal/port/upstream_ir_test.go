@@ -22,6 +22,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_wrappers")
 	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_loopvar")
 	testUpstreamNativeGraph(t, s, r, root, "pkginit")
+	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_abi")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
 	testUpstreamNativeGraph(t, s, r, root, "pgoir")
 	testUpstreamNativeGraph(t, s, r, root, "logopt")
@@ -99,11 +100,11 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if pkgName == "staticdata" {
 		setup = `link:=&obj.Link{Arch:&obj.LinkArch{Arch:&sys.Arch{Name:target.arch,PtrSize:target.size,RegSize:target.size,ByteOrder:target.order}}};u:=types.NewUniverseWithPositions(target.size,target.size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");graph:=ir.NewContext(u,link);typecheck.NewContext(graph).InitUniverse();c:=NewContext(graph,objw.NewContext(u,link,"linux"))`
 	}
-	if snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_import" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" {
+	if snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_import" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" {
 		setup = `link:=&obj.Link{Arch:&obj.LinkArch{Arch:&sys.Arch{Name:target.arch,PtrSize:target.size,RegSize:target.size,ByteOrder:target.order}}};u:=types.NewUniverseWithPositions(target.size,target.size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");graph:=ir.NewContext(u,link);tc:=typecheck.NewContext(graph);tc.InitUniverse();c,err:=NewContext(types2.NewContext(),tc);if err!=nil{t.Fatal(err)}`
 		position = "u.Pos"
 	}
-	if snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" {
+	if snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" {
 		setup += `;link.Pathname="/src";link.Pkgpath="example/p";tc.InitRuntime();c.Flag.Dwarf=true;rt:=rttype.NewContext(objw.NewContext(u,link,"linux"));rt.Init();c.ReflectData=reflectdata.NewContext(tc,rt,staticdata.NewContext(graph,rt.Writer));c.StaticInit=staticinit.NewContext(tc,c.ReflectData)`
 	}
 
@@ -120,10 +121,12 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if pkgName == "base" {
 		setup = `link:=&obj.Link{};c:=NewLinkContext(link)`
 	}
-	if snapshotName == "pkginit" {
+	if snapshotName == "pkginit" || snapshotName == "ssagen_abi" {
 		setup = strings.Replace(setup, "c,err:=NewContext(types2.NewContext(),tc)", "c,err:=noder.NewContext(types2.NewContext(),tc)", 1)
 	}
 	ported := strings.NewReplacer(
+		"IMPORT_SSAGEN", "go-backend-ssa/internal/ssagen", "IMPORT_PKGINIT", "go-backend-ssa/internal/pkginit", "INIT_BEFORE_ABI", `pkginit.NewContext(c).MakeTask()`,
+		"ABI_READ", `backend:=ssagen.NewContext(tc);backend.ReadFile=func(string)([]byte,error){return []byte(raw),nil};s:=backend.NewSymABIs();s.ReadSymABIs("input.symabis")`,
 		"IMPORT_NODER", "go-backend-ssa/internal/noder", "PKGINIT_DRIVER_IMPORT", "",
 		"PKGINIT_READ", `c.ReadLocalPackage(string(data))`,
 		"PKGINIT_DRIVER", `c.Interleaved.DevirtualizeAndInlinePackage(tc.Target,nil);c.MakeWrappers(tc.Target);capture:=loopvar.NewContext(tc,c.Inline.Log);for _,fn:=range tc.Target.Funcs{capture.ForCapture(fn)}`,
@@ -155,7 +158,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	goroot := strings.TrimSpace(string(run("env", "GOROOT")))
 	overlay := map[string]string{}
-	for _, pkg := range []string{"cmd/compile/internal/ir", "cmd/compile/internal/types", "cmd/compile/internal/base", "cmd/internal/obj", "cmd/compile/internal/typecheck", "cmd/compile/internal/noder", "cmd/compile/internal/dwarfgen", "cmd/compile/internal/objw", "cmd/compile/internal/bitvec", "cmd/internal/objabi", "internal/bisect", "internal/abi", "cmd/compile/internal/rttype", "cmd/compile/internal/reflectdata", "cmd/compile/internal/typebits", "cmd/compile/internal/staticdata", "cmd/internal/hash", "cmd/compile/internal/compare", "cmd/compile/internal/staticinit", "cmd/compile/internal/pgoir", "cmd/internal/pgo", "cmd/compile/internal/inline/inlheur", "cmd/compile/internal/inline", "cmd/compile/internal/logopt", "cmd/compile/internal/devirtualize", "cmd/compile/internal/inline/interleaved", "cmd/compile/internal/loopvar", "cmd/compile/internal/pkginit"} {
+	for _, pkg := range []string{"cmd/compile/internal/ir", "cmd/compile/internal/types", "cmd/compile/internal/base", "cmd/internal/obj", "cmd/compile/internal/typecheck", "cmd/compile/internal/noder", "cmd/compile/internal/dwarfgen", "cmd/compile/internal/objw", "cmd/compile/internal/bitvec", "cmd/internal/objabi", "internal/bisect", "internal/abi", "cmd/compile/internal/rttype", "cmd/compile/internal/reflectdata", "cmd/compile/internal/typebits", "cmd/compile/internal/staticdata", "cmd/internal/hash", "cmd/compile/internal/compare", "cmd/compile/internal/staticinit", "cmd/compile/internal/pgoir", "cmd/internal/pgo", "cmd/compile/internal/inline/inlheur", "cmd/compile/internal/inline", "cmd/compile/internal/logopt", "cmd/compile/internal/devirtualize", "cmd/compile/internal/inline/interleaved", "cmd/compile/internal/loopvar", "cmd/compile/internal/pkginit", "cmd/compile/internal/ssagen"} {
 		for _, name := range s.PackageFiles(pkg) {
 			data, err := s.Read(name)
 			if err != nil {
@@ -182,13 +185,13 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if pkgName == "reflectdata" {
 		nativeSetup += `;ir.Pkgs.InternalMaps=types.NewPkg("go.internal/runtime/maps","internal/runtime/maps");ir.Pkgs.InternalMaps.Prefix="internal/runtime/maps";ir.Pkgs.Runtime=types.NewPkg("go.runtime","runtime");ir.Pkgs.Runtime.Prefix="runtime";typecheck.Target=&ir.Package{};ir.Pkgs.Itab=types.NewPkg("go.itab","go.itab");ir.Pkgs.Itab.Prefix="go:itab";base.AutogeneratedPos=base.Ctxt.PosTable.XPos(src.MakePos(src.NewFileBase("<autogenerated>","<autogenerated>"),1,0));rttype.Init()`
 	}
-	if snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_import" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" {
+	if snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_import" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" {
 		nativeSetup = `base.Ctxt=&obj.Link{Arch:&obj.LinkArch{Arch:&sys.Arch{Name:target.arch,PtrSize:target.size,RegSize:target.size,ByteOrder:target.order}}};types.PtrSize=target.size;types.RegSize=target.size;types.MaxWidth=1<<50;types.BuiltinPkg=types.NewPkg("go.builtin","");types.LocalPkg=types.NewPkg("example/p","p");types.UnsafePkg=types.NewPkg("unsafe","unsafe");base.AutogeneratedPos=base.Ctxt.PosTable.XPos(src.MakePos(src.NewFileBase("<autogenerated>","<autogenerated>"),1,0));typecheck.InitUniverse()`
 	}
 	if snapshotName == "noder_import" {
 		nativeSetup += `;typecheck.Target=&ir.Package{}`
 	}
-	if snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" {
+	if snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" {
 		nativeSetup += `;base.Ctxt.Pathname="/src";base.Ctxt.Pkgpath="example/p";base.Flag.Dwarf=true;buildcfg.GOARCH=target.arch;buildcfg.GOOS="linux";ir.Pkgs.Go=types.NewPkg("go","");ir.Pkgs.InternalMaps=types.NewPkg("go.internal/runtime/maps","internal/runtime/maps");ir.Pkgs.InternalMaps.Prefix="internal/runtime/maps";ir.Pkgs.Runtime=types.NewPkg("go.runtime","runtime");ir.Pkgs.Runtime.Prefix="runtime";typecheck.Target=&ir.Package{};ir.Pkgs.Itab=types.NewPkg("go.itab","go.itab");ir.Pkgs.Itab.Prefix="go:itab";typecheck.InitRuntime();rttype.Init()`
 	}
 
@@ -206,6 +209,8 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		nativeSetup = `Ctxt=&obj.Link{}`
 	}
 	native := strings.NewReplacer(
+		"IMPORT_SSAGEN", "cmd/compile/internal/ssagen", "IMPORT_PKGINIT", "cmd/compile/internal/pkginit", "INIT_BEFORE_ABI", `pkginit.MakeTask()`,
+		"ABI_READ", `file:=t.TempDir()+"/input.symabis";if err:=os.WriteFile(file,[]byte(raw),0600);err!=nil{t.Fatal(err)};s:=ssagen.NewSymABIs();s.ReadSymABIs(file)`,
 		"IMPORT_NODER", "cmd/compile/internal/noder", "PKGINIT_DRIVER_IMPORT", `"cmd/compile/internal/inline/interleaved";`,
 		"PKGINIT_READ", `noder.SyncgoReadInit(string(data))`,
 		"PKGINIT_DRIVER", `interleaved.DevirtualizeAndInlinePackage(typecheck.Target,nil);noder.MakeWrappers(typecheck.Target);for _,fn:=range typecheck.Target.Funcs{loopvar.ForCapture(fn)}`,
@@ -225,7 +230,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	writeTestFile(t, dir, "reference/"+pkgName+"_snapshot_test.go", native)
 	overlay[filepath.Join(goroot, "src/cmd/compile/internal/"+pkgName+"/syncgo_snapshot_test.go")] = filepath.Join(dir, "reference/"+pkgName+"_snapshot_test.go")
 	// Observers expose existing buffers only in the temporary reference build.
-	if snapshotName == "noder_loopvar" {
+	if snapshotName == "noder_loopvar" || snapshotName == "ssagen_abi" {
 		for _, observer := range []struct{ pkg, fixture string }{{"logopt", "loopvar_log_snapshot.go.txt"}, {"base", "loopvar_warning_snapshot.go.txt"}} {
 			data, err := os.ReadFile(filepath.Join(root, "internal/port/testdata", observer.fixture))
 			if err != nil {
@@ -236,7 +241,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 			overlay[filepath.Join(goroot, "src/cmd/compile/internal", observer.pkg, "syncgo_loopvar_observer.go")] = filepath.Join(dir, dest)
 		}
 	}
-	if snapshotName == "pkginit" {
+	if snapshotName == "pkginit" || snapshotName == "ssagen_abi" {
 		data, err := os.ReadFile(filepath.Join(root, "internal/port/testdata/pkginit_reader.go.txt"))
 		if err != nil {
 			t.Fatal(err)
@@ -262,7 +267,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	// rejects overlays. Run that exact binary with a private test module cache;
 	// it needs no external modules and never writes to the installed toolchain.
 	targets := []string{""}
-	if pkgName == "rttype" || pkgName == "reflectdata" || pkgName == "staticdata" || snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" {
+	if pkgName == "rttype" || pkgName == "reflectdata" || pkgName == "staticdata" || snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" {
 		targets = []string{"386", "amd64", "mips", "ppc64"}
 	}
 	if snapshotName == "reflectdata_descriptors" {
@@ -317,6 +322,14 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		}
 		writeTestFile(t, dir, "internal/noder/adapter_fixture_test.go", strings.ReplaceAll(string(fixture), "BODY_INPUT_PATH", fmt.Sprintf("%q", filepath.Join(dir, "reader-input"))))
 	}
+	if snapshotName == "ssagen_abi" {
+		targets = append(targets, "amd64-noregabi", "ppc64-dynlink", "amd64-cgo", "amd64-linkname", "amd64-conflict", "amd64-duplicates")
+		fixture, err := os.ReadFile(filepath.Join(root, "internal/port/testdata/ssagen_abi_fixture.go.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeTestFile(t, dir, "internal/noder/adapter_fixture_test.go", strings.ReplaceAll(string(fixture), "BODY_INPUT_PATH", fmt.Sprintf("%q", filepath.Join(dir, "reader-input"))))
+	}
 	for _, snapshotTarget = range targets {
 		if snapshotName == "noder_wrappers" && strings.HasSuffix(snapshotTarget, "-import") {
 			prepareNativeImport(t, root, dir, false, "noder_wrappers_import.go.txt")
@@ -324,7 +337,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		if snapshotName == "noder_inline" && strings.HasSuffix(snapshotTarget, "-newinline") {
 			prepareNativeImport(t, root, dir, true)
 		}
-		if snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" {
+		if snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" {
 			run("test", "-count=1", "-run", "^TestSyncgoBodyFixture$", "./internal/noder")
 		}
 

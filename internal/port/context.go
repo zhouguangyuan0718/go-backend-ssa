@@ -8,6 +8,7 @@ import (
 	"go/types"
 	"path"
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -115,8 +116,8 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		delete(functions, obj) // Explicit bindings take precedence over generated methods.
 	}
 	traceBindings := map[types.Object]string{}
-	if context.RedirectTrace || context.RedirectExit {
-		traceBindings = hostReferences(info, context.RedirectTrace, context.RedirectExit)
+	if context.RedirectTrace || context.RedirectExit || context.RedirectReadFile {
+		traceBindings = hostReferences(info, context.RedirectTrace, context.RedirectExit, context.RedirectReadFile)
 		for obj, method := range traceBindings {
 			external[obj] = method
 		}
@@ -565,6 +566,24 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		comments := ast.NewCommentMap(fs, f, f.Comments)
 		f.Decls = decls
 		f.Comments = comments.Filter(f).Comments()
+		// Synthesized fields can extend a removed initializer's token span
+		// across the following declaration's Doc. Keep comments still attached
+		// to retained AST nodes, while using the updated tree for other comments
+		// (including trailing directives whose original expression was replaced).
+		seen := map[*ast.CommentGroup]bool{}
+		for _, group := range f.Comments {
+			seen[group] = true
+		}
+		var attached []*ast.CommentGroup
+		ast.Inspect(f, func(n ast.Node) bool {
+			if group, ok := n.(*ast.CommentGroup); ok && !seen[group] {
+				seen[group] = true
+				attached = append(attached, group)
+			}
+			return true
+		})
+		f.Comments = append(f.Comments, attached...)
+		sort.Slice(f.Comments, func(i, j int) bool { return f.Comments[i].Pos() < f.Comments[j].Pos() })
 	}
 	allocate := "&" + context.Type + "{}"
 	if context.Existing {

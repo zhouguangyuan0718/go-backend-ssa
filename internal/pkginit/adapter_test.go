@@ -23,7 +23,7 @@ import (
 	"testing"
 )
 
-func sourceContext(t *testing.T, path, source string, asan bool) *Context {
+func sourceContext(t *testing.T, path, source string, asan bool, configure ...func(*noder.Context)) *Context {
 	t.Helper()
 	link := &obj.Link{Pathname: "/src", Pkgpath: path, Arch: &obj.LinkArch{Arch: &sys.Arch{Name: "amd64", PtrSize: 8, RegSize: 8, ByteOrder: binary.LittleEndian}}}
 	u := types.NewUniverseWithPositions(8, 8, 1<<50, &link.PosTable)
@@ -40,6 +40,9 @@ func sourceContext(t *testing.T, path, source string, asan bool) *Context {
 	nd, err := noder.NewContext(types2.NewContext(), tc)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, f := range configure {
+		f(nd)
 	}
 	rt := rttype.NewContext(objw.NewContext(u, link, "linux"))
 	rt.Init()

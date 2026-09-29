@@ -11,6 +11,7 @@ import (
 	"go-backend-ssa/pkginit"
 	"go-backend-ssa/reflectdata"
 	"go-backend-ssa/rttype"
+	"go-backend-ssa/ssagen"
 	"go-backend-ssa/staticdata"
 	"go-backend-ssa/staticinit"
 	"go-backend-ssa/syntax"
@@ -87,6 +88,7 @@ func ExampleNewContext() {
 		capture.ForCapture(fn)
 	}
 	pkginit.NewContext(writer).MakeTask()
+	ssagen.NewContext(tc).NewSymABIs().GenABIWrappers()
 	sum, err := writer.LookupFunc("example/p.Sum")
 	if err != nil {
 		panic(err)

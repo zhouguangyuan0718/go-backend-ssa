@@ -1,0 +1,35 @@
+package ssagen_test
+import("fmt";"encoding/json";"encoding/binary";"os";"strings";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_LOOPVAR";"IMPORT_NODER";"IMPORT_PKGINIT";"IMPORT_SSAGEN";EXPAND_RUNTIME AUTO_IMPORT PKGINIT_DRIVER_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ mode:=os.Getenv("SYNCGO_TARGET")
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.SplitN(mode,"-",2)[0],8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":order:=binary.BigEndian;target.order=order}
+ SETUP
+ data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
+ PKGINIT_READ
+ PKGINIT_DRIVER
+ INIT_BEFORE_ABI
+ EXPERIMENT.RegabiWrappers=target.arch=="amd64"||target.arch=="ppc64"
+ if strings.HasSuffix(mode,"-noregabi"){EXPERIMENT.RegabiWrappers=false}
+ LINK.Flag_dynlink=strings.HasSuffix(mode,"-dynlink")
+ raw:="# assembler ABI data\n\ndef example/p.Asm ABI0\ndef example/p.AsmEmpty ABI0\nref example/p.Sum ABI0\nref example/p.Empty ABI0\nref example/p.Variadic ABI0\n"
+ if strings.HasSuffix(mode,"-duplicates"){raw+="def example/p.Asm ABI0\nref example/p.Sum ABI0\n"}
+ if strings.HasSuffix(mode,"-conflict"){raw+="def example/p.Sum ABI0\n"}
+ for _,fn:=range TC.Target.Funcs{
+ if strings.HasSuffix(mode,"-linkname")&&fn.Sym().Name=="Linked"{fn.Sym().Linkname="external.Linked"}
+ if strings.HasSuffix(mode,"-cgo")&&fn.Sym().Name=="Unsafe"{fn.Pragma|=ir.CgoUnsafeArgs;fn.Sym().Linksym().Set(obj.AttrLinkname,true);fn.Sym().Linksym().Set(obj.AttrLinknameStd,true)}
+ }
+ if strings.HasSuffix(mode,"-cgo"){TC.Target.CgoPragmas=[][]string{{"cgo_export_static","example/p.Export"},{"cgo_export_dynamic","example/p.Export","external_export"}}}
+ ABI_READ
+ var out []string
+ for _,name:=range []string{"Asm","AsmEmpty","Sum","Linked"}{out=append(out,fmt.Sprintf("definition:%s:%t",name,s.HasDef(TY.LocalPkg.Lookup(name))))}
+ s.GenABIWrappers()
+ for _,fn:=range TC.Target.Funcs{
+ out=append(out,fmt.Sprintf("func:%v:%v:%d:%d:%t:%t:%v:%d",fn.Sym(),fn.Type(),fn.ABI,fn.ABIRefs,fn.ABIWrapper(),fn.Dupok(),fn.Pragma,len(fn.Body)))
+ sym:=fn.LinksymABI(fn.ABI);out=append(out,fmt.Sprintf("symbol:%s:%d",sym.Name,uint32(sym.Attribute)))
+ ir.Visit(fn,func(n ir.Node){out=append(out,fmt.Sprintf("node:%v:%v:%d:%v:%v",n.Op(),n.Type(),n.Typecheck(),LINK.PosTable.Pos(n.Pos()),n));if call,ok:=n.(*ir.CallExpr);ok{out=append(out,fmt.Sprintf("call:%t:%d",call.IsDDD,len(call.Args)))}})
+ for _,d:=range fn.Dcl{out=append(out,fmt.Sprintf("local:%v:%v:%d:%t",d,d.Type(),d.Class,d.Curfn==fn))}
+ }
+ LOOP_WARNINGS
+ out=append(out,fmt.Sprintf("state:%d:%t:%v:%v",LINK.DwTextCount,GRAPH.CurFunc==nil,LINK.PosTable.Pos(POS),TC.Target.CgoPragmas))
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

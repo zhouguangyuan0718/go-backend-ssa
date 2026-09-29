@@ -63,7 +63,7 @@ func Migration() Plan {
 			{Source: "src/cmd/internal/objabi/util.go", Declarations: []string{"GlobalDictPrefix"}},
 			{Source: "src/cmd/internal/objabi/symkind.go", WholeFile: true},
 			{Source: "src/cmd/internal/objabi/reloctype.go", WholeFile: true},
-			{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Addr", "AddrName", "AddrPos", "AddrType", "As", "Attribute", "Func", "LSym", "Link", "LinkArch", "OperandPos", "Prog", "Reloc", "ABI", "ABI0", "ABISet", "ABISetCallable", "AttrDuplicateOK", "symOnce", "Attribute.load", "Attribute.Set", "Attribute.ABI", "Attribute.SetABI", "Attribute.Static", "ABISet.Set", "ABISet.Get", "ABISet.String", "Link.Diag", "Attribute.OnList", "Attribute.DuplicateOK", "Attribute.Local", "LSym.String", "LSym.NewTypeInfo", "LSym.TypeInfo", "LSym.NewItabInfo", "LSym.ItabInfo", "TypeInfo", "ItabInfo", "FuncInfo", "LSym.NewFuncInfo", "LSym.Func", "Pcln", "InlMark", "RegSpill", "JumpTable", "WasmImport", "WasmExport", "WasmFuncType", "WasmField", "WasmFieldType", "Attribute.WasInlined", "Link.Logf"}, Functions: []string{"ABISetOf", "ParseABI"}, Context: objectDataContext()},
+			{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Addr", "AddrName", "AddrPos", "AddrType", "As", "Attribute", "Func", "LSym", "Link", "LinkArch", "OperandPos", "Prog", "Reloc", "ABI", "ABI0", "ABISet", "ABISetCallable", "AttrDuplicateOK", "symOnce", "Attribute.load", "Attribute.Set", "Attribute.ABI", "Attribute.SetABI", "Attribute.Static", "ABISet.Set", "ABISet.Get", "ABISet.String", "Link.Diag", "Attribute.OnList", "Attribute.DuplicateOK", "Attribute.Local", "Attribute.IsLinkname", "Attribute.IsLinknameStd", "LSym.String", "LSym.NewTypeInfo", "LSym.TypeInfo", "LSym.NewItabInfo", "LSym.ItabInfo", "TypeInfo", "ItabInfo", "FuncInfo", "LSym.NewFuncInfo", "LSym.Func", "Pcln", "InlMark", "RegSpill", "JumpTable", "WasmImport", "WasmExport", "WasmFuncType", "WasmField", "WasmFieldType", "Attribute.WasInlined", "Link.Logf"}, Functions: []string{"ABISetOf", "ParseABI"}, Context: objectDataContext()},
 			{Source: "src/internal/goexperiment/flags.go", Declarations: []string{"Flags"}},
 			{Source: "src/internal/buildcfg/exp.go", Declarations: []string{"ExperimentFlags"}},
 			{Source: "src/internal/types/errors/codes.go", WholeFile: true},
@@ -205,6 +205,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, dwarfgenMigration()...)
 	plan.Units = append(plan.Units, noderMigration()...)
 	plan.Units = append(plan.Units, pkginitMigration()...)
+	plan.Units = append(plan.Units, ssagenABIMigration()...)
 	// base's symbol helpers now consume the native obj package. Keep their
 	// entire package after obj/buildcfg and before the compiler types package.
 	var baseUnits, units []Unit

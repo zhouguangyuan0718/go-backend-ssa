@@ -100,11 +100,17 @@ func injectOwnedAllocations(node ast.Node, info *types.Info, rule *OwnerRule, ct
 		}
 	}
 	matches := func(expr ast.Expr) bool { return owned[info.TypeOf(expr)] }
-	field := func() ast.Expr { return &ast.KeyValueExpr{Key: ast.NewIdent(rule.Field), Value: ctx} }
+	field := func(pos token.Pos) ast.Expr {
+		return &ast.KeyValueExpr{Key: &ast.Ident{Name: rule.Field, NamePos: pos}, Colon: pos, Value: positionedContext(ctx, pos)}
+	}
 	// The original type information establishes the value-embedding path. New
 	// literals initialize the single field in its declaring base, never a shadow.
 	bind := func(lit *ast.CompositeLit, typ types.Type) error {
-		return bindEmbeddedOwner(lit, typ, paths[typ], rule.Field, field())
+		pos := lit.Rbrace
+		if !pos.IsValid() {
+			pos = lit.Type.End()
+		}
+		return bindEmbeddedOwner(lit, typ, paths[typ], rule.Field, field(pos))
 	}
 	replace := map[ast.Node]ast.Expr{}
 	var err error

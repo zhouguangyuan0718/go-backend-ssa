@@ -59,6 +59,7 @@
 42. [M3 原生方法包装函数](docs/m3-wrappers.md)：接收者/方法值 wrapper、原生收尾优化及导入去重。
 43. [M3 原生循环变量捕获](docs/m3-loopvar.md)：原生 loopvar 改写、声明搬移、continue 处理和实例诊断。
 44. [M3 原生包初始化任务](docs/m3-pkginit.md)：原生 MakeTask、初始化记录和 ASan 全局变量登记。
+45. [M3 原生 ABI wrappers](docs/m3-abi-wrappers.md)：汇编 ABI 输入、原生 wrapper IR 生成及实例绑定。
 
 ## 当前可运行的工具
 
@@ -126,4 +127,4 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 
 类型布局入口示例见 [独立消费者测试](testdata/consumer/consumer_test.go)。先创建 Universe，再调用原生 `u.InitTypes(defTypeName)`；回调为传入的 Sym/Type 提供宿主的 `types.Object`。随后可直接调用 `Type.Size/Alignment/Registers/HasPointers` 与 `u.CalcSize/PtrDataSize/AlgType/Identical`。当前不提供假 `ir.Name`；宿主绑定契约及失败处理见 M2 文档。
 
-源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；之后可调用 Interleaved 完成整包优化，再调用 MakeWrappers 生成原生方法包装函数，随后逐函数调用 loopvar.ForCapture 处理循环变量捕获，再调用 pkginit.MakeTask 生成原生初始化任务；完整 unified 尾部、实验性 midway 和 compiler directives 尚未接入。尚无 SSA 构造入口。
+源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；之后可调用 Interleaved 完成整包优化，再调用 MakeWrappers 生成原生方法包装函数，随后逐函数调用 loopvar.ForCapture 处理循环变量捕获，再调用 pkginit.MakeTask 生成原生初始化任务，随后调用 ssagen 的 SymABIs.GenABIWrappers；完整 unified 尾部、实验性 midway 和 compiler directives 尚未接入。尚无 SSA 构造入口。
