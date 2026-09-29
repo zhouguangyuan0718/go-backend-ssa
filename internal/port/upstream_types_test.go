@@ -63,6 +63,12 @@ func Snapshot(size int) []string {
  for _,typ:=range []*Type{UP.TypeInvalid,UP.TypeMem,UP.TypeFlags,UP.TypeVoid,UP.TypeInt128,UP.TypeVec128,UP.TypeVec256,UP.TypeVec512,UP.TypeMask} {
   out=append(out,fmt.Sprintf("%v:%d:%d:%d:%t:%t:%t:%t:%t",typ.extra,typ.kind,typ.width,typ.align,typ.IsMemory(),typ.IsFlags(),typ.IsVoid(),typ.IsSIMD(),typ.Underlying()==typ))
  }
+ for _,typ:=range []*Type{nil,UP.UntypedBool,UP.UntypedString,UP.UntypedInt,UP.UntypedRune,UP.UntypedFloat,UP.UntypedComplex,UP.newType(TBOOL),UP.newType(TSTRING)} {
+  if typ==nil {out=append(out,fmt.Sprint("nil:",typ.IsUntyped()));continue}
+  out=append(out,fmt.Sprintf("untyped:%s:%t:%t:%t:%t",typ.Kind(),typ.IsUntyped(),typ.IsInteger(),typ.IsFloat(),typ.IsComplex()))
+ }
+ for i,typ:=range UP.UntypedTypes {out=append(out,fmt.Sprintf("constant:%d:%t:%s",i,typ==nil,UP.DefaultKinds[i]))}
+ out=append(out,fmt.Sprint("rune identity:",UP.UntypedRune==UP.UntypedInt))
  value:=UP.newType(TINT)
  value.SetHasShape(true)
  for _,typ:=range []*Type{UP.NewTuple(value,UP.TypeMem),UP.NewTuple(UP.TypeMem,value),UP.NewResults(nil),UP.NewResults([]*Type{value,UP.TypeMem}),UP.NewResults([]*Type{UP.TypeMem,value}),UP.NewResults([]*Type{UP.TypeMem})} {

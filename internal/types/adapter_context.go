@@ -4,6 +4,7 @@ package types
 
 import (
 	"fmt"
+	"go/constant"
 	"sync"
 )
 
@@ -19,11 +20,14 @@ type Universe struct {
 	// Upstream SSA singleton names are retained as per-compilation fields.
 	// Treat these bindings as read-only after construction, like the upstream
 	// globals; Type flags still belong to this Universe and may be mutated.
-	TypeInvalid, TypeMem, TypeFlags, TypeVoid                *Type
-	TypeInt128, TypeVec128, TypeVec256, TypeVec512, TypeMask *Type
-	TypeResultMem                                            *Type
-	NewPtrCacheEnabled                                       bool
-	scalars                                                  [NTYPE]*Type
+	TypeInvalid, TypeMem, TypeFlags, TypeVoid                                         *Type
+	TypeInt128, TypeVec128, TypeVec256, TypeVec512, TypeMask                          *Type
+	TypeResultMem                                                                     *Type
+	UntypedString, UntypedBool, UntypedInt, UntypedRune, UntypedFloat, UntypedComplex *Type
+	UntypedTypes                                                                      [constant.Complex + 1]*Type
+	DefaultKinds                                                                      [constant.Complex + 1]Kind
+	NewPtrCacheEnabled                                                                bool
+	scalars                                                                           [NTYPE]*Type
 }
 
 func NewUniverse(ptrSize, regSize int, maxWidth int64) *Universe {

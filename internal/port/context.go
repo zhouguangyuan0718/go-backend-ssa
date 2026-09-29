@@ -236,7 +236,16 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			if err != nil {
 				return err
 			}
-			fn.Body.List = append(append(guard, checks...), fn.Body.List...)
+			// Preserve an upstream early nil-receiver return before consulting
+			// an owner. In particular Type.IsUntyped(nil) must remain false.
+			prefix := 0
+			if leadingNilReturn(fn, info) {
+				prefix = 1
+			}
+			body := append([]ast.Stmt(nil), fn.Body.List[:prefix]...)
+			body = append(body, guard...)
+			body = append(body, checks...)
+			fn.Body.List = append(body, fn.Body.List[prefix:]...)
 			decls = append(decls, fn)
 		}
 		comments := ast.NewCommentMap(fs, f, f.Comments)
@@ -394,4 +403,44 @@ func setTokenPositions(v reflect.Value, pos token.Pos) {
 			setTokenPositions(v.Index(i), pos)
 		}
 	}
+}
+
+// Recognize only the reviewed, side-effect-free form "if recv == nil { return
+// constants-or-nil }". More complex nil handling still requires explicit adaptation.
+func leadingNilReturn(fn *ast.FuncDecl, info *types.Info) bool {
+	if fn.Recv == nil || len(fn.Recv.List) != 1 || len(fn.Recv.List[0].Names) != 1 || len(fn.Body.List) == 0 {
+		return false
+	}
+	receiver := info.Defs[fn.Recv.List[0].Names[0]]
+	if receiver == nil {
+		return false
+	} // A newly injected Context receiver.
+	branch, ok := fn.Body.List[0].(*ast.IfStmt)
+	if !ok || branch.Init != nil || branch.Else != nil || len(branch.Body.List) != 1 {
+		return false
+	}
+	ret, ok := branch.Body.List[0].(*ast.ReturnStmt)
+	if !ok || len(ret.Results) == 0 {
+		return false
+	}
+	for _, result := range ret.Results {
+		if info.Types[result].Value != nil {
+			continue
+		}
+		if id, ok := result.(*ast.Ident); ok && info.Uses[id] == types.Universe.Lookup("nil") {
+			continue
+		}
+		return false
+	}
+	cond, ok := branch.Cond.(*ast.BinaryExpr)
+	if !ok || cond.Op != token.EQL {
+		return false
+	}
+	a, aOK := cond.X.(*ast.Ident)
+	b, bOK := cond.Y.(*ast.Ident)
+	if !aOK || !bOK {
+		return false
+	}
+	nilObject := types.Universe.Lookup("nil")
+	return info.Uses[a] == receiver && info.Uses[b] == nilObject || info.Uses[b] == receiver && info.Uses[a] == nilObject
 }

@@ -6,6 +6,7 @@ import (
 	"go-backend-ssa/position"
 	"go-backend-ssa/target"
 	"go-backend-ssa/types"
+	"go/constant"
 	"testing"
 )
 
@@ -92,5 +93,17 @@ func TestPublicCompositeTypes(t *testing.T) {
 	mapping := u.NewMap(value, ptr)
 	if array.NumElem() != 4 || array.Elem().Elem() != ptr || ptr.Elem() != value || mapping.Key() != value || channel.ChanDir() != types.SendRecv {
 		t.Fatal("cannot inspect composite graph through public package")
+	}
+}
+
+func TestPublicConstantTypes(t *testing.T) {
+	layout, _ := target.NewLayout("linux", "amd64")
+	u, _ := types.NewUniverse(layout)
+	integer := u.UntypedTypes[constant.Int]
+	if integer != u.UntypedInt || !integer.IsInteger() || !integer.IsUntyped() || u.DefaultKinds[constant.Int] != types.Int {
+		t.Fatal("public constant mapping unavailable")
+	}
+	if (*types.Type)(nil).IsUntyped() {
+		t.Fatal("nil behavior changed")
 	}
 }

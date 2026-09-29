@@ -110,3 +110,15 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 上游 Kind.String 也已移植。其常量整数索引表移动到使用它的函数内部，保留数组类型和查表算法；工具只允许索引读取和 len，拒绝写入、取地址、slice 或其他逃逸。
 
 验证：完整 race、独立 consumer、两版参考切片差分及升级检查通过；指针缓存开关、跨 Universe 拒绝、失败后继续构造均有覆盖。参考切片保留上游全局状态与构造算法，仅对宿主 Fatalf 退出行为使用测试 panic 适配，差分执行合法输入路径。`syncgo check` 验证 18 份产物，16 份移植 Go 文件在 go1.27.0 → go1.27.1 间无内容变化。日志：`_work/m2-constructors-tests.log`。
+
+## 第五批：未定类型与常量映射
+
+上游 UntypedBool/String/Int/Rune/Float/Complex 六个类型身份，以及按 go/constant.Kind 索引的 UntypedTypes 和 DefaultKinds 表，均改为 Universe 字段。保留原初始化表达式，未新增常量类型抽象。UntypedRune 与 UntypedInt 保持两个不同对象。
+
+上游 IsKind/IsBoolean/IsInteger/IsSigned/IsUnsigned/IsFloat/IsComplex/IsString/IsUntyped 可直接从公开 Type 调用。有状态分类方法通过 Type.owner 读取相应身份，`(*types.Type)(nil).IsUntyped()` 和 IsKind 的 nil 行为保持原样。转换工具仅对直接的、无副作用的 nil receiver 常量返回保留前置分支，其他复杂 nil 语义仍需单独审阅。
+
+外部消费者可直接读取 `u.UntypedTypes[constant.Int]`、`u.DefaultKinds[constant.Int]`；不需要新包装接口。表和对象仍遵循上游可变模型，同一实例内修改须串行；不同实例没有共享节点或表。
+
+验证：全量 race、独立 consumer、两版参考切片的类型分类/身份映射/初始化差分、生成与升级检查通过。nil receiver、方法表达式、回调保活和 32 个并发 Universe 均有覆盖。`syncgo check` 验证 18 份产物；16 份 Go 文件跨补丁版本无内容变化。日志：`_work/m2-untyped-tests.log`。
+
+当前剩余主线：移植 Field/Struct/Signature 构造及必要访问器，再接入 CalcSize、延迟布局队列、算法分类和 InitTypes。完整预声明类型绑定仍未实现，现有 Scalar 是未命名节点入口；本批常量身份不等于已经完成 typecheck，更不等于源码到 SSA。

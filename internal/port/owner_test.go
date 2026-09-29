@@ -16,6 +16,7 @@ var calls int
 const (First=iota; Second; Third)
 func Make() *Node { calls++; return new(Node) }
 func (p *Node) Root() *Node {calls++;return root}
+func (p *Node) IsRoot()bool{if p==nil{return false};return p==root}
 func (p *Node) Clone() *Node {return &Node{N:p.N}}
 func (p *Node) Closure() func() *Node {return func()*Node{return root}}
 func Local() int {type Node struct{N int};x:=new(Node);return x.N}
@@ -25,7 +26,7 @@ func Local() int {type Node struct{N int};x:=new(Node);return x.N}
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{{Source: "src/cmd/compile/internal/p/p.go", Functions: []string{"Make", "Local"}, Declarations: []string{"Node", "Node.Root", "Node.Clone", "Node.Closure", "Third"}, Owner: &OwnerRule{Types: []string{"Node"}, Context: "Context", Field: "owner"}, Context: &ContextRule{Type: "Context", Constructor: "newContext", Fields: map[string]string{"root": "root", "calls": "calls"}, Adapter: "adapter_context.go"}}}}
+	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{{Source: "src/cmd/compile/internal/p/p.go", Functions: []string{"Make", "Local"}, Declarations: []string{"Node", "Node.Root", "Node.IsRoot", "Node.Clone", "Node.Closure", "Third"}, Owner: &OwnerRule{Types: []string{"Node"}, Context: "Context", Field: "owner"}, Context: &ContextRule{Type: "Context", Constructor: "newContext", Fields: map[string]string{"root": "root", "calls": "calls"}, Adapter: "adapter_context.go"}}}}
 	dir := t.TempDir()
 	writeTestFile(t, dir, "internal/p/adapter_context.go", "package p; type Context struct{root *Node; calls int}")
 	r, err := Render(s, plan, dir)
@@ -40,6 +41,7 @@ func Local() int {type Node struct{N int};x:=new(Node);return x.N}
 import "testing"
 func TestOwnership(t *testing.T){
  a,b:=newContext(),newContext()
+ if (*Node)(nil).IsRoot() || !a.root.IsRoot() {t.Fatal("nil receiver semantics lost")}
  if a.root.owner!=a || b.root.owner!=b || a.root==b.root {t.Fatal("initializer root ownership lost")}
  p,q:=a.Make(),b.Make();p.N=17
  if p.owner!=a || q.owner!=b || a.Local()!=0 || Third!=2 {t.Fatal("allocation, shadow or iota changed")}
