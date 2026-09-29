@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "tool": "syncgo-m1-v4",
+  "commit": "862c888e612ac346c7c4d99c9392bdfd265f33b0",
+  "plan_sha256": "aafc5065eb2f0c49abd931b010447ce2882aa30213f0fb774db5ea0dfd029db7",
+  "files": [
+    {
+      "output": "internal/cmd/objabi/path.go",
+      "source": "src/cmd/internal/objabi/path.go",
+      "source_sha256": "ff1e056f2f2b3aa1f757bf7be3da769f1f5241da65438e5ebb9f65a6716c8343",
+      "output_sha256": "6ecd24160530c73cd34500020457d0bd400ab4f30bdc5e7699cc8858f33d2118",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "PathToPrefix",
+        "PrefixToPath"
+      ]
+    },
+    {
+      "output": "internal/ir/func.go",
+      "source": "src/cmd/compile/internal/ir/func.go",
+      "source_sha256": "185b5f070932048b28c173de6d770ee7415b0490c1130623ab8b69dadd2d8387",
+      "output_sha256": "9cdb45ea81d2a0fe6b3253a11c3f8fdc2e63a4ea5909f712227f9b524cdc17cb",
+      "rule": "select-and-relocate-v1",
+      "declarations": [
+        "ParseLinkFuncName",
+        "splitPkg",
+        "escapedImportPathOK",
+        "modPathOK"
+      ]
+    },
+    {
+      "output": "internal/types/pkg.go",
+      "source": "src/cmd/compile/internal/types/pkg.go",
+      "source_sha256": "2ae44b87b8fdc7ad0eb80e8a25a7e4d710ae789261ede9d525b6560f96c4f785",
+      "output_sha256": "c111edec1c9012e8e369f48fd8c3158698365f93ea856f776e1912d565c0ca7a",
+      "rule": "state-to-context-methods-v1",
+      "declarations": [
+        "InternString",
+        "internedStrings",
+        "internedStringsmu"
+      ],
+      "adapter_sha256": "3e973370bdc82fd8f4c77b98e17d357049343f6cfdeca344e0cae6424ba59ec1"
+    },
+    {
+      "output": "third_party/go/LICENSE",
+      "source": "LICENSE",
+      "source_sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+      "output_sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+      "rule": "preserve-upstream-notice-v1"
+    },
+    {
+      "output": "third_party/go/PATENTS",
+      "source": "PATENTS",
+      "source_sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+      "output_sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+      "rule": "preserve-upstream-notice-v1"
+    }
+  ]
+}

@@ -1,0 +1,112 @@
+package port
+
+import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
+	"os"
+	"path"
+	"path/filepath"
+)
+
+func renderUnit(s *Source, unit Unit, imports map[string]string, root string, before, after *packageImporter) (map[string][]byte, []Provenance, error) {
+	units := []Unit{unit}
+	fs := token.NewFileSet()
+	var original []*ast.File
+	sources := make([][]byte, len(units))
+	for i, u := range units {
+		data, err := s.Read(u.Source)
+		if err != nil {
+			return nil, nil, err
+		}
+		sources[i] = data
+		f, err := selectFile(fs, u.Source, data, u)
+		if err != nil {
+			return nil, nil, err
+		}
+		if f.Name.Name == "main" {
+			return nil, nil, fmt.Errorf("command package requires explicit adaptation: %s", u.Source)
+		}
+		original = append(original, f)
+	}
+	sourcePkg := units[0].sourcePackage()
+	pkg, info, err := checkTypes(fs, sourcePkg, original, before)
+	if err != nil {
+		return nil, nil, fmt.Errorf("selected package %s: %w", sourcePkg, err)
+	}
+	before.packages[sourcePkg] = pkg
+
+	outfs := token.NewFileSet()
+	var output []*ast.File
+	result := make(map[string][]byte)
+	var provenance []Provenance
+	for i, u := range units {
+		out, err := transform(fs, original[i], info, u, imports)
+		if err != nil {
+			return nil, nil, err
+		}
+		outf, err := parser.ParseFile(outfs, u.output(), out, parser.ParseComments)
+		if err != nil {
+			return nil, nil, err
+		}
+		output = append(output, outf)
+		prov := Provenance{Output: u.output(), Source: u.Source, SourceSHA256: hash(sources[i]), OutputSHA256: hash(out), Rule: "select-and-relocate-v1", Declarations: append([]string(nil), u.Functions...)}
+		if c := u.Context; c != nil {
+			if _, exists := s.Blobs[path.Join(path.Dir(u.Source), c.Adapter)]; exists {
+				return nil, nil, fmt.Errorf("adapter filename collides with upstream: %s", u.adapterPath())
+			}
+			if err := checkPath(root, u.adapterPath()); err != nil {
+				return nil, nil, err
+			}
+			adapter, err := os.ReadFile(filepath.Join(root, u.adapterPath()))
+			if err != nil {
+				return nil, nil, err
+			}
+			af, err := parser.ParseFile(outfs, u.adapterPath(), adapter, parser.ParseComments)
+			if err != nil {
+				return nil, nil, err
+			}
+			output = append(output, af)
+			prov.Rule = "state-to-context-methods-v1"
+			prov.Declarations = append(prov.Declarations, sortedKeys(c.Fields)...)
+			prov.AdapterSHA256 = hash(adapter)
+		}
+		result[u.output()] = out
+		provenance = append(provenance, prov)
+	}
+	dest := imports[sourcePkg]
+	outpkg, outinfo, err := checkTypes(outfs, dest, output, after)
+	if err != nil {
+		return nil, nil, fmt.Errorf("transformed package %s: %w", dest, err)
+	}
+	if err := auditOutput(outpkg, output, outinfo); err != nil {
+		return nil, nil, err
+	}
+	for _, u := range units {
+		if c := u.Context; c != nil {
+			obj := outpkg.Scope().Lookup(c.Type)
+			if obj == nil {
+				return nil, nil, fmt.Errorf("missing context %s", c.Type)
+			}
+			st, ok := obj.Type().Underlying().(*types.Struct)
+			if !ok {
+				return nil, nil, fmt.Errorf("context is not a struct")
+			}
+			for name, field := range c.Fields {
+				var actual types.Type
+				for i := 0; i < st.NumFields(); i++ {
+					if st.Field(i).Name() == field {
+						actual = st.Field(i).Type()
+					}
+				}
+				if actual == nil || types.TypeString(actual, nil) != types.TypeString(pkg.Scope().Lookup(name).Type(), nil) {
+					return nil, nil, fmt.Errorf("context field %s does not preserve state type of %s", field, name)
+				}
+			}
+		}
+	}
+	after.packages[dest] = outpkg
+	return result, provenance, nil
+}
