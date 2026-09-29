@@ -17,6 +17,7 @@ func testUpstreamObjectDeclarations(t *testing.T, s *Source, r *Rendered) {
 	testUpstreamObjectMethods(t, s, r)
 	units := objectDeclarations()
 	units = append(units, runtimeABIMigration()...)
+	units = append(units, Unit{Source: "src/cmd/compile/internal/reflectdata/reflect.go", Declarations: []string{"ptabEntry", "typeSig", "typeAndStr"}})
 	units = append(units, Unit{Source: "src/cmd/compile/internal/reflectdata/alg.go", Declarations: []string{"eqSigBuilder"}})
 	units = append(units, Unit{Source: "src/cmd/compile/internal/bitvec/bv.go", Declarations: []string{"BitVec", "Bulk"}})
 	units = append(units, Unit{Source: "src/cmd/compile/internal/ir/node.go", Declarations: []string{"Op", "PragmaFlag"}})

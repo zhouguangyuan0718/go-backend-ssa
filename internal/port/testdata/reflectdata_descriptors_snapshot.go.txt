@@ -1,0 +1,58 @@
+package reflectdata
+import("fmt";"encoding/json";"encoding/binary";"os";"strings";"testing";"IMPORT_TYPES";"IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_RTTYPE";RD_OBJW RD_STATIC IMPORT_BASE IMPORT_BUILDCFG)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ arch,variant,_:=strings.Cut(os.Getenv("SYNCGO_TARGET"),"-")
+ target:=struct{arch string;size int;order binary.ByteOrder}{arch,8,binary.LittleEndian}
+ switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ TC.InitRuntime()
+ LINK.Arch.CanMergeLoads=arch=="386"||arch=="amd64"
+ LINK.Pkgpath="example/p";LINK.Flag_dynlink=variant=="dynlink";EXPERIMENT.MapSplitGroup=variant=="split"
+ if variant=="runtime" {TY.LocalPkg=TY.NewPkg("runtime","runtime");LINK.Pkgpath="runtime";RD_FLAG.CompilingRuntime=true;UP.WriteBasicTypes()}
+ var out []string
+ pos:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase("p.go","/src/p.go"),7,3))
+ named:=func(pkg *types.Pkg,name string,under *types.Type)*types.Type{n:=GRAPH.NewDeclNameAt(pos,ir.OTYPE,pkg.Lookup(name));typ:=TY.NewNamed(n);n.SetType(typ);n.SetTypecheck(1);typ.SetUnderlying(under);return typ}
+ field:=func(name string,typ *types.Type)*types.Field{return TY.NewField(pos,TY.LocalPkg.Lookup(name),typ)}
+ integer,str:=TY.Types[types.TINT],TY.Types[types.TSTRING]
+ concrete:=named(TY.LocalPkg,"Concrete",TY.NewStruct([]*types.Field{field("S",str)}))
+ var methods,imethods []*types.Field
+ for _,name:=range []string{"N","hidden","M"}{sym:=TY.LocalPkg.Lookup(name);methods=append(methods,TY.NewField(pos,sym,TY.NewSignature(TY.NewField(pos,nil,concrete),nil,nil)));if name!="hidden"{imethods=append(imethods,TY.NewField(pos,sym,TY.NewSignature(TY.NewField(pos,nil,TY.FakeRecvType()),nil,nil)))}}
+ ptrMethod:=TY.NewField(pos,TY.LocalPkg.Lookup("PtrMethod"),TY.NewSignature(TY.NewField(pos,nil,TY.NewPtr(concrete)),nil,nil));methods=append(methods,ptrMethod);concrete.SetMethods(methods)
+ iface:=TY.NewInterface(imethods);TY.CalcSize(iface)
+ namedIface:=named(TY.LocalPkg,"Iface",iface)
+ embeddedField:=field("Concrete",concrete);embeddedField.Embedded=1
+ embedded:=named(TY.LocalPkg,"Embedded",TY.NewStruct([]*types.Field{embeddedField}))
+ hiddenField:=field("private",str);hiddenField.Note="json:\"private\""
+ record:=named(TY.LocalPkg,"Record",TY.NewStruct([]*types.Field{field("P",TY.NewPtr(integer)),hiddenField}))
+ fnParams:=[]*types.Field{TY.NewField(pos,nil,integer),TY.NewField(pos,nil,TY.NewSlice(str))};fnParams[1].SetIsDDD(true)
+ signature:=TY.NewSignature(nil,fnParams,[]*types.Field{TY.NewField(pos,nil,integer)})
+ mapType:=TY.NewMap(str,TY.NewArray(TY.NewPtr(integer),129))
+ namedMap:=named(TY.LocalPkg,"NamedMap",mapType)
+ dep:=TY.NewPkg("example/dep","dep");imported:=named(dep,"Imported",integer);TC.SetBaseTypeIndex(imported,41,42)
+ generic:=named(dep,"Generic[int]",TY.NewStruct([]*types.Field{field("X",integer)}));generic.SetIsFullyInstantiated(true)
+ shape:=named(TY.ShapePkg,"S",TY.NewStruct([]*types.Field{field("P",TY.NewPtr(integer))}));shape.SetHasShape(true)
+ noalg:=TY.NewStruct([]*types.Field{field("X",integer)});noalg.SetNoalg(true)
+ typesToEmit:=[]*types.Type{concrete,TY.NewPtr(concrete),iface,namedIface,embedded,record,signature,mapType,namedMap,imported,TY.NewPtr(imported),generic,shape,noalg,TY.NewArray(TY.NewPtr(integer),128),TY.NewArray(TY.NewPtr(integer),129),TY.NewMap(TY.NewInterface(nil),integer),TY.NewMap(TY.NewArray(TY.Types[types.TUINT8],129),TY.NewArray(str,33)),TY.NewChan(integer,types.Crecv),TY.NewChan(integer,types.Csend),TY.NewSlice(str),TY.NewArray(str,0),TY.NewStruct(nil),TY.NewStruct([]*types.Field{field("P",TY.NewPtr(integer))}),TY.NewPtr(TY.ByteType),TY.NewPtr(TY.Types[types.TUINT8])}
+ for _,typ:=range typesToEmit{TY.CalcSize(typ);UP.NeedRuntimeType(typ);UP.GCSym(typ,true);out=append(out,fmt.Sprintf("kind:%v:%d",typ,UP.ABIKindOfType(typ)))}
+ // Real and dummy ITabs; the strict address entry requires actual implementation.
+ caller:=GRAPH.NewFunc(pos,pos,TY.LocalPkg.Lookup("Caller"),TY.NewSignature(nil,nil,nil));caller.LSym=LINK.Lookup("p.Caller");POS=pos;GRAPH.CurFunc=caller
+ tab:=UP.ITabLsym(concrete,iface);out=append(out,fmt.Sprintf("itab:%s:%t:%t:%t:%v",tab.Name,tab==UP.ITabLsym(concrete,iface),POS==pos,GRAPH.CurFunc==caller,tab.ItabInfo().Type))
+ missing:=named(TY.LocalPkg,"Missing",TY.NewStruct(nil));dummy:=UP.ITabLsym(missing,iface)
+ out=append(out,fmt.Sprintf("dummy:%s:%d",dummy.Name,dummy.Size))
+ cached:=UP.TypePtrAt(pos,record)
+ for _,entry:=range []struct{src,dst *types.Type}{{concrete,iface},{concrete,TY.NewInterface(nil)},{iface,namedIface}}{value:=GRAPH.NewNameAt(pos,TY.LocalPkg.Lookup("v"),entry.src);conv:=GRAPH.NewConvExpr(pos,ir.OCONVIFACE,entry.dst,value);word:=UP.ConvIfaceTypeWord(pos,conv);out=append(out,fmt.Sprintf("typeword:%v:%v:%s",entry.src,entry.dst,word.(*ir.AddrExpr).X.(*ir.LinksymOffsetExpr).Linksym.Name));conv.TypeWord=cached;out=append(out,fmt.Sprintf("cached-word:%t",UP.ConvIfaceTypeWord(pos,conv)==cached))}
+ for _,genericCall:=range []bool{false,true}{it:=iface;if genericCall{it=TY.NewInterface([]*types.Field{TY.NewField(pos,TY.LocalPkg.Lookup("M"),TY.NewSignature(TY.NewField(pos,nil,TY.FakeRecvType()),nil,nil))});TY.CalcSize(it);it.SetHasShape(true)};receiver:=GRAPH.NewNameAt(pos,TY.LocalPkg.Lookup("receiver"),it);m:=it.AllMethods()[0];dot:=GRAPH.NewSelectorExpr(pos,ir.ODOTINTER,receiver,m.Sym);dot.Selection=m;call:=GRAPH.NewCallExpr(pos,ir.OCALLINTER,dot,nil);UP.MarkUsedIfaceMethod(call)}
+ GRAPH.CurFunc=nil
+ exported:=GRAPH.NewFunc(pos,pos,TY.LocalPkg.Lookup("Exported"),signature).Nname
+ variable:=GRAPH.NewNameAt(pos,TY.LocalPkg.Lookup("Variable"),record);variable.Class=ir.PEXTERN
+ TC.Target.PluginExports=[]*ir.Name{exported,variable};UP.WritePluginTable()
+ // Names with independent package relocations, tags, embedding and varint lengths.
+ for _,entry:=range []struct{name,tag string;pkg *types.Pkg;exported,embedded bool}{{"","",nil,false,false},{"","tag",nil,true,false},{"Name","",nil,true,true},{"hidden","json:\"x\"",dep,false,false},{strings.Repeat("x",130),strings.Repeat("t",129),nil,false,true}}{s:=UP.dname(entry.name,entry.tag,entry.pkg,entry.exported,entry.embedded);out=append(out,"name:"+s.Name)}
+ UP.WriteRuntimeTypes();UP.WriteGCSymbols();TC.CheckFuncStack()
+ count:=len(LINK.Data);UP.WriteRuntimeTypes();out=append(out,fmt.Sprintf("drained:%d:%t",len(UP.signatslice),count==len(LINK.Data)))
+ snapshot:=func(s *obj.LSym){out=append(out,fmt.Sprintf("symbol:%s:%v:%d:%d:%x:%d:%s:%d",s.Name,s.Type,s.Size,s.Align,s.P,uint32(s.Attribute),s.Pkg,s.SymIdx));for _,r:=range s.R{out=append(out,fmt.Sprintf("reloc:%v:%d:%d:%s:%v:%d",r.Type,r.Off,r.Siz,r.Sym.Name,r.Sym.ABI(),r.Add))}}
+ for _,s:=range LINK.Data{snapshot(s)};snapshot(caller.LSym)
+ for _,typ:=range typesToEmit{s:=UP.TypeLinksym(typ);snapshot(s)}
+ for _,fn:=range TC.Target.Funcs{out=append(out,fmt.Sprintf("generated:%s:%v:%v:%t:%t",fn.Nname.Sym().Name,fn.Type(),fn.Pragma,fn.Dupok(),fn.NilCheckDisabled()));ir.VisitList(fn.Body,func(n ir.Node){out=append(out,fmt.Sprintf("node:%v:%v:%v:%d",n.Op(),n,n.Type(),n.Typecheck()))})}
+ encoded,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(encoded))
+}

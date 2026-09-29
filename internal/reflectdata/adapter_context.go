@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"go-backend-ssa/internal/cmd/obj"
 	"go-backend-ssa/internal/cmd/src"
+	"go-backend-ssa/internal/go/abi"
 	"go-backend-ssa/internal/rttype"
+	"go-backend-ssa/internal/staticdata"
 	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
 	"io"
@@ -17,6 +19,9 @@ import (
 // register concurrently once layouts are complete and no phase mutates types;
 // call WriteGCSymbols only after those registrations have finished.
 type Context struct {
+	kinds                                                []abi.Kind
+	dnameCount                                           int
+	StaticData                                           *staticdata.Context
 	memhashvarlen, memequalvarlen                        *obj.LSym
 	gcsymmu                                              sync.Mutex
 	gcsymset                                             map[*types.Type]struct{}
@@ -30,12 +35,12 @@ type Context struct {
 	signatslice                                          []typeAndStr
 }
 
-func NewContext(tc *typecheck.Context, rt *rttype.Context) *Context {
-	if tc == nil || tc.IR == nil || tc.IR.Base == nil || rt == nil || rt.Type == nil || rt.Writer == nil || tc.IR.Types != rt.Types || tc.IR.Base.Ctxt != rt.Writer.Link {
+func NewContext(tc *typecheck.Context, rt *rttype.Context, sd *staticdata.Context) *Context {
+	if sd == nil || tc == nil || tc.IR == nil || tc.IR.Base == nil || rt == nil || rt.Type == nil || rt.Writer == nil || tc.IR.Types != rt.Types || tc.IR.Base.Ctxt != rt.Writer.Link || sd.IR != tc.IR || sd.Writer != rt.Writer {
 		panic("reflection data requires typecheck and runtime layouts from the same compilation")
 	}
 	c := newContext()
-	c.Typecheck, c.Runtime, c.ptrSize = tc, rt, rt.Types.PointerSize()
+	c.Typecheck, c.Runtime, c.StaticData, c.ptrSize = tc, rt, sd, rt.Types.PointerSize()
 	return c
 }
 func (c *Context) fatalf(f string, a ...any) { panic(fmt.Errorf(f, a...)) }
@@ -83,3 +88,7 @@ func (c *Context) tracePrintf(f string, a ...any) (int, error) {
 	}
 	return fmt.Fprintf(w, f, a...)
 }
+
+func (c *Context) checkITabTypes(typ, iface *types.Type)            { c.checkType(typ); c.checkType(iface) }
+func (c *Context) checkITabAt(pos src.XPos, typ, iface *types.Type) { c.checkITabTypes(typ, iface) }
+func (c *Context) checkMethodOffset(typ *types.Type, i int64)       { c.checkType(typ) }

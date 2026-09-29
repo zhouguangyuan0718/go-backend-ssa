@@ -1146,6 +1146,11 @@ func (t *Type) IsPtr() bool {
 	return t.kind == TPTR
 }
 
+// IsPtrElem reports whether t is the element of a pointer (to t).
+func (t *Type) IsPtrElem() bool {
+	return t.cache.ptr != nil
+}
+
 // IsUnsafePtr reports whether t is an unsafe pointer.
 func (t *Type) IsUnsafePtr() bool {
 	return t.kind == TUNSAFEPTR
@@ -1545,6 +1550,18 @@ func (syncgoCtx *Universe) NewStruct(fields []*Field) *Type {
 	}
 
 	return t
+}
+
+// Can this type be stored directly in an interface word?
+// Yes, if the representation is a single pointer.
+func (syncgoCtx *Universe) IsDirectIface(t *Type) bool {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if syncgoCtx == nil || t == nil || t.universe != syncgoCtx {
+		panic("argument belongs to another or uninitialized compilation")
+	}
+	return t.Size() == int64(syncgoCtx.ptrSize) && syncgoCtx.PtrDataSize(t) == int64(syncgoCtx.ptrSize)
 }
 
 // IsInterfaceMethod reports whether (field) m is

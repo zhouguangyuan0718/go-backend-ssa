@@ -6,15 +6,18 @@
 package reflectdata
 
 import (
+	"encoding/binary"
 	"fmt"
 	"go-backend-ssa/internal/go/abi"
 	"slices"
-
+	"sort"
 	"strings"
 
 	"go-backend-ssa/internal/bitvec"
-
+	"go-backend-ssa/internal/compare"
 	"go-backend-ssa/internal/ir"
+
+	"go-backend-ssa/internal/rttype"
 
 	"go-backend-ssa/internal/typebits"
 
@@ -23,6 +26,496 @@ import (
 	"go-backend-ssa/internal/cmd/src"
 	"go-backend-ssa/internal/types"
 )
+
+type ptabEntry struct {
+	s *types.Sym
+	t *types.Type
+}
+
+type typeSig struct {
+	name  *types.Sym
+	isym  *obj.LSym
+	tsym  *obj.LSym
+	type_ *types.Type
+	mtype *types.Type
+}
+
+func (syncgoCtx *Context) commonSize() int {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	return int(syncgoCtx.Runtime.Type.Size())
+} // Sizeof(runtime._type{})
+
+func (syncgoCtx *Context) uncommonSize(t *types.Type) int {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	} // Sizeof(runtime.uncommontype{})
+	if t.Sym() == nil && len(syncgoCtx.methods(t)) == 0 {
+		return 0
+	}
+	return int(syncgoCtx.Runtime.UncommonType.Size())
+}
+
+// methods returns the methods of the non-interface type t, sorted by name.
+// Generates stub functions as needed.
+func (syncgoCtx *Context) methods(t *types.Type) []*typeSig {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if t.HasShape() {
+		// Shape types have no methods.
+		return nil
+	}
+	// method type
+	mt := syncgoCtx.Typecheck.IR.Types.ReceiverBaseType(t)
+
+	if mt == nil {
+		return nil
+	}
+	syncgoCtx.Typecheck.CalcMethods(mt)
+
+	// make list of methods for t,
+	// generating code if necessary.
+	var ms []*typeSig
+	for _, f := range mt.AllMethods() {
+		if f.Sym == nil {
+			syncgoCtx.fatalf("method with no sym on %v", mt)
+		}
+		if !f.IsMethod() {
+			syncgoCtx.fatalf("non-method on %v method %v %v", mt, f.Sym, f)
+		}
+		if f.Type.Recv() == nil {
+			syncgoCtx.fatalf("receiver with no type on %v method %v %v", mt, f.Sym, f)
+		}
+		if f.Nointerface() && !t.IsFullyInstantiated() {
+			// Skip creating method wrappers if f is nointerface. But, if
+			// t is an instantiated type, we still have to call
+			// methodWrapper, because methodWrapper generates the actual
+			// generic method on the type as well.
+			continue
+		}
+
+		// get receiver type for this particular method.
+		// if pointer receiver but non-pointer t and
+		// this is not an embedded pointer inside a struct,
+		// method does not apply.
+		if !syncgoCtx.Typecheck.IR.Types.IsMethodApplicable(t, f) {
+			continue
+		}
+
+		sig := &typeSig{
+			name:  f.Sym,
+			isym:  syncgoCtx.methodWrapper(t, f, true),
+			tsym:  syncgoCtx.methodWrapper(t, f, false),
+			type_: syncgoCtx.Typecheck.NewMethodType(f.Type, t),
+			mtype: syncgoCtx.Typecheck.NewMethodType(f.Type, nil),
+		}
+		if f.Nointerface() {
+			// In the case of a nointerface method on an instantiated
+			// type, don't actually append the typeSig.
+			continue
+		}
+		ms = append(ms, sig)
+	}
+
+	return ms
+}
+
+// imethods returns the methods of the interface type t, sorted by name.
+func (syncgoCtx *Context) imethods(t *types.Type) []*typeSig {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	var methods []*typeSig
+	for _, f := range t.AllMethods() {
+		if f.Type.Kind() != types.TFUNC || f.Sym == nil {
+			continue
+		}
+		if f.Sym.IsBlank() {
+			syncgoCtx.fatalf("unexpected blank symbol in interface method set")
+		}
+		if n := len(methods); n > 0 {
+			last := methods[n-1]
+			if types.CompareSyms(last.name, f.Sym) >= 0 {
+				syncgoCtx.fatalf("sigcmp vs sortinter %v %v", last.name, f.Sym)
+			}
+		}
+
+		sig := &typeSig{
+			name:  f.Sym,
+			mtype: f.Type,
+			type_: syncgoCtx.Typecheck.NewMethodType(f.Type, nil),
+		}
+		methods = append(methods, sig)
+
+		// NOTE(rsc): Perhaps an oversight that
+		// IfaceType.Method is not in the reflect data.
+		// Generate the method body, so that compiled
+		// code can refer to it.
+		syncgoCtx.methodWrapper(t, f, false)
+	}
+
+	return methods
+}
+
+func (syncgoCtx *Context) dimportpath(p *types.Pkg) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if p.Pathsym != nil {
+		return
+	}
+
+	if p == syncgoCtx.Typecheck.IR.Types.LocalPkg && syncgoCtx.Typecheck.IR.Base.Ctxt.Pkgpath == "" {
+		panic("missing pkgpath")
+	}
+
+	// If we are compiling the runtime package, there are two runtime packages around
+	// -- localpkg and Pkgs.Runtime. We don't want to produce import path symbols for
+	// both of them, so just produce one for localpkg.
+	if syncgoCtx.Typecheck.IR.Base.Ctxt.Pkgpath == "runtime" && p == syncgoCtx.Typecheck.IR.Pkgs.Runtime {
+		return
+	}
+
+	s := syncgoCtx.Typecheck.IR.Base.Ctxt.Lookup("type:.importpath." + p.Prefix + ".")
+	ot := syncgoCtx.dnameData(s, 0, p.Path, "", nil, false, false)
+	syncgoCtx.Runtime.Writer.Global(s, int32(ot), obj.DUPOK|obj.RODATA)
+	s.Set(obj.AttrContentAddressable, true)
+	s.Align = 1
+	p.Pathsym = s
+}
+
+func (syncgoCtx *Context) dgopkgpath(c rttype.Cursor, pkg *types.Pkg) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	c = c.Field("Bytes")
+	if pkg == nil {
+		c.WritePtr(nil)
+		return
+	}
+
+	syncgoCtx.dimportpath(pkg)
+	c.WritePtr(pkg.Pathsym)
+}
+
+// dgopkgpathOff writes an offset relocation to the pkg path symbol to c.
+func (syncgoCtx *Context) dgopkgpathOff(c rttype.Cursor, pkg *types.Pkg) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if pkg == nil {
+		c.WriteInt32(0)
+		return
+	}
+
+	syncgoCtx.dimportpath(pkg)
+	c.WriteSymPtrOff(pkg.Pathsym, false)
+}
+
+// dnameField dumps a reflect.name for a struct field.
+func (syncgoCtx *Context) dnameField(c rttype.Cursor, spkg *types.Pkg, ft *types.Field) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if !types.IsExported(ft.Sym.Name) && ft.Sym.Pkg != spkg {
+		syncgoCtx.fatalf("package mismatch for %v", ft.Sym)
+	}
+	nsym := syncgoCtx.dname(ft.Sym.Name, ft.Note, nil, types.IsExported(ft.Sym.Name), ft.Embedded != 0)
+	c.Field("Bytes").WritePtr(nsym)
+}
+
+// dnameData writes the contents of a reflect.name into s at offset ot.
+func (syncgoCtx *Context) dnameData(s *obj.LSym, ot int, name, tag string, pkg *types.Pkg, exported, embedded bool) int {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if len(name) >= 1<<29 {
+		syncgoCtx.fatalf("name too long: %d %s...", len(name), name[:1024])
+	}
+	if len(tag) >= 1<<29 {
+		syncgoCtx.fatalf("tag too long: %d %s...", len(tag), tag[:1024])
+	}
+	var nameLen [binary.MaxVarintLen64]byte
+	nameLenLen := binary.PutUvarint(nameLen[:], uint64(len(name)))
+	var tagLen [binary.MaxVarintLen64]byte
+	tagLenLen := binary.PutUvarint(tagLen[:], uint64(len(tag)))
+
+	// Encode name and tag. See reflect/type.go for details.
+	var bits byte
+	l := 1 + nameLenLen + len(name)
+	if exported {
+		bits |= 1 << 0
+	}
+	if len(tag) > 0 {
+		l += tagLenLen + len(tag)
+		bits |= 1 << 1
+	}
+	if pkg != nil {
+		bits |= 1 << 2
+	}
+	if embedded {
+		bits |= 1 << 3
+	}
+	b := make([]byte, l)
+	b[0] = bits
+	copy(b[1:], nameLen[:nameLenLen])
+	copy(b[1+nameLenLen:], name)
+	if len(tag) > 0 {
+		tb := b[1+nameLenLen+len(name):]
+		copy(tb, tagLen[:tagLenLen])
+		copy(tb[tagLenLen:], tag)
+	}
+
+	ot = int(s.WriteBytes(syncgoCtx.Typecheck.IR.Base.Ctxt, int64(ot), b))
+
+	if pkg != nil {
+		c := syncgoCtx.Runtime.NewCursor(s, int64(ot), syncgoCtx.Typecheck.IR.Types.Types[types.TUINT32])
+		syncgoCtx.dgopkgpathOff(c, pkg)
+		ot += 4
+	}
+
+	return ot
+}
+
+// dname creates a reflect.name for a struct field or method.
+func (syncgoCtx *Context) dname(name, tag string, pkg *types.Pkg, exported, embedded bool) *obj.LSym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	// Write out data as "type:." to signal two things to the
+	// linker, first that when dynamically linking, the symbol
+	// should be moved to a relro section, and second that the
+	// contents should not be decoded as a type.
+	sname := "type:.namedata."
+	if pkg == nil {
+		// In the common case, share data with other packages.
+		if name == "" {
+			if exported {
+				sname += "-noname-exported." + tag
+			} else {
+				sname += "-noname-unexported." + tag
+			}
+		} else {
+			if exported {
+				sname += name + "." + tag
+			} else {
+				sname += name + "-" + tag
+			}
+		}
+	} else {
+		// TODO(mdempsky): We should be able to share these too (except
+		// maybe when dynamic linking).
+		sname = fmt.Sprintf("%s%s.%d", sname, syncgoCtx.Typecheck.IR.Types.LocalPkg.Prefix, syncgoCtx.dnameCount)
+		syncgoCtx.dnameCount++
+	}
+	if embedded {
+		sname += ".embedded"
+	}
+	s := syncgoCtx.Typecheck.IR.Base.Ctxt.Lookup(sname)
+	if len(s.P) > 0 {
+		return s
+	}
+	ot := syncgoCtx.dnameData(s, 0, name, tag, pkg, exported, embedded)
+	syncgoCtx.Runtime.Writer.Global(s, int32(ot), obj.DUPOK|obj.RODATA)
+	s.Set(obj.AttrContentAddressable, true)
+	s.Align = 1
+	return s
+}
+
+// dextratype dumps the fields of a runtime.uncommontype.
+// dataAdd is the offset in bytes after the header where the
+// backing array of the []method field should be written.
+func (syncgoCtx *Context) dextratype(lsym *obj.LSym, off int64, t *types.Type, dataAdd int) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	m := syncgoCtx.methods(t)
+	if t.Sym() == nil && len(m) == 0 {
+		syncgoCtx.fatalf("extra requested of type with no extra info %v", t)
+	}
+	noff := syncgoCtx.Typecheck.IR.Types.RoundUp(off, int64(syncgoCtx.ptrSize))
+	if noff != off {
+		syncgoCtx.fatalf("unexpected alignment in dextratype for %v", t)
+	}
+
+	for _, a := range m {
+		syncgoCtx.writeType(a.type_)
+	}
+
+	c := syncgoCtx.Runtime.NewCursor(lsym, off, syncgoCtx.Runtime.UncommonType)
+	syncgoCtx.dgopkgpathOff(c.Field("PkgPath"), syncgoCtx.typePkg(t))
+
+	dataAdd += syncgoCtx.uncommonSize(t)
+	mcount := len(m)
+	if mcount != int(uint16(mcount)) {
+		syncgoCtx.fatalf("too many methods on %v: %d", t, mcount)
+	}
+	xcount := sort.Search(mcount, func(i int) bool { return !types.IsExported(m[i].name.Name) })
+	if dataAdd != int(uint32(dataAdd)) {
+		syncgoCtx.fatalf("methods are too far away on %v: %d", t, dataAdd)
+	}
+
+	c.Field("Mcount").WriteUint16(uint16(mcount))
+	c.Field("Xcount").WriteUint16(uint16(xcount))
+	c.Field("Moff").WriteUint32(uint32(dataAdd))
+	// Note: there is an unused uint32 field here.
+
+	// Write the backing array for the []method field.
+	array := syncgoCtx.Runtime.NewArrayCursor(lsym, off+int64(dataAdd), syncgoCtx.Runtime.Method, mcount)
+	for i, a := range m {
+		exported := types.IsExported(a.name.Name)
+		var pkg *types.Pkg
+		if !exported && a.name.Pkg != syncgoCtx.typePkg(t) {
+			pkg = a.name.Pkg
+		}
+		nsym := syncgoCtx.dname(a.name.Name, "", pkg, exported, false)
+
+		e := array.Elem(i)
+		e.Field("Name").WriteSymPtrOff(nsym, false)
+		dmethodptrOff(e.Field("Mtyp"), syncgoCtx.writeType(a.mtype))
+		dmethodptrOff(e.Field("Ifn"), a.isym)
+		dmethodptrOff(e.Field("Tfn"), a.tsym)
+	}
+}
+
+func (syncgoCtx *Context) typePkg(t *types.Type) *types.Pkg {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	tsym := t.Sym()
+	if tsym == nil {
+		switch t.Kind() {
+		case types.TARRAY, types.TSLICE, types.TPTR, types.TCHAN:
+			if t.Elem() != nil {
+				tsym = t.Elem().Sym()
+			}
+		}
+	}
+	if tsym != nil && tsym.Pkg != syncgoCtx.Typecheck.IR.Types.BuiltinPkg {
+		return tsym.Pkg
+	}
+	return nil
+}
+
+func dmethodptrOff(c rttype.Cursor, x *obj.LSym) {
+	c.WriteInt32(0)
+	c.Reloc(obj.Reloc{Type: objabi.R_METHODOFF, Sym: x})
+}
+
+func (syncgoCtx *Context) ABIKindOfType(t *types.Type) abi.Kind {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	return syncgoCtx.kinds[t.Kind()]
+}
+
+// dcommontype dumps the contents of a reflect.rtype (runtime._type) to c.
+func (syncgoCtx *Context) dcommontype(c rttype.Cursor, t *types.Type) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	syncgoCtx.Typecheck.IR.Types.CalcSize(t)
+	eqfunc := syncgoCtx.geneq(t)
+
+	sptrWeak := true
+	var sptr *obj.LSym
+	if !t.IsPtr() || t.IsPtrElem() {
+		tptr := syncgoCtx.Typecheck.IR.Types.NewPtr(t)
+		if t.Sym() != nil || syncgoCtx.methods(tptr) != nil {
+			sptrWeak = false
+		}
+		sptr = syncgoCtx.writeType(tptr)
+	}
+
+	gcsym, onDemand, ptrdata := syncgoCtx.dgcsym(t, true, true)
+	if !onDemand {
+		delete(syncgoCtx.gcsymset, t)
+	}
+
+	// ../../../../reflect/type.go:/^type.rtype
+	// actual type structure
+	//	type rtype struct {
+	//		size          uintptr
+	//		ptrdata       uintptr
+	//		hash          uint32
+	//		tflag         tflag
+	//		align         uint8
+	//		fieldAlign    uint8
+	//		kind          uint8
+	//		equal         func(unsafe.Pointer, unsafe.Pointer) bool
+	//		gcdata        *byte
+	//		str           nameOff
+	//		ptrToThis     typeOff
+	//	}
+	c.Field("Size_").WriteUintptr(uint64(t.Size()))
+	c.Field("PtrBytes").WriteUintptr(uint64(ptrdata))
+	c.Field("Hash").WriteUint32(syncgoCtx.Typecheck.IR.Types.TypeHash(t))
+
+	var tflag abi.TFlag
+	if syncgoCtx.uncommonSize(t) != 0 {
+		tflag |= abi.TFlagUncommon
+	}
+	if t.Sym() != nil && t.Sym().Name != "" {
+		tflag |= abi.TFlagNamed
+	}
+	if compare.IsRegularMemory(t) {
+		tflag |= abi.TFlagRegularMemory
+	}
+	if onDemand {
+		tflag |= abi.TFlagGCMaskOnDemand
+	}
+
+	exported := false
+	p := t.NameString()
+	// If we're writing out type T,
+	// we are very likely to write out type *T as well.
+	// Use the string "*T"[1:] for "T", so that the two
+	// share storage. This is a cheap way to reduce the
+	// amount of space taken up by reflect strings.
+	if !strings.HasPrefix(p, "*") {
+		p = "*" + p
+		tflag |= abi.TFlagExtraStar
+		if t.Sym() != nil {
+			exported = types.IsExported(t.Sym().Name)
+		}
+	} else {
+		if t.Elem() != nil && t.Elem().Sym() != nil {
+			exported = types.IsExported(t.Elem().Sym().Name)
+		}
+	}
+	if syncgoCtx.Typecheck.IR.Types.IsDirectIface(t) {
+		tflag |= abi.TFlagDirectIface
+	}
+
+	if tflag != abi.TFlag(uint8(tflag)) {
+		// this should optimize away completely
+		panic("Unexpected change in size of abi.TFlag")
+	}
+	c.Field("TFlag").WriteUint8(uint8(tflag))
+
+	// runtime (and common sense) expects alignment to be a power of two.
+	i := int(uint8(t.Alignment()))
+
+	if i == 0 {
+		i = 1
+	}
+	if i&(i-1) != 0 {
+		syncgoCtx.fatalf("invalid alignment %d for %v", uint8(t.Alignment()), t)
+	}
+	c.Field("Align_").WriteUint8(uint8(t.Alignment()))
+	c.Field("FieldAlign_").WriteUint8(uint8(t.Alignment()))
+
+	c.Field("Kind_").WriteUint8(uint8(syncgoCtx.ABIKindOfType(t)))
+
+	c.Field("Equal").WritePtr(eqfunc)
+	c.Field("GCData").WritePtr(gcsym)
+
+	nsym := syncgoCtx.dname(p, "", nil, exported, false)
+	c.Field("Str").WriteSymPtrOff(nsym, false)
+	c.Field("PtrToThis").WriteSymPtrOff(sptr, sptrWeak)
+}
 
 // TrackSym returns the symbol for tracking use of field/method f, assumed
 // to be a member of struct/interface type t.
@@ -111,6 +604,427 @@ func (syncgoCtx *Context) TypePtrAt(pos src.XPos, t *types.Type) *ir.AddrExpr {
 	return syncgoCtx.Typecheck.LinksymAddr(pos, syncgoCtx.TypeLinksym(t), syncgoCtx.Typecheck.IR.Types.Types[types.TUINT8])
 }
 
+// ITabLsym returns the LSym representing the itab for concrete type typ implementing
+// interface iface. A dummy tab will be created in the unusual case where typ doesn't
+// implement iface. Normally, this wouldn't happen, because the typechecker would
+// have reported a compile-time error. This situation can only happen when the
+// destination type of a type assert or a type in a type switch is parameterized, so
+// it may sometimes, but not always, be a type that can't implement the specified
+// interface.
+func (syncgoCtx *Context) ITabLsym(typ, iface *types.Type) *obj.LSym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	syncgoCtx.checkITabTypes(typ, iface)
+	return syncgoCtx.itabLsym(typ, iface, true)
+}
+
+func (syncgoCtx *Context) itabLsym(typ, iface *types.Type, allowNonImplement bool) *obj.LSym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	s, existed := syncgoCtx.Typecheck.IR.Pkgs.Itab.LookupOK(typ.LinkString() + "," + iface.LinkString())
+	lsym := s.Linksym()
+	syncgoCtx.signatmu.Lock()
+	if lsym.Extra == nil {
+		ii := lsym.NewItabInfo()
+		ii.Type = typ
+	}
+	syncgoCtx.signatmu.Unlock()
+
+	if !existed {
+		syncgoCtx.writeITab(lsym, typ, iface, allowNonImplement)
+	}
+	return lsym
+}
+
+// ITabAddrAt returns an expression that evaluates to the
+// *runtime.itab value for concrete type typ implementing interface
+// iface.
+func (syncgoCtx *Context) ITabAddrAt(pos src.XPos, typ, iface *types.Type) *ir.AddrExpr {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	syncgoCtx.checkITabAt(pos, typ, iface)
+	lsym := syncgoCtx.itabLsym(typ, iface, false)
+	return syncgoCtx.Typecheck.LinksymAddr(pos, lsym, syncgoCtx.Typecheck.IR.Types.Types[types.TUINT8])
+}
+
+// needkeyupdate reports whether map updates with t as a key
+// need the key to be updated.
+func (syncgoCtx *Context) needkeyupdate(t *types.Type) bool {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	switch t.Kind() {
+	case types.TBOOL, types.TINT, types.TUINT, types.TINT8, types.TUINT8, types.TINT16, types.TUINT16, types.TINT32, types.TUINT32,
+		types.TINT64, types.TUINT64, types.TUINTPTR, types.TPTR, types.TUNSAFEPTR, types.TCHAN:
+		return false
+
+	case types.TFLOAT32, types.TFLOAT64, types.TCOMPLEX64, types.TCOMPLEX128, // floats and complex can be +0/-0
+		types.TINTER,
+		types.TSTRING: // strings might have smaller backing stores
+		return true
+
+	case types.TARRAY:
+		return syncgoCtx.needkeyupdate(t.Elem())
+
+	case types.TSTRUCT:
+		for _, t1 := range t.Fields() {
+			if syncgoCtx.needkeyupdate(t1.Type) {
+				return true
+			}
+		}
+		return false
+
+	default:
+		syncgoCtx.fatalf("bad type for map key: %v", t)
+		return true
+	}
+}
+
+// hashMightPanic reports whether the hash of a map key of type t might panic.
+func hashMightPanic(t *types.Type) bool {
+	switch t.Kind() {
+	case types.TINTER:
+		return true
+
+	case types.TARRAY:
+		return hashMightPanic(t.Elem())
+
+	case types.TSTRUCT:
+		for _, t1 := range t.Fields() {
+			if hashMightPanic(t1.Type) {
+				return true
+			}
+		}
+		return false
+
+	default:
+		return false
+	}
+}
+
+// formalType replaces predeclared aliases with real types.
+// They've been separate internally to make error messages
+// better, but we have to merge them in the reflect tables.
+func (syncgoCtx *Context) formalType(t *types.Type) *types.Type {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	switch t {
+	case syncgoCtx.Typecheck.IR.Types.AnyType, syncgoCtx.Typecheck.IR.Types.ByteType, syncgoCtx.Typecheck.IR.Types.RuneType:
+		return syncgoCtx.Typecheck.IR.Types.Types[t.Kind()]
+	}
+	return t
+}
+
+func (syncgoCtx *Context) writeType(t *types.Type) *obj.LSym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	syncgoCtx.checkType(t)
+	t = syncgoCtx.formalType(t)
+	if t.IsUntyped() {
+		syncgoCtx.fatalf("writeType %v", t)
+	}
+
+	s := syncgoCtx.Typecheck.IR.Types.TypeSym(t)
+	lsym := s.Linksym()
+
+	// special case (look for runtime below):
+	// when compiling package runtime,
+	// emit the type structures for int, float, etc.
+	tbase := t
+	if t.IsPtr() && t.Sym() == nil && t.Elem().Sym() != nil {
+		tbase = t.Elem()
+	}
+	if tbase.Kind() == types.TFORW {
+		syncgoCtx.fatalf("unresolved defined type: %v", tbase)
+	}
+
+	// This is a fake type we generated for our builtin pseudo-runtime
+	// package. We'll emit a description for the real type while
+	// compiling package runtime, so we don't need or want to emit one
+	// from this fake type.
+	if sym := tbase.Sym(); sym != nil && sym.Pkg == syncgoCtx.Typecheck.IR.Pkgs.Runtime {
+		return lsym
+	}
+
+	if s.Siggen() {
+		return lsym
+	}
+	s.SetSiggen(true)
+
+	if !tbase.HasShape() {
+		syncgoCtx.TypeLinksym(t) // ensure lsym.Extra is set
+	}
+
+	if !syncgoCtx.NeedEmit(tbase) {
+		if i := syncgoCtx.Typecheck.BaseTypeIndex(t); i >= 0 {
+			lsym.Pkg = tbase.Sym().Pkg.Prefix
+			lsym.SymIdx = int32(i)
+			lsym.Set(obj.AttrIndexed, true)
+		}
+
+		// TODO(mdempsky): Investigate whether this still happens.
+		// If we know we don't need to emit code for a type,
+		// we should have a link-symbol index for it.
+		// See also TODO in NeedEmit.
+		return lsym
+	}
+
+	// Type layout                          Written by               Marker
+	// +--------------------------------+                            - 0
+	// | abi/internal.Type              |   dcommontype
+	// +--------------------------------+                            - A
+	// | additional type-dependent      |   code in the switch below
+	// | fields, e.g.                   |
+	// | abi/internal.ArrayType.Len     |
+	// +--------------------------------+                            - B
+	// | internal/abi.UncommonType      |   dextratype
+	// | This section is optional,      |
+	// | if type has a name or methods  |
+	// +--------------------------------+                            - C
+	// | variable-length data           |   code in the switch below
+	// | referenced by                  |
+	// | type-dependent fields, e.g.    |
+	// | abi/internal.StructType.Fields |
+	// | dataAdd = size of this section |
+	// +--------------------------------+                            - D
+	// | method list, if any            |   dextratype
+	// +--------------------------------+                            - E
+
+	// internal/abi.Type.DescriptorSize is aware of this type layout,
+	// and must be changed if the layout change.
+
+	// UncommonType section is included if we have a name or a method.
+	extra := t.Sym() != nil || len(syncgoCtx.methods(t)) != 0
+
+	// Decide the underlying type of the descriptor, and remember
+	// the size we need for variable-length data.
+	var rt *types.Type
+	dataAdd := 0
+	switch t.Kind() {
+	default:
+		rt = syncgoCtx.Runtime.Type
+	case types.TARRAY:
+		rt = syncgoCtx.Runtime.ArrayType
+	case types.TSLICE:
+		rt = syncgoCtx.Runtime.SliceType
+	case types.TCHAN:
+		rt = syncgoCtx.Runtime.ChanType
+	case types.TFUNC:
+		rt = syncgoCtx.Runtime.FuncType
+		dataAdd = (t.NumRecvs() + t.NumParams() + t.NumResults()) * syncgoCtx.ptrSize
+	case types.TINTER:
+		rt = syncgoCtx.Runtime.InterfaceType
+		dataAdd = len(syncgoCtx.imethods(t)) * int(syncgoCtx.Runtime.IMethod.Size())
+	case types.TMAP:
+		rt = syncgoCtx.Runtime.MapType
+	case types.TPTR:
+		rt = syncgoCtx.Runtime.PtrType
+		// TODO: use rttype.Type for Elem() is ANY?
+	case types.TSTRUCT:
+		rt = syncgoCtx.Runtime.StructType
+		dataAdd = t.NumFields() * int(syncgoCtx.Runtime.StructField.Size())
+	}
+
+	// Compute offsets of each section.
+	B := rt.Size()
+	C := B
+	if extra {
+		C = B + syncgoCtx.Runtime.UncommonType.Size()
+	}
+	D := C + int64(dataAdd)
+	E := D + int64(len(syncgoCtx.methods(t)))*syncgoCtx.Runtime.Method.Size()
+
+	// Write the runtime._type
+	c := syncgoCtx.Runtime.NewCursor(lsym, 0, rt)
+	if rt == syncgoCtx.Runtime.Type {
+		syncgoCtx.dcommontype(c, t)
+	} else {
+		syncgoCtx.dcommontype(c.Field("Type"), t)
+	}
+
+	// Write additional type-specific data
+	// (Both the fixed size and variable-sized sections.)
+	switch t.Kind() {
+	case types.TARRAY:
+		// internal/abi.ArrayType
+		s1 := syncgoCtx.writeType(t.Elem())
+		t2 := syncgoCtx.Typecheck.IR.Types.NewSlice(t.Elem())
+		s2 := syncgoCtx.writeType(t2)
+		c.Field("Elem").WritePtr(s1)
+		c.Field("Slice").WritePtr(s2)
+		c.Field("Len").WriteUintptr(uint64(t.NumElem()))
+
+	case types.TSLICE:
+		// internal/abi.SliceType
+		s1 := syncgoCtx.writeType(t.Elem())
+		c.Field("Elem").WritePtr(s1)
+
+	case types.TCHAN:
+		// internal/abi.ChanType
+		s1 := syncgoCtx.writeType(t.Elem())
+		c.Field("Elem").WritePtr(s1)
+		c.Field("Dir").WriteInt(int64(t.ChanDir()))
+
+	case types.TFUNC:
+		// internal/abi.FuncType
+		for _, t1 := range t.RecvParamsResults() {
+			syncgoCtx.writeType(t1.Type)
+		}
+		inCount := t.NumRecvs() + t.NumParams()
+		outCount := t.NumResults()
+		if t.IsVariadic() {
+			outCount |= 1 << 15
+		}
+
+		c.Field("InCount").WriteUint16(uint16(inCount))
+		c.Field("OutCount").WriteUint16(uint16(outCount))
+
+		// Array of rtype pointers follows funcType.
+		typs := t.RecvParamsResults()
+		array := syncgoCtx.Runtime.NewArrayCursor(lsym, C, syncgoCtx.Typecheck.IR.Types.Types[types.TUNSAFEPTR], len(typs))
+		for i, t1 := range typs {
+			array.Elem(i).WritePtr(syncgoCtx.writeType(t1.Type))
+		}
+
+	case types.TINTER:
+		// internal/abi.InterfaceType
+		m := syncgoCtx.imethods(t)
+		n := len(m)
+		for _, a := range m {
+			syncgoCtx.writeType(a.type_)
+		}
+
+		var tpkg *types.Pkg
+		if t.Sym() != nil && t != syncgoCtx.Typecheck.IR.Types.Types[t.Kind()] && t != syncgoCtx.Typecheck.IR.Types.ErrorType {
+			tpkg = t.Sym().Pkg
+		}
+		syncgoCtx.dgopkgpath(c.Field("PkgPath"), tpkg)
+		c.Field("Methods").WriteSlice(lsym, C, int64(n), int64(n))
+
+		array := syncgoCtx.Runtime.NewArrayCursor(lsym, C, syncgoCtx.Runtime.IMethod, n)
+		for i, a := range m {
+			exported := types.IsExported(a.name.Name)
+			var pkg *types.Pkg
+			if !exported && a.name.Pkg != tpkg {
+				pkg = a.name.Pkg
+			}
+			nsym := syncgoCtx.dname(a.name.Name, "", pkg, exported, false)
+
+			e := array.Elem(i)
+			e.Field("Name").WriteSymPtrOff(nsym, false)
+			e.Field("Typ").WriteSymPtrOff(syncgoCtx.writeType(a.type_), false)
+		}
+
+	case types.TMAP:
+		syncgoCtx.writeMapType(t, lsym, c)
+
+	case types.TPTR:
+		// internal/abi.PtrType
+		if t.Elem().Kind() == types.TANY {
+			syncgoCtx.fatalf("bad pointer base type")
+		}
+
+		s1 := syncgoCtx.writeType(t.Elem())
+		c.Field("Elem").WritePtr(s1)
+
+	case types.TSTRUCT:
+		// internal/abi.StructType
+		fields := t.Fields()
+		for _, t1 := range fields {
+			syncgoCtx.writeType(t1.Type)
+		}
+
+		// All non-exported struct field names within a struct
+		// type must originate from a single package. By
+		// identifying and recording that package within the
+		// struct type descriptor, we can omit that
+		// information from the field descriptors.
+		var spkg *types.Pkg
+		for _, f := range fields {
+			if !types.IsExported(f.Sym.Name) {
+				spkg = f.Sym.Pkg
+				break
+			}
+		}
+
+		syncgoCtx.dgopkgpath(c.Field("PkgPath"), spkg)
+		c.Field("Fields").WriteSlice(lsym, C, int64(len(fields)), int64(len(fields)))
+
+		array := syncgoCtx.Runtime.NewArrayCursor(lsym, C, syncgoCtx.Runtime.StructField, len(fields))
+		for i, f := range fields {
+			e := array.Elem(i)
+			syncgoCtx.dnameField(e.Field("Name"), spkg, f)
+			e.Field("Typ").WritePtr(syncgoCtx.writeType(f.Type))
+			e.Field("Offset").WriteUintptr(uint64(f.Offset))
+		}
+	}
+
+	// Write the extra info, if any.
+	if extra {
+		syncgoCtx.dextratype(lsym, B, t, dataAdd)
+	}
+
+	// Note: DUPOK is required to ensure that we don't end up with more
+	// than one type descriptor for a given type, if the type descriptor
+	// can be defined in multiple packages, that is, unnamed types,
+	// instantiated types and shape types.
+	dupok := 0
+	if tbase.Sym() == nil || tbase.IsFullyInstantiated() || tbase.HasShape() {
+		dupok = obj.DUPOK
+	}
+
+	syncgoCtx.Runtime.Writer.Global(lsym, int32(E), int16(dupok|obj.RODATA))
+
+	// The linker will leave a table of all the typelinks for
+	// types in the binary, so the runtime can find them.
+	//
+	// When buildmode=shared, all types are in typelinks so the
+	// runtime can deduplicate type pointers.
+	keep := syncgoCtx.Typecheck.IR.Base.Ctxt.Flag_dynlink
+	if !keep && t.Sym() == nil {
+		// For an unnamed type, we only need the link if the type can
+		// be created at run time by reflect.PointerTo and similar
+		// functions. If the type exists in the program, those
+		// functions must return the existing type structure rather
+		// than creating a new one.
+		switch t.Kind() {
+		case types.TPTR, types.TARRAY, types.TCHAN, types.TFUNC, types.TMAP, types.TSLICE, types.TSTRUCT:
+			keep = true
+		}
+	}
+	// Do not put Noalg types in typelinks.  See issue #22605.
+	if syncgoCtx.Typecheck.IR.Types.TypeHasNoAlg(t) {
+		keep = false
+	}
+	lsym.Set(obj.AttrMakeTypelink, keep)
+	lsym.Align = int16(syncgoCtx.ptrSize)
+
+	return lsym
+}
+
+// InterfaceMethodOffset returns the offset of the i-th method in the interface
+// type descriptor, ityp.
+func (syncgoCtx *Context) InterfaceMethodOffset(ityp *types.Type, i int64) int64 {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	syncgoCtx.checkMethodOffset(ityp, i)
+	// interface type descriptor layout is struct {
+	//   _type        // commonSize
+	//   pkgpath      // 1 word
+	//   []imethod    // 3 words (pointing to [...]imethod below)
+	//   uncommontype // uncommonSize
+	//   [...]imethod
+	// }
+	// The size of imethod is 8.
+	return int64(syncgoCtx.commonSize()+4*syncgoCtx.ptrSize+syncgoCtx.uncommonSize(ityp)) + i*8
+}
+
 // NeedRuntimeType ensures that a runtime type descriptor is emitted for t.
 func (syncgoCtx *Context) NeedRuntimeType(t *types.Type) {
 	if syncgoCtx == nil {
@@ -120,6 +1034,27 @@ func (syncgoCtx *Context) NeedRuntimeType(t *types.Type) {
 	if _, ok := syncgoCtx.signatset[t]; !ok {
 		syncgoCtx.signatset[t] = struct{}{}
 		syncgoCtx.signatslice = append(syncgoCtx.signatslice, typeAndStr{t: t, short: syncgoCtx.Typecheck.IR.Types.TypeSymName(t), regular: t.String()})
+	}
+}
+
+func (syncgoCtx *Context) WriteRuntimeTypes() {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	// Process signatslice. Use a loop, as writeType adds
+	// entries to signatslice while it is being processed.
+	for len(syncgoCtx.signatslice) > 0 {
+		signats := syncgoCtx.signatslice
+		// Sort for reproducible builds.
+		slices.SortFunc(signats, typesStrCmp)
+		for _, ts := range signats {
+			t := ts.t
+			syncgoCtx.writeType(t)
+			if t.Sym() != nil {
+				syncgoCtx.writeType(syncgoCtx.Typecheck.IR.Types.NewPtr(t))
+			}
+		}
+		syncgoCtx.signatslice = syncgoCtx.signatslice[len(signats):]
 	}
 }
 
@@ -136,6 +1071,115 @@ func (syncgoCtx *Context) WriteGCSymbols() {
 	for _, ts := range gcsyms {
 		syncgoCtx.dgcsym(ts.t, true, false)
 	}
+}
+
+// writeITab writes the itab for concrete type typ implementing interface iface. If
+// allowNonImplement is true, allow the case where typ does not implement iface, and just
+// create a dummy itab with zeroed-out method entries.
+func (syncgoCtx *Context) writeITab(lsym *obj.LSym, typ, iface *types.Type, allowNonImplement bool) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	// TODO(mdempsky): Fix methodWrapper, geneq, and genhash (and maybe
+	// others) to stop clobbering these.
+	oldpos, oldfn := syncgoCtx.Typecheck.IR.Types.Pos, syncgoCtx.Typecheck.IR.CurFunc
+	defer func() { syncgoCtx.Typecheck.IR.Types.Pos, syncgoCtx.Typecheck.IR.CurFunc = oldpos, oldfn }()
+
+	if typ == nil || (typ.IsPtr() && typ.Elem() == nil) || typ.IsUntyped() || iface == nil || !iface.IsInterface() || iface.IsEmptyInterface() {
+		syncgoCtx.fatalf("writeITab(%v, %v)", typ, iface)
+	}
+
+	sigs := iface.AllMethods()
+	entries := make([]*obj.LSym, 0, len(sigs))
+
+	// both sigs and methods are sorted by name,
+	// so we can find the intersection in a single pass
+	for _, m := range syncgoCtx.methods(typ) {
+		if m.name == sigs[0].Sym {
+			entries = append(entries, m.isym)
+			if m.isym == nil {
+				panic("NO ISYM")
+			}
+			sigs = sigs[1:]
+			if len(sigs) == 0 {
+				break
+			}
+		}
+	}
+	completeItab := len(sigs) == 0
+	if !allowNonImplement && !completeItab {
+		syncgoCtx.fatalf("incomplete itab")
+	}
+
+	// dump empty itab symbol into i.sym
+	// type itab struct {
+	//   inter  *interfacetype
+	//   _type  *_type
+	//   hash   uint32 // copy of _type.hash. Used for type switches.
+	//   _      [4]byte
+	//   fun    [1]uintptr // variable sized. fun[0]==0 means _type does not implement inter.
+	// }
+	c := syncgoCtx.Runtime.NewCursor(lsym, 0, syncgoCtx.Runtime.ITab)
+	c.Field("Inter").WritePtr(syncgoCtx.writeType(iface))
+	c.Field("Type").WritePtr(syncgoCtx.writeType(typ))
+	c.Field("Hash").WriteUint32(syncgoCtx.Typecheck.IR.Types.TypeHash(typ)) // copy of type hash
+
+	var delta int64
+	c = c.Field("Fun")
+	if !completeItab {
+		// If typ doesn't implement iface, make method entries be zero.
+		c.Elem(0).WriteUintptr(0)
+	} else {
+		var a rttype.ArrayCursor
+		a, delta = c.ModifyArray(len(entries))
+		for i, fn := range entries {
+			a.Elem(i).WritePtrWeak(fn) // method pointer for each method
+		}
+	}
+	// Nothing writes static itabs, so they are read only.
+	syncgoCtx.Runtime.Writer.Global(lsym, int32(syncgoCtx.Runtime.ITab.Size()+delta), int16(obj.DUPOK|obj.RODATA))
+	lsym.Set(obj.AttrContentAddressable, true)
+	lsym.Align = int16(syncgoCtx.ptrSize)
+}
+
+func (syncgoCtx *Context) WritePluginTable() {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	ptabs := syncgoCtx.Typecheck.Target.PluginExports
+	if len(ptabs) == 0 {
+		return
+	}
+
+	lsym := syncgoCtx.Typecheck.IR.Base.Ctxt.Lookup("go:plugin.tabs")
+	ot := 0
+	for _, p := range ptabs {
+		// Dump ptab symbol into go.pluginsym package.
+		//
+		// type ptab struct {
+		//	name nameOff
+		//	typ  typeOff // pointer to symbol
+		// }
+		nsym := syncgoCtx.dname(p.Sym().Name, "", nil, true, false)
+		t := p.Type()
+		if p.Class != ir.PFUNC {
+			t = syncgoCtx.Typecheck.IR.Types.NewPtr(t)
+		}
+		tsym := syncgoCtx.writeType(t)
+		ot = syncgoCtx.Runtime.Writer.SymPtrOff(lsym, ot, nsym)
+		ot = syncgoCtx.Runtime.Writer.SymPtrOff(lsym, ot, tsym)
+		// Plugin exports symbols as interfaces. Mark their types
+		// as UsedInIface.
+		tsym.Set(obj.AttrUsedInIface, true)
+	}
+	syncgoCtx.Runtime.Writer.Global(lsym, int32(ot), int16(obj.RODATA))
+
+	lsym = syncgoCtx.Typecheck.IR.Base.Ctxt.Lookup("go:plugin.exports")
+	ot = 0
+	for _, p := range ptabs {
+		ot = syncgoCtx.Runtime.Writer.SymPtr(lsym, ot, p.Linksym(), 0)
+	}
+	syncgoCtx.Runtime.Writer.Global(lsym, int32(ot), int16(obj.RODATA))
 }
 
 // writtenByWriteBasicTypes reports whether typ is written by WriteBasicTypes.
@@ -167,6 +1211,45 @@ func (syncgoCtx *Context) writtenByWriteBasicTypes(typ *types.Type) bool {
 	}
 	// any or error
 	return (sym == nil && typ.IsEmptyInterface()) || typ == syncgoCtx.Typecheck.IR.Types.ErrorType
+}
+
+func (syncgoCtx *Context) WriteBasicTypes() {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	// do basic types if compiling package runtime.
+	// they have to be in at least one package,
+	// and runtime is always loaded implicitly,
+	// so this is as good as any.
+	// another possible choice would be package main,
+	// but using runtime means fewer copies in object files.
+	// The code here needs to be in sync with writtenByWriteBasicTypes above.
+	if syncgoCtx.Typecheck.IR.Base.Ctxt.Pkgpath != "runtime" {
+		return
+	}
+
+	// Note: always write NewPtr(t) because NeedEmit's caller strips the pointer.
+	var list []*types.Type
+	for i := types.Kind(1); i <= types.TBOOL; i++ {
+		list = append(list, syncgoCtx.Typecheck.IR.Types.Types[i])
+	}
+	list = append(list,
+		syncgoCtx.Typecheck.IR.Types.Types[types.TSTRING],
+		syncgoCtx.Typecheck.IR.Types.Types[types.TUNSAFEPTR],
+		syncgoCtx.Typecheck.IR.Types.AnyType,
+		syncgoCtx.Typecheck.IR.Types.ErrorType)
+	for _, t := range list {
+		syncgoCtx.writeType(syncgoCtx.Typecheck.IR.Types.NewPtr(t))
+		syncgoCtx.writeType(syncgoCtx.Typecheck.IR.Types.NewPtr(syncgoCtx.Typecheck.IR.Types.NewSlice(t)))
+	}
+
+	// emit type for func(error) string,
+	// which is the type of an auto-generated wrapper.
+	syncgoCtx.writeType(syncgoCtx.Typecheck.IR.Types.NewPtr(syncgoCtx.Typecheck.IR.Types.NewSignature(nil, []*types.Field{
+		syncgoCtx.Typecheck.IR.Types.NewField(syncgoCtx.Typecheck.IR.Types.Pos, nil, syncgoCtx.Typecheck.IR.Types.ErrorType),
+	}, []*types.Field{
+		syncgoCtx.Typecheck.IR.Types.NewField(syncgoCtx.Typecheck.IR.Types.Pos, nil, syncgoCtx.Typecheck.IR.Types.Types[types.TSTRING]),
+	})))
 }
 
 type typeAndStr struct {
@@ -378,6 +1461,57 @@ func (syncgoCtx *Context) NeedEmit(typ *types.Type) bool {
 	}
 }
 
+// Generate a wrapper function to convert from
+// a receiver of type T to a receiver of type U.
+// That is,
+//
+//	func (t T) M() {
+//		...
+//	}
+//
+// already exists; this function generates
+//
+//	func (u U) M() {
+//		u.M()
+//	}
+//
+// where the types T and U are such that u.M() is valid
+// and calls the T.M method.
+// The resulting function is for use in method tables.
+//
+//	rcvr - U
+//	method - M func (t T)(), a TFIELD type struct
+//
+// Also wraps methods on instantiated generic types for use in itab entries.
+// For an instantiated generic type G[int], we generate wrappers like:
+// G[int] pointer shaped:
+//
+//	func (x G[int]) f(arg) {
+//		.inst.G[int].f(dictionary, x, arg)
+//	}
+//
+// G[int] not pointer shaped:
+//
+//	func (x *G[int]) f(arg) {
+//		.inst.G[int].f(dictionary, *x, arg)
+//	}
+//
+// These wrappers are always fully stenciled.
+func (syncgoCtx *Context) methodWrapper(rcvr *types.Type, method *types.Field, forItab bool) *obj.LSym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if forItab && !syncgoCtx.Typecheck.IR.Types.IsDirectIface(rcvr) {
+		rcvr = rcvr.PtrTo()
+	}
+
+	newnam := syncgoCtx.Typecheck.IR.MethodSym(rcvr, method.Sym)
+	lsym := newnam.Linksym()
+
+	// Unified IR creates its own wrappers.
+	return lsym
+}
+
 // MarkTypeUsedInInterface marks that type t is converted to an interface.
 // This information is used in the linker in dead method elimination.
 func (syncgoCtx *Context) MarkTypeUsedInInterface(t *types.Type, from *obj.LSym) {
@@ -399,7 +1533,83 @@ func (syncgoCtx *Context) MarkTypeSymUsedInInterface(tsym *obj.LSym, from *obj.L
 	// to an interface if "from" is reachable.
 	from.AddRel(syncgoCtx.Typecheck.IR.Base.Ctxt, obj.Reloc{Type: objabi.R_USEIFACE, Sym: tsym})
 }
+
+// MarkUsedIfaceMethod marks that an interface method is used in the current
+// function. n is OCALLINTER node.
+func (syncgoCtx *Context) MarkUsedIfaceMethod(n *ir.CallExpr) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	// skip unnamed functions (func _())
+	if syncgoCtx.Typecheck.IR.CurFunc.LSym == nil {
+		return
+	}
+	dot := n.Fun.(*ir.SelectorExpr)
+	ityp := dot.X.Type()
+	if ityp.HasShape() {
+		// Here we're calling a method on a generic interface. Something like:
+		//
+		// type I[T any] interface { foo() T }
+		// func f[T any](x I[T]) {
+		//     ... = x.foo()
+		// }
+		// f[int](...)
+		// f[string](...)
+		//
+		// In this case, in f we're calling foo on a generic interface.
+		// Which method could that be? Normally we could match the method
+		// both by name and by type. But in this case we don't really know
+		// the type of the method we're calling. It could be func()int
+		// or func()string. So we match on just the function name, instead
+		// of both the name and the type used for the non-generic case below.
+		// TODO: instantiations at least know the shape of the instantiated
+		// type, and the linker could do more complicated matching using
+		// some sort of fuzzy shape matching. For now, only use the name
+		// of the method for matching.
+		syncgoCtx.Typecheck.IR.CurFunc.LSym.AddRel(syncgoCtx.Typecheck.IR.Base.Ctxt, obj.Reloc{
+			Type: objabi.R_USENAMEDMETHOD,
+			Sym:  syncgoCtx.StaticData.StringSymNoCommon(dot.Sel.Name),
+		})
+		return
+	}
+
+	// dot.Offset() is the method index * PtrSize (the offset of code pointer in itab).
+	midx := dot.Offset() / int64(syncgoCtx.ptrSize)
+	syncgoCtx.Typecheck.IR.CurFunc.LSym.AddRel(syncgoCtx.Typecheck.IR.Base.Ctxt, obj.Reloc{
+		Type: objabi.R_USEIFACEMETHOD,
+		Sym:  syncgoCtx.TypeLinksym(ityp),
+		Add:  syncgoCtx.InterfaceMethodOffset(ityp, midx),
+	})
+}
 func (syncgoCtx *Context) syncgoInitVars0() {
 	syncgoCtx.signatset = make(map[*types.Type]struct{})
 	syncgoCtx.gcsymset = make(map[*types.Type]struct{})
+	syncgoCtx.kinds = []abi.Kind{
+		types.TINT:        abi.Int,
+		types.TUINT:       abi.Uint,
+		types.TINT8:       abi.Int8,
+		types.TUINT8:      abi.Uint8,
+		types.TINT16:      abi.Int16,
+		types.TUINT16:     abi.Uint16,
+		types.TINT32:      abi.Int32,
+		types.TUINT32:     abi.Uint32,
+		types.TINT64:      abi.Int64,
+		types.TUINT64:     abi.Uint64,
+		types.TUINTPTR:    abi.Uintptr,
+		types.TFLOAT32:    abi.Float32,
+		types.TFLOAT64:    abi.Float64,
+		types.TBOOL:       abi.Bool,
+		types.TSTRING:     abi.String,
+		types.TPTR:        abi.Pointer,
+		types.TSTRUCT:     abi.Struct,
+		types.TINTER:      abi.Interface,
+		types.TCHAN:       abi.Chan,
+		types.TMAP:        abi.Map,
+		types.TARRAY:      abi.Array,
+		types.TSLICE:      abi.Slice,
+		types.TFUNC:       abi.Func,
+		types.TCOMPLEX64:  abi.Complex64,
+		types.TCOMPLEX128: abi.Complex128,
+		types.TUNSAFEPTR:  abi.UnsafePointer,
+	}
 }

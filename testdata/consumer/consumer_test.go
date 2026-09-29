@@ -366,11 +366,13 @@ func TestNativeReflectionDataPublicAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	u.LocalPkg = u.NewPkg("example/p", "p")
+	link.Pkgpath = u.LocalPkg.Path
 	tc := typecheck.NewContext(ir.NewContext(u, link))
 	tc.InitUniverse()
 	rt := rttype.NewContext(objw.NewContext(u, link, "linux"))
 	rt.Init()
-	c := reflectdata.NewContext(tc, rt)
+	c := reflectdata.NewContext(tc, rt, staticdata.NewContext(tc.IR, rt.Writer))
 	typ := u.NewMap(u.Types[types.String], u.Types[types.Int])
 	symbol := c.TypeLinksym(typ)
 	ref := c.TypePtrAt(position.XPos{}, typ)
@@ -429,6 +431,31 @@ func TestNativeReflectionDataPublicAPI(t *testing.T) {
 	memory, length := c.EqFor(u.NewArray(u.Types[types.Int], 3))
 	if !length || memory != tc.LookupRuntime("memequal") {
 		t.Fatal("public runtime equality selection")
+	}
+
+	pos := position.XPos{}
+	name := tc.IR.NewDeclNameAt(pos, ir.OTYPE, u.LocalPkg.Lookup("Record"))
+	record := u.NewNamed(name)
+	name.SetType(record)
+	name.SetTypecheck(1)
+	record.SetUnderlying(u.NewStruct([]*types.Field{u.NewField(pos, u.LocalPkg.Lookup("Text"), u.Types[types.String])}))
+	methodSym := u.LocalPkg.Lookup("M")
+	record.SetMethods([]*types.Field{u.NewField(pos, methodSym, u.NewSignature(u.NewField(pos, nil, record), nil, nil))})
+	iface := u.NewInterface([]*types.Field{u.NewField(pos, methodSym, u.NewSignature(u.NewField(pos, nil, u.FakeRecvType()), nil, nil))})
+	c.NeedRuntimeType(record)
+	c.WriteRuntimeTypes()
+	descriptor := c.TypeLinksym(record)
+	if !descriptor.OnList() || descriptor.TypeInfo().Type != record || descriptor.Size <= rt.StructType.Size() || binary.LittleEndian.Uint32(descriptor.P[rt.Type.OffsetOf("Hash"):]) != u.TypeHash(record) {
+		t.Fatal("public type descriptor")
+	}
+	tab := c.ITabLsym(record, iface)
+	address := c.ITabAddrAt(pos, record, iface)
+	if !tab.OnList() || tab.ItabInfo().Type != record || tab.Size != rt.ITab.Size() || len(tab.R) != 3 || address.X.(*ir.LinksymOffsetExpr).Linksym != tab {
+		t.Fatal("public ITab data")
+	}
+	conversion := tc.IR.NewConvExpr(pos, ir.OCONVIFACE, iface, tc.IR.NewNameAt(pos, u.LocalPkg.Lookup("value"), record))
+	if c.ConvIfaceTypeWord(pos, conversion).(*ir.AddrExpr).X.(*ir.LinksymOffsetExpr).Linksym != tab {
+		t.Fatal("public interface conversion type word")
 	}
 
 }

@@ -10,6 +10,7 @@ import (
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/objw"
 	"go-backend-ssa/internal/rttype"
+	"go-backend-ssa/internal/staticdata"
 	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
 	"sync"
@@ -25,7 +26,7 @@ func testContext(size int, split bool) *Context {
 	tc.InitUniverse()
 	rt := rttype.NewContext(objw.NewContext(u, link, "linux"))
 	rt.Init()
-	return NewContext(tc, rt)
+	return NewContext(tc, rt, staticdata.NewContext(tc.IR, rt.Writer))
 }
 func mustPanic(t *testing.T, fn func()) {
 	t.Helper()
@@ -102,7 +103,7 @@ func TestReflectionRejectsForeignAndInvalidTypes(t *testing.T) {
 	shape := u.NewStruct(nil)
 	shape.SetHasShape(true)
 	for _, fn := range []func(){
-		func() { NewContext(c.Typecheck, other.Runtime) }, func() { c.TypeSym(bad) }, func() { c.TypeLinksym(bad) }, func() { c.TypeSymPrefix("eq", bad) }, func() { c.TypePtrAt(src.XPos{}, bad) }, func() { c.NeedRuntimeType(bad) }, func() { c.MapGroupType(other.Typecheck.IR.Types.NewMap(bad, bad)) },
+		func() { NewContext(c.Typecheck, other.Runtime, c.StaticData) }, func() { NewContext(c.Typecheck, c.Runtime, other.StaticData) }, func() { c.TypeSym(bad) }, func() { c.TypeLinksym(bad) }, func() { c.TypeSymPrefix("eq", bad) }, func() { c.TypePtrAt(src.XPos{}, bad) }, func() { c.NeedRuntimeType(bad) }, func() { c.MapGroupType(other.Typecheck.IR.Types.NewMap(bad, bad)) },
 		func() { c.TypeSym(nil) }, func() { c.TypeSym(u.UntypedInt) }, func() { c.TypeSym(method) }, func() { c.MarkTypeUsedInInterface(shape, from) },
 	} {
 		mustPanic(t, fn)

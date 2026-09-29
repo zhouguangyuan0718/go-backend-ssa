@@ -7,8 +7,8 @@ func reflectdataMigration() []Unit {
 	reflect := Unit{
 		Source:       "src/cmd/compile/internal/reflectdata/reflect.go",
 		Context:      context(),
-		Declarations: []string{"typeAndStr"},
-		Functions:    []string{"WriteGCSymbols", "GCSym", "dgcsym", "dgcptrmask", "fillptrmask", "dgcptrmaskOnDemand", "ZeroAddr", "TrackSym", "TypeSymPrefix", "TypeSym", "TypeLinksymPrefix", "TypeLinksymLookup", "TypeLinksym", "TypePtrAt", "NeedRuntimeType", "writtenByWriteBasicTypes", "NeedEmit", "typesStrCmp", "MarkTypeUsedInInterface", "MarkTypeSymUsedInInterface"},
+		Declarations: []string{"typeAndStr", "typeSig", "ptabEntry"},
+		Functions:    []string{"commonSize", "uncommonSize", "methods", "imethods", "dimportpath", "dgopkgpath", "dgopkgpathOff", "dnameField", "dnameData", "dname", "dextratype", "typePkg", "dmethodptrOff", "ABIKindOfType", "dcommontype", "TrackSym", "TypeSymPrefix", "TypeSym", "TypeLinksymPrefix", "TypeLinksymLookup", "TypeLinksym", "TypePtrAt", "ITabLsym", "itabLsym", "ITabAddrAt", "needkeyupdate", "hashMightPanic", "formalType", "writeType", "InterfaceMethodOffset", "NeedRuntimeType", "WriteRuntimeTypes", "WriteGCSymbols", "writeITab", "WritePluginTable", "writtenByWriteBasicTypes", "WriteBasicTypes", "typesStrCmp", "GCSym", "dgcsym", "dgcptrmask", "fillptrmask", "dgcptrmaskOnDemand", "ZeroAddr", "NeedEmit", "methodWrapper", "MarkTypeUsedInInterface", "MarkTypeSymUsedInInterface", "MarkUsedIfaceMethod"},
 		Checks:       map[string]string{"GCSym": "checkGCType", "TypeSym": "checkType", "TypeSymPrefix": "checkPrefix", "TypeLinksym": "checkType", "TypeLinksymPrefix": "checkPrefix", "TypePtrAt": "checkTypeAt", "NeedRuntimeType": "checkType", "NeedEmit": "checkType", "MarkTypeUsedInInterface": "checkFrom", "TrackSym": "checkField"},
 		State:        []StateRule{{Source: "src/cmd/compile/internal/base/link.go", Variable: "Ctxt", Field: "Typecheck.IR.Base.Ctxt"}},
 		Calls: []CallRule{
@@ -18,8 +18,8 @@ func reflectdataMigration() []Unit {
 			{Source: "src/cmd/compile/internal/typecheck/subr.go", Function: "LinksymAddr", Method: "Typecheck.LinksymAddr"},
 		},
 	}
-	reflect.Context.Fields = map[string]string{"signatmu": "signatmu", "signatset": "signatset", "signatslice": "signatslice", "gcsymmu": "gcsymmu", "gcsymset": "gcsymset", "ZeroSize": "ZeroSize", "memhashvarlen": "memhashvarlen", "memequalvarlen": "memequalvarlen"}
-	for _, name := range []string{"Types", "ErrorType"} {
+	reflect.Context.Fields = map[string]string{"kinds": "kinds", "dnameCount": "dnameCount", "signatmu": "signatmu", "signatset": "signatset", "signatslice": "signatslice", "gcsymmu": "gcsymmu", "gcsymset": "gcsymset", "ZeroSize": "ZeroSize", "memhashvarlen": "memhashvarlen", "memequalvarlen": "memequalvarlen"}
+	for _, name := range []string{"Types", "ErrorType", "AnyType", "ByteType", "RuneType"} {
 		reflect.State = append(reflect.State, StateRule{Source: "src/cmd/compile/internal/types/type.go", Variable: name, Field: "Typecheck.IR.Types." + name})
 	}
 	for _, name := range []string{"BuiltinPkg", "LocalPkg", "UnsafePkg"} {
@@ -39,13 +39,8 @@ func reflectdataMigration() []Unit {
 	for _, name := range []string{"Uint8", "Global"} {
 		reflect.Calls = append(reflect.Calls, CallRule{Source: "src/cmd/compile/internal/objw/objw.go", Function: name, Method: "Runtime.Writer." + name})
 	}
-	// ConvIfaceTypeWord also emits non-empty-interface ITabs. Preserve that full
-	// native path in the later descriptor batch rather than substituting a stub.
-	helpers := Unit{Source: "src/cmd/compile/internal/reflectdata/helpers.go", Context: context(), Functions: []string{
-		"hasRType", "assertOp", "assertOp2", "kindRType", "mapRType", "chanRType", "sliceElemRType", "concreteRType",
-		"AppendElemRType", "CompareRType", "ConvIfaceSrcRType", "CopyElemRType", "DeleteMapRType", "IndexMapRType", "MakeChanRType", "MakeMapRType", "MakeSliceElemRType", "RangeMapRType", "UnsafeSliceElemRType",
-	}}
-	mapTypes := Unit{Source: "src/cmd/compile/internal/reflectdata/map.go", Context: context(), Functions: []string{"MapGroupType", "mapTableType", "MapType", "MapIterType"}, Checks: map[string]string{"MapGroupType": "checkType"}}
+	helpers := Unit{Source: "src/cmd/compile/internal/reflectdata/helpers.go", Context: context(), WholeFile: true}
+	mapTypes := Unit{Source: "src/cmd/compile/internal/reflectdata/map.go", Context: context(), WholeFile: true, Checks: map[string]string{"MapGroupType": "checkType"}}
 	mapTypes.Context.Fields = map[string]string{"cachedMapTableType": "cachedMapTableType", "cachedMapType": "cachedMapType", "cachedMapIterType": "cachedMapIterType"}
 	mapTypes.State = []StateRule{
 		{Source: "src/cmd/compile/internal/types/size.go", Variable: "PtrSize", Field: "ptrSize"},
@@ -61,5 +56,6 @@ func reflectdataMigration() []Unit {
 	for _, name := range []string{"NewPtr", "NewArray", "NewStruct", "NewNamed"} {
 		mapTypes.Calls = append(mapTypes.Calls, CallRule{Source: "src/cmd/compile/internal/types/type.go", Function: name, Method: "Typecheck.IR.Types." + name})
 	}
+	reflectDescriptors(&reflect)
 	return []Unit{reflect, helpers, mapTypes, reflectAlgorithms(context())}
 }

@@ -6,12 +6,13 @@
 package reflectdata
 
 import (
-	"go-backend-ssa/internal/ir"
-
-	"go-backend-ssa/internal/types"
-
+	"go-backend-ssa/internal/cmd/obj"
+	"go-backend-ssa/internal/cmd/objabi"
 	"go-backend-ssa/internal/cmd/src"
 	"go-backend-ssa/internal/go/abi"
+	"go-backend-ssa/internal/ir"
+	"go-backend-ssa/internal/rttype"
+	"go-backend-ssa/internal/types"
 )
 
 // MapGroupType makes the map slot group type given the type of the map.
@@ -286,4 +287,75 @@ func (syncgoCtx *Context) MapIterType() *types.Type {
 
 	syncgoCtx.cachedMapIterType = iter
 	return iter
+}
+
+func (syncgoCtx *Context) writeMapType(t *types.Type, lsym *obj.LSym, c rttype.Cursor) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	// internal/abi.MapType
+	gtyp := syncgoCtx.MapGroupType(t)
+	s1 := syncgoCtx.writeType(t.Key())
+	s2 := syncgoCtx.writeType(t.Elem())
+	s3 := syncgoCtx.writeType(gtyp)
+	hasher := syncgoCtx.genhash(t.Key())
+
+	var keysOff int64
+	var keyStride int64
+	var elemsOff int64
+	var elemStride int64
+	var elemOff int64
+	if syncgoCtx.Typecheck.IR.Types.Experiment.MapSplitGroup {
+		// Split layout: field 1 is keys array, field 2 is elems array.
+		keysOff = gtyp.Field(1).Offset
+		keyStride = gtyp.Field(1).Type.Elem().Size()
+		elemsOff = gtyp.Field(2).Offset
+		elemStride = gtyp.Field(2).Type.Elem().Size()
+	} else {
+		// Interleaved layout: field 1 is slots array.
+		// KeysOff = offset of slots array (first key).
+		// KeyStride = ElemStride = slot stride.
+		// ElemsOff = offset of slots + offset of elem within slot.
+		keysOff = gtyp.Field(1).Offset
+		slotTyp := gtyp.Field(1).Type.Elem()
+		slotSize := slotTyp.Size()
+		elemOffInSlot := slotTyp.Field(1).Offset
+		keyStride = slotSize
+		elemsOff = keysOff + elemOffInSlot
+		elemStride = slotSize
+		elemOff = slotTyp.Field(1).Offset
+	}
+
+	c.Field("Key").WritePtr(s1)
+	c.Field("Elem").WritePtr(s2)
+	c.Field("Group").WritePtr(s3)
+	c.Field("Hasher").WritePtr(hasher)
+	c.Field("GroupSize").WriteUintptr(uint64(gtyp.Size()))
+	c.Field("KeysOff").WriteUintptr(uint64(keysOff))
+	c.Field("KeyStride").WriteUintptr(uint64(keyStride))
+	c.Field("ElemsOff").WriteUintptr(uint64(elemsOff))
+	c.Field("ElemStride").WriteUintptr(uint64(elemStride))
+	c.Field("ElemOff").WriteUintptr(uint64(elemOff))
+	var flags uint32
+	if syncgoCtx.needkeyupdate(t.Key()) {
+		flags |= abi.MapNeedKeyUpdate
+	}
+	if hashMightPanic(t.Key()) {
+		flags |= abi.MapHashMightPanic
+	}
+	if t.Key().Size() > abi.MapMaxKeyBytes {
+		flags |= abi.MapIndirectKey
+	}
+	if t.Elem().Size() > abi.MapMaxElemBytes {
+		flags |= abi.MapIndirectElem
+	}
+	c.Field("Flags").WriteUint32(flags)
+
+	if u := t.Underlying(); u != t {
+		// If t is a named map type, also keep the underlying map
+		// type live in the binary. This is important to make sure that
+		// a named map and that same map cast to its underlying type via
+		// reflection, use the same hash function. See issue 37716.
+		lsym.AddRel(syncgoCtx.Typecheck.IR.Base.Ctxt, obj.Reloc{Type: objabi.R_KEEP, Sym: syncgoCtx.writeType(u)})
+	}
 }

@@ -7,11 +7,13 @@ package types
 
 import (
 	"bytes"
-
+	"encoding/binary"
 	"fmt"
 	"strconv"
 
 	"sync"
+
+	"go-backend-ssa/internal/cmd/hash"
 )
 
 // fmtMode represents the kind of printing being done.
@@ -674,6 +676,21 @@ func (syncgoCtx *Universe) SplitVargenSuffix(name string) (base, suffix string) 
 		return name[:i], name[i:]
 	}
 	return name, ""
+}
+
+// TypeHash computes a hash value for type t to use in type switch statements.
+func (syncgoCtx *Universe) TypeHash(t *Type) uint32 {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if syncgoCtx == nil || t == nil || t.universe != syncgoCtx {
+		panic("argument belongs to another or uninitialized compilation")
+	}
+	p := t.LinkString()
+
+	// Using a cryptographic hash is overkill but minimizes accidental collisions.
+	h := hash.Sum32([]byte(p))
+	return binary.LittleEndian.Uint32(h[:4])
 }
 func (syncgoCtx *Universe) syncgoInitVars1() {
 	syncgoCtx.NumImport = make(map[string]int)

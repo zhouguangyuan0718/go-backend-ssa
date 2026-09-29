@@ -119,6 +119,32 @@ func (syncgoCtx *Context) CompareRType(pos src.XPos, n *ir.BinaryExpr) ir.Node {
 	return syncgoCtx.concreteRType(pos, typ)
 }
 
+// ConvIfaceTypeWord asserts that n is conversion to interface type,
+// and returns an expression that yields the *runtime._type or
+// *runtime.itab value necessary for implementing the conversion.
+//
+//   - *runtime._type for the destination type, for I2I conversions
+//   - *runtime.itab, for T2I conversions
+//   - *runtime._type for the source type, for T2E conversions
+func (syncgoCtx *Context) ConvIfaceTypeWord(pos src.XPos, n *ir.ConvExpr) ir.Node {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	syncgoCtx.assertOp(n, ir.OCONVIFACE)
+	src, dst := n.X.Type(), n.Type()
+	syncgoCtx.assertfAt(dst.IsInterface(), n.Pos(), "want interface type, have %L", n)
+	if hasRType(n, n.TypeWord, "TypeWord") {
+		return n.TypeWord
+	}
+	if dst.IsEmptyInterface() {
+		return syncgoCtx.concreteRType(pos, src) // direct eface construction
+	}
+	if !src.IsInterface() {
+		return syncgoCtx.ITabAddrAt(pos, src, dst) // direct iface construction
+	}
+	return syncgoCtx.TypePtrAt(pos, dst) // convI2I
+}
+
 // ConvIfaceSrcRType asserts that n is a conversion from
 // non-interface type to interface type, and
 // returns an expression that yields the *runtime._type for copying

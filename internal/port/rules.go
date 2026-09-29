@@ -83,7 +83,7 @@ func Migration() Plan {
 			},
 			{Source: "src/cmd/compile/internal/types/fmt.go", Declarations: []string{"fmtMode", "fmtGo", "Sym.Format", "Sym.String", "Type.Format", "Type.String", "Type.LinkString", "Type.NameString"},
 				ContextFrom: map[string]ContextSource{"Sym.Format": {Argument: "s", Resolver: "formatUniverse"}, "Sym.String": {Argument: "s", Resolver: "formatUniverse"}},
-				Functions:   []string{"sconv", "sconv2", "symfmt", "pkgqual", "tconv", "tconv2", "formatParams", "fldconv", "SplitVargenSuffix"},
+				Functions:   []string{"sconv", "sconv2", "symfmt", "pkgqual", "tconv", "tconv2", "formatParams", "fldconv", "SplitVargenSuffix", "TypeHash"},
 				Nullable:    map[string][]string{"tconv": {"t"}, "tconv2": {"t"}, "pkgqual": {"pkg"}, "Type.Format": {"t"}, "Type.String": {"t"}, "Type.LinkString": {"t"}, "Type.NameString": {"t"}},
 				Context: &ContextRule{Type: "Universe", Constructor: "newUniverse", Adapter: "adapter_context.go", Fields: map[string]string{
 					"BuiltinPkg": "BuiltinPkg", "LocalPkg": "LocalPkg", "UnsafePkg": "UnsafePkg", "BlankSym": "BlankSym", "NumImport": "NumImport", "BasicTypeNames": "BasicTypeNames", "fmtBufferPool": "fmtBufferPool",
@@ -91,11 +91,11 @@ func Migration() Plan {
 				Calls: []CallRule{{Source: "src/cmd/compile/internal/base/print.go", Function: "Fatalf", Method: "fatalf"}, {Source: "src/cmd/compile/internal/base/print.go", Function: "Assertf", Method: "assertf"}},
 			},
 			{Source: "src/cmd/compile/internal/types/type.go",
-				Functions: []string{"TypeSym", "TypeSymLookup", "TypeSymName", "IsInterfaceMethod", "ComplexForFloat", "ReceiverBaseType", "RuntimeSymName", "IsMethodApplicable", "SubstAny", "substFields", "FloatForComplex", "newType", "NewTuple", "newSSA", "newSIMD", "newResults", "NewResults", "NewPtr", "NewSlice", "NewArray", "NewMap", "NewChan", "NewField", "NewStruct", "NewSignature", "fieldsHasShape", "CompareFields", "NewChanArgs", "NewFuncArgs", "NewInterface", "FakeRecv", "FakeRecvType", "NewNamed"},
+				Functions: []string{"IsDirectIface", "TypeSym", "TypeSymLookup", "TypeSymName", "IsInterfaceMethod", "ComplexForFloat", "ReceiverBaseType", "RuntimeSymName", "IsMethodApplicable", "SubstAny", "substFields", "FloatForComplex", "newType", "NewTuple", "newSSA", "newSIMD", "newResults", "NewResults", "NewPtr", "NewSlice", "NewArray", "NewMap", "NewChan", "NewField", "NewStruct", "NewSignature", "fieldsHasShape", "CompareFields", "NewChanArgs", "NewFuncArgs", "NewInterface", "FakeRecv", "FakeRecvType", "NewNamed"},
 				Declarations: []string{
 					"Object", "Kind", "Txxx", "ChanDir", "Crecv", "Type", "typeNotInHeap",
 					"Map", "Forward", "Func", "Struct", "Interface", "Ptr", "ChanArgs", "FuncArgs", "Chan", "Tuple", "Results", "Array", "Slice", "Field", "fields", "fieldIsDDD",
-					"Type.IsFullyInstantiated", "Type.SetIsFullyInstantiated", "Type.IsUintptr", "Type.copy", "Type.forwardType", "Type.SetUnderlying", "Type.Obj", "Type.IsUnsafePtr", "Field.End", "Type.Pos", "Type.Registers", "Type.Deferwidth", "Type.SetDeferwidth", "Type.Recur", "Type.SetRecur",
+					"Type.IsPtrElem", "Type.IsFullyInstantiated", "Type.SetIsFullyInstantiated", "Type.IsUintptr", "Type.copy", "Type.forwardType", "Type.SetUnderlying", "Type.Obj", "Type.IsUnsafePtr", "Field.End", "Type.Pos", "Type.Registers", "Type.Deferwidth", "Type.SetDeferwidth", "Type.Recur", "Type.SetRecur",
 					"Type.ChanArgs", "Type.FuncArgs", "Type.Methods", "Type.AllMethods", "Type.SetMethods", "Type.SetAllMethods", "Type.SetInterface", "Type.IsInterface", "Type.IsEmptyInterface", "Type.Size", "Type.Alignment", "Type.ArgWidth", "Type.HasPointers",
 					"Field.IsDDD", "Field.Nointerface", "Field.SetIsDDD", "Field.SetNointerface", "Field.Copy", "Field.IsMethod",
 					"Type.OffsetOf", "Type.StructType", "Type.fields", "Type.Fields", "Type.Field", "Type.setFields", "Type.IsStruct", "Type.IsFuncArgStruct", "Type.NumFields", "Type.FieldType",
@@ -187,6 +187,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, runtimeABIMigration()...)
 	plan.Units = append(plan.Units, rttypeMigration()...)
 	plan.Units = append(plan.Units, typebitsMigration()...)
+	plan.Units = append(plan.Units, compareMigration()...)
 	plan.Units = append(plan.Units, reflectdataMigration()...)
 	plan.Units = append(plan.Units, dwarfgenMigration()...)
 	plan.Units = append(plan.Units, noderMigration()...)

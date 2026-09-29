@@ -45,6 +45,7 @@
 28. [M3 原生 GC 位图](docs/m3-gc-masks.md)：完整 bitvec/typebits、GC 符号登记与写入、并发后端用法。
 29. [M3 原生哈希与相等比较](docs/m3-algorithms.md)：完整算法生成、闭包数据、实例缓存和公开 EqFor。
 30. [M3 原生静态数据](docs/m3-staticdata.md)：字符串、常量与 slice 初始化、实例计数器及并发函数值登记。
+31. [M3 原生类型描述符与 ITab](docs/m3-descriptors.md)：完整类型数据、方法表、接口转换、插件导出和基础类型写入。
 
 ## 当前可运行的工具
 
@@ -89,7 +90,7 @@ go test -race ./...
 
 ## 当前公开基础设施
 
-`position` 暴露上游位置对象，`diagnostic` 提供实例诊断收集，`target` 提供显式布局输入；`ir` 提供原生节点和实例构造入口，`typecheck` 提供原生 IR 检查与改写，`objw` 提供原生符号数据和重定位写入，`staticdata` 提供原生静态初始化和函数值符号，`rttype` 提供目标运行时布局和原生写入游标，`reflectdata` 提供类型符号、运行时类型引用、map 内部布局、GC 位图写入和原生相等函数选择，`bitvec/typebits` 提供原生位图及类型指针槽扫描，`types` 提供 Universe 和包符号查找，`gcbridge` 共用位置及 Type/Pkg/Sym 对象。见 [独立 consumer 示例](testdata/consumer/consumer_test.go)。每次编译需独立创建位置表和 base；XPos 必须用原表解码。同一实例的可变操作由调用方串行。
+`position` 暴露上游位置对象，`diagnostic` 提供实例诊断收集，`target` 提供显式布局输入；`ir` 提供原生节点和实例构造入口，`typecheck` 提供原生 IR 检查与改写，`objw` 提供原生符号数据和重定位写入，`staticdata` 提供原生静态初始化和函数值符号，`rttype` 提供目标运行时布局和原生写入游标，`reflectdata` 提供原生类型描述符、ITab、运行时类型引用、map 布局、GC 位图写入和相等函数选择，`bitvec/typebits` 提供原生位图及类型指针槽扫描，`types` 提供 Universe 和包符号查找，`gcbridge` 共用位置及 Type/Pkg/Sym 对象。见 [独立 consumer 示例](testdata/consumer/consumer_test.go)。每次编译需独立创建位置表和 base；XPos 必须用原表解码。同一实例的可变操作由调用方串行。
 
 后端当前可直接使用实例中的上游 SSA 类型和构造函数：
 

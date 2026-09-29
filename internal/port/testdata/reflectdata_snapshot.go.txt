@@ -1,5 +1,5 @@
 package reflectdata
-import("fmt";"encoding/json";"encoding/binary";"os";"slices";"testing";"IMPORT_TYPES";"IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_RTTYPE";"IMPORT_BITVEC";"IMPORT_TYPEBITS";RD_OBJW IMPORT_BASE IMPORT_BUILDCFG)
+import("fmt";"encoding/json";"encoding/binary";"os";"slices";"testing";"IMPORT_TYPES";"IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_RTTYPE";"IMPORT_BITVEC";"IMPORT_TYPEBITS";RD_OBJW RD_STATIC IMPORT_BASE IMPORT_BUILDCFG)
 func TestSyncgoNativeSnapshot(t *testing.T){
  target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian}
  switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
