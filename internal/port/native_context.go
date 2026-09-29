@@ -57,6 +57,19 @@ func extendNativeContext(files []*ast.File, info *types.Info, units []Unit) erro
 	if structure == nil || constructors != 1 {
 		return fmt.Errorf("native context requires its struct and one original constructor")
 	}
+	if context.Embed != "" {
+		for _, field := range structure.Fields.List {
+			for _, id := range field.Names {
+				if id.Name == context.Embed {
+					return fmt.Errorf("native context embed collision: %s", context.Embed)
+				}
+			}
+			if id, ok := field.Type.(*ast.Ident); ok && len(field.Names) == 0 && id.Name == context.Embed {
+				return fmt.Errorf("native context embed collision: %s", context.Embed)
+			}
+		}
+		structure.Fields.List = append(structure.Fields.List, &ast.Field{Type: &ast.Ident{Name: context.Embed, NamePos: structure.Fields.Closing}})
+	}
 	names := map[string]string{}
 	for _, im := range file.Imports {
 		p, _ := strconv.Unquote(im.Path.Value)

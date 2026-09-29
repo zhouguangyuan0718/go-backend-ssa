@@ -1,43 +1,40 @@
-# M3 类型检查迁移
+# M3 第二批：原生源码类型检查
 
-当前完成的是 types2 所需的迁移能力和上游基本类型表验证，尚未发布 types2 检查入口。syntax.Parse 仍只产生原生 AST。
+已移植固定 Go 1.27.1 的完整 types2 生产源码，并提供普通 Go 库入口 `types2.NewContext`、`Config.Check`、`Info` 和原生类型/对象的别名。使用方式见可运行的 [示例](../types2/example_test.go)。没有用标准库 go/types 实现替代 checker，也没有重写或删减检查算法。
 
-## 复用上游 Context
+源码到类型检查链路已经可运行；noder/Unified IR、后续编译器 IR、SSA 构造和原生编译器回接/自举仍待实现。这里的 `types2.Type` 与后续 compiler IR 使用的 `types.Type` 是两套原生对象，需要继续通过上游 noder 转换。
 
-计划让原有 types2.Context 同时持有编译实例的预声明类型、Universe/Unsafe 包、类型参数编号和初始化表，不新增并行的 Session/Universe 公共对象。原 Context 的泛型实例缓存、互斥锁及构造函数实现保留；迁移工具将源包变量的实际类型追加为字段，公开构造函数先调用原构造函数，再按 go/types.InitOrder 和源文件顺序执行变量初始化与 init。
+## 调用与归属
 
-规则使用 ContextRule.Existing，仍写在 Go 代码中。需要的字段类型和跨文件 import 从已检查的源声明推导，不另写重复的 Context 结构定义。引用状态的原 Context 方法直接使用自身；其他对象仍通过已有 owner 规则获取所属实例。原构造函数若依赖迁移状态、分配需绑定 owner 的对象或调用本包函数/方法，工具会拒绝，需要先审查初始化依赖。
+1. 使用 `syntax.Parse` 解析显式 Reader，解析成功后再检查。
+2. 每个独立编译实例调用 `types2.NewContext()`，通过 `Config.Context` 显式传入，不能用 Context 的零值替代构造函数。
+3. 指定 `Config.GoVersion` 和目标 `Config.Sizes`。`ctx.SizesFor("gc", "amd64")` 等调用保留上游尺寸算法；选择动态架构名时要检查返回值非 nil。低层 API 保留上游 Sizes=nil 时默认 amd64 的行为。
+4. `Config.Check` 接收包路径、原生 AST 和可选 Info。检查失败以返回的 error 为准；`Config.Error` 可收集原生 Error 的位置、Code、Msg/Full。上游在完整遍历后即使有诊断也会置 Package.complete，不能只用 Complete() 判断成功。
+5. 导入完全由显式 `Importer` / `ImporterFrom` 提供，不搜索宿主文件系统。导入包须与当前检查使用同一个 Context；`unsafe` 也由 importer 返回该实例的 `ctx.Unsafe`。外来 Context 的导入包会被归属检查拒绝。
 
-## 保留源码形式的改写
+Context 保存自身的 Typ、Universe/Unsafe、泛型缓存、类型参数编号和辅助表。不同实例没有共享可变编译状态；后续检查不会清空已有结果。公共别名和 `gcbridge.CheckerContext/CheckedPackage/SourceType` 指向同一批原生对象，不额外复制图。
 
-- 点导入按 go/types 对象身份分析；仍使用的导入保留，选择声明后不再使用的导入删除。最终输出继续严格检查导入和环境依赖。
-- 无字段名的结构体字面量按原类型字段顺序转成键值字面量，再添加 owner，保持表达式求值顺序。含空白字段的这种字面量被拒绝，不能丢弃可能有副作用的表达式。
-- 切片、数组和 map 中省略类型的值/指针字面量，根据原检查结果补 owner，避免手工重写 types2.Typ 和 basicAliases。
-- whole-file 规则可以显式指定 Context 和 init；未分类的包变量仍被拒绝，不静默删除。
+调用方需维护输入、导入和结果图的生命周期，不能在检查期间并发修改共享 AST、Config、回调或类型对象。并发与重入验收使用独立 Context；同一实例内的任意并发变更不在本批保证范围内。手工拼接异属对象违反调用契约，归属守卫以 panic 拒绝；源码语义错误仍走上游 error 路径。
 
-## 验证边界
+## 状态与输出改写
 
-合成跨文件用例覆盖原缓存构造、外部字段类型 import、初始化依赖、原 Context 方法、派生节点 owner、旧节点保留、多实例并发及无效规则拒绝。另从固定 go1.27.1 和 go1.27.0 Git 对象读取真实 Basic 声明、Typ/basicAliases 初始化表达式，与未改写的原表比较枚举、信息位、名字及别名身份。这个表用例是显式截取的迁移测试夹具，不跳过生产 universe.go 的 init，也不提供简化的 Basic.String 或伪造 Type 实现。
+- 直接扩展上游 Context，保留原缓存、锁和原构造函数。迁移状态的字段类型从已检查的源码推导，按原 InitOrder 和源文件顺序初始化。
+- Config.Context、Checker.ctxt 复用原字段。必要的类型节点绑定 owner；临时 operand 的零值声明保留数据字段零值并绑定实例。
+- 纯函数、纯泛型帮助函数及不依赖状态的方法保持原签名。自由函数只按实际依赖改成 Context 方法；不能挂 owner 或允许 nil 的私有 receiver 按规则显式传入 Context。
+- 同一 receiver 的私有候选方法可用 `Receiver.*` 指定，但只有依赖闭包内的方法才改签名。方法值保留原回调类型、receiver 的一次求值和绑定时机；直接含 recover 的方法值和提升方法值仍需单独审查。原始直接 defer/recover 调用保留语义。
+- nopos 等已审查零值变成独立值，并保留导入类型身份及所需可寻址性；invalidTypeSet 等身份 sentinel 保存在实例中，不当作普通零值替换。
+- 上游允许的 nil 参数传给原算法处理；非 nil 的异属参数仍被拒绝，包括变参列表。nil Tuple 的格式化也保留 `()` 行为。
+- fmt 的标准输出及 os.Stdout/Stderr 的诊断输出改接 `Context.TraceWriter`。nil writer 丢弃跟踪输出；Config.Trace 仍控制原跟踪开关。回调和 writer 都由实例显式提供。runtime.Caller 仅保留读取当前调用栈的断言位置功能，其他进程环境依赖继续审计拒绝。
 
-下一步移植完整 types2 类型图、预声明 Universe 与 checker，接入显式 Sizes/Importer/GoVersion。之后衔接 noder/IR。源码到 SSA、原生编译器回接和自举仍待实现。
+规则在 [rules_types2.go](../internal/port/rules_types2.go)，对接代码在 [adapter_context.go](../internal/types2/adapter_context.go)，生成源码保留 `internal/types2/` 的上游文件结构。无新增配置文件；来源与哈希仍只在现有生成清单中记录。
 
-## 按实际依赖传递 Context
+## 已验证范围
 
-`ContextRule.Selective` 根据 go/types 对象身份计算函数依赖的闭包：只有读取实例状态、调用依赖实例的函数、捕获这类函数作为回调，或构造需绑定 owner 的对象时，才将自由函数变成 Context 方法。纯函数、泛型纯函数、枚举方法及局部同名函数保持原签名。
+- 普通函数、分支/循环、泛型函数和类型、泛型别名、接口/方法、递归类型、range-over-func 的源码检查与原生 Info。
+- 显式包导入和类型身份、异属导入拒绝、旧结果保留、失败后再次检查、诊断回调中重入。
+- 独立 Context 的并发检查、独立跟踪 writer；race 检测覆盖真实 checker 路径。
+- 386/amd64 的 unsafe.Sizeof/Offsetof 和常量溢出；GoVersion 语言门控；错误位置、错误码、类型信息及初始化顺序。
+- 单独编译完整未改写的上游 syntax/types2，只重定位 import 作为差分基准。Go 1.27.0 与 1.27.1 各执行 48 个源码/尺寸/版本组合，比较 Scope、Defs、Types、Instances、AST 内类型记录、诊断、初始化顺序和空 tuple 格式。
+- 相同规则的可复现生成与两补丁版本迁移；生成代码无包变量/init，来源工作树未被修改；独立外部 module 可仅通过公共包消费 checker 和 gcbridge。
 
-对不能挂 owner 的切片 receiver，以及允许 nil receiver 的私有辅助方法，`Unit.ContextParams` 显式列出候选方法。只有其中实际需要状态的方法才增加 Context 参数，并改写直接调用和方法表达式调用。保留原 receiver 与可变参数。方法值用保留原函数签名的闭包绑定 Context，receiver 在创建回调时只求值一次；提升的方法，以及直接调用 recover 的方法值仍要求明确适配，不能改变绑定时机或恢复栈语义。这不修改公开的 Type/Sizes 等接口。
-
-`OwnerRule.Existing` 可复用原结构体中的 `*Context` 字段，例如 Config.Context 和 Checker.ctxt。工具检查字段确实存在且类型符合规则；原先已写出的字段初始化表达式保留，新分配对象缺少该字段时才填入实例。新建和外来参数检查沿用现有 owner 机制，不再增加另一根重复的 owner 指针。
-
-只含常量的字符串索引表也可通过 ReadTables 局部化。索引写入、取址、切片或其他逃逸仍被拒绝；实际 types2.VarKind.String 无需因为名称表而依赖 Context。
-
-这些能力的测试覆盖传递依赖、闭包与回调、方法表达式、可变/未命名参数、nil receiver、纯方法值、既有字段类型校验和跨实例输入拒绝。完整 types2 原源码的试跑已通过原始包的类型检查，尚未完成全部状态改写；nopos、临时 operand、回调绑定已完成迁移工具支持，诊断输出等仍需继续适配。试跑不等于可用的类型检查 API。
-
-
-## 零值与回调绑定
-
-导入类型的零值（例如 syntax.Pos）使用同包类型别名表达，保持原类型身份，避免要求每个引用 nopos 的文件新增 import。别名冲突被拒绝；需要 pointer receiver 的读取保持可寻址，地址读取仍得到独立对象。此规则仅用于已审查的零值，不用于 invalidTypeSet 等有身份语义的 sentinel。
-
-临时 `var x, y operand` 保留原字段零值，同时分别绑定当前实例；按值保存的包状态在执行任何 initializer 前绑定 owner。源代码已有的 Context.nextID 字段和 nextID 自由函数发生移植后的命名冲突时，用 ContextMethods 指定一个方法名，按对象身份替换，保留原字段。
-
-方法值绑定支持变参、方法表达式、隐式取址/解引用、跨文件签名 import 和原始回调签名。原源码中的直接 defer 调用保持直接调用，测试覆盖 panic/recover；给直接含 recover 的方法值增加包装会改变恢复语义，因此明确拒绝。完整 types2 的临时迁移试跑已通过改写后包的类型检查，尚未通过进程环境依赖审计和运行时验收；目前不发布部分 checker API。
+这些是类型检查验收，不代表泛型机器码、运行时 lowering 或完整语言到 SSA 已验证。下一步接入 noder/Unified IR 的导入导出与 compiler IR 构造，继续移除相关包状态，再进入后续分析及 SSA builder。

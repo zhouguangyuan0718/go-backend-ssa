@@ -4,7 +4,7 @@
 
 库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。每次调用拥有独立编译状态，返回结果在后续调用期间仍有效。
 
-当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码到原生 AST 的解析入口；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
+当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
 
 - 语言范围：Go 1.27；其他语言版本尚不支持。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
@@ -27,7 +27,7 @@
 10. [M2 基础设施](docs/m2.md)：第一批位置设施与归属设计。
 11. [M2 类型与 Universe](docs/m2-universe.md)：第二至七批实现、对外入口及类型布局边界。
 12. [M3 原生语法树](docs/m3-syntax.md)：Parse、AST、无全局解析状态与上游差分。
-13. [M3 类型检查迁移](docs/m3-types2.md)：复用上游 Context、点导入和类型表迁移验证。
+13. [M3 类型检查迁移](docs/m3-types2.md)：源码类型检查入口、Context 隔离、显式导入/尺寸及完整上游差分。
 
 ## 当前可运行的工具
 
@@ -89,4 +89,4 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 
 类型布局入口示例见 [独立消费者测试](testdata/consumer/consumer_test.go)。先创建 Universe，再调用原生 `u.InitTypes(defTypeName)`；回调为传入的 Sym/Type 提供宿主的 `types.Object`。随后可直接调用 `Type.Size/Alignment/Registers/HasPointers` 与 `u.CalcSize/PtrDataSize/AlgType/Identical`。当前不提供假 `ir.Name`；宿主绑定契约及失败处理见 M2 文档。
 
-源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 尚未执行源码类型检查或 SSA 构造。
+源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。尚无 SSA 构造入口。

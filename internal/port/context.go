@@ -91,6 +91,20 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	if context == nil {
 		return nil
 	}
+	traceBindings := map[types.Object]string{}
+	if context.RedirectTrace {
+		traceBindings = traceReferences(info)
+		for obj, method := range traceBindings {
+			external[obj] = method
+		}
+	}
+	binding := func(ctx ast.Expr, obj types.Object, name string, pos token.Pos) ast.Expr {
+		var result ast.Expr = &ast.SelectorExpr{X: positionedContext(ctx, pos), Sel: &ast.Ident{Name: name, NamePos: pos}}
+		if traceBindings[obj] == "traceWriter" {
+			result = &ast.CallExpr{Fun: result}
+		}
+		return result
+	}
 	parameterMethods, err := contextParameterMethods(files, info, units)
 	if err != nil {
 		return err
@@ -147,7 +161,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				name = external[obj]
 			}
 			if name != "" {
-				result[id] = &ast.SelectorExpr{X: positionedContext(ctx, id.Pos()), Sel: &ast.Ident{Name: name, NamePos: id.Pos()}}
+				result[id] = binding(ctx, obj, name, id.Pos())
 			}
 		}
 		return result
@@ -159,7 +173,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		ast.Inspect(node, func(n ast.Node) bool {
 			if sel, ok := n.(*ast.SelectorExpr); ok {
 				if name := external[info.Uses[sel.Sel]]; name != "" {
-					selectors[sel] = &ast.SelectorExpr{X: positionedContext(ctx, sel.Pos()), Sel: &ast.Ident{Name: name, NamePos: sel.Sel.Pos()}}
+					selectors[sel] = binding(ctx, info.Uses[sel.Sel], name, sel.Pos())
 				}
 			}
 			return true
@@ -373,7 +387,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			if err := rewrite(fn.Body, ctx); err != nil {
 				return err
 			}
-			checks, err := ownedArgumentChecks(fn, info, owners, nodeText(fs, ctx), nullable)
+			checks, err := ownedArgumentChecks(fn, info, owners, nodeText(fs, ctx), nullable, context.PreserveNilArgs)
 			if err != nil {
 				return err
 			}
@@ -532,7 +546,7 @@ func hasOwnedAllocation(node ast.Node, info *types.Info, owners []*OwnerRule) bo
 // Match *owned-type and []*owned-type parameters. Invalid graph composition is
 // rejected before any upstream mutation. Slice storage keeps upstream ownership
 // semantics: callers must not mutate it to insert foreign nodes after the call.
-func ownedArgumentChecks(fn *ast.FuncDecl, info *types.Info, owners []*OwnerRule, ctx string, nullable []string) ([]ast.Stmt, error) {
+func ownedArgumentChecks(fn *ast.FuncDecl, info *types.Info, owners []*OwnerRule, ctx string, nullable []string, preserveNil bool) ([]ast.Stmt, error) {
 	var code strings.Builder
 	optional := map[string]bool{}
 	for _, name := range nullable {
@@ -543,6 +557,10 @@ func ownedArgumentChecks(fn *ast.FuncDecl, info *types.Info, owners []*OwnerRule
 		slice, isSlice := t.(*types.Slice)
 		if isSlice {
 			t = slice.Elem()
+		}
+		if ellipsis, ok := field.Type.(*ast.Ellipsis); ok {
+			t = info.TypeOf(ellipsis.Elt)
+			isSlice = true
 		}
 		pointer, ok := t.(*types.Pointer)
 		if !ok {
@@ -566,10 +584,12 @@ func ownedArgumentChecks(fn *ast.FuncDecl, info *types.Info, owners []*OwnerRule
 					return nil, fmt.Errorf("nullable rule requires a direct owned pointer: %s", name.Name)
 				}
 				optional[name.Name] = true
+			}
+			if preserveNil || optional[name.Name] {
 				fmt.Fprintf(&code, "if %s != nil {\n", arg)
 			}
 			fmt.Fprintf(&code, "if %s == nil || %s == nil || %s.%s != %s { panic(\"argument belongs to another or uninitialized compilation\") }\n", ctx, arg, arg, owner.Field, ctx)
-			if optional[name.Name] {
+			if preserveNil || optional[name.Name] {
 				code.WriteString("}\n")
 			}
 			if isSlice {

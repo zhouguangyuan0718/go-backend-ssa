@@ -16,10 +16,11 @@ func contextParameterMethods(files []*ast.File, info *types.Info, units []Unit) 
 	methods := map[types.Object]bool{}
 	for i, u := range units {
 		for _, name := range u.ContextParams {
+			receiver, method, _ := strings.Cut(name, ".")
 			found := false
 			for _, d := range files[i].Decls {
 				fn, ok := d.(*ast.FuncDecl)
-				if !ok || fn.Recv == nil || receiverType(fn)+"."+fn.Name.Name != name {
+				if !ok || fn.Recv == nil || receiverType(fn) != receiver || (method != "*" && fn.Name.Name != method) || (method == "*" && token.IsExported(fn.Name.Name)) {
 					continue
 				}
 				methods[info.Defs[fn.Name]] = true

@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v4"
+const ToolVersion = "syncgo-m3-v5"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -73,8 +73,11 @@ type OwnerRule struct {
 }
 
 type ContextRule struct {
-	Selective         bool // Only bind free functions that depend on state or owned allocation.
-	Existing          bool // Extend the upstream Type and run its original Constructor first.
+	PreserveNilArgs   bool   // Keep original nil argument semantics; still reject foreign non-nil owners.
+	Embed             string // Handwritten instance fields embedded into the original context.
+	RedirectTrace     bool   // Route stdout/stderr tracing through instance adapter methods.
+	Selective         bool   // Only bind free functions that depend on state or owned allocation.
+	Existing          bool   // Extend the upstream Type and run its original Constructor first.
 	Type, Constructor string
 	Fields            map[string]string
 	Adapter           string // Handwritten filename in the ported package.
@@ -160,7 +163,7 @@ func (p Plan) Validate() error {
 		parameterMethods := map[string]bool{}
 		for _, name := range u.ContextParams {
 			receiver, method, ok := strings.Cut(name, ".")
-			if u.Context == nil || !ok || !token.IsIdentifier(receiver) || !token.IsIdentifier(method) || token.IsExported(method) || parameterMethods[name] {
+			if u.Context == nil || !ok || !token.IsIdentifier(receiver) || (method != "*" && (!token.IsIdentifier(method) || token.IsExported(method))) || parameterMethods[name] {
 				return fmt.Errorf("invalid context parameter method: %s", name)
 			}
 			parameterMethods[name] = true
@@ -176,7 +179,7 @@ func (p Plan) Validate() error {
 			}
 		}
 		for name, params := range u.Nullable {
-			selected := false
+			selected := u.WholeFile
 			for _, declaration := range append(append([]string(nil), u.Functions...), u.Declarations...) {
 				selected = selected || name == declaration
 			}
@@ -192,7 +195,7 @@ func (p Plan) Validate() error {
 			}
 		}
 		for name, method := range u.Checks {
-			selected := false
+			selected := u.WholeFile
 			for _, declaration := range append(append([]string(nil), u.Functions...), u.Declarations...) {
 				selected = selected || name == declaration
 			}
@@ -221,8 +224,14 @@ func (p Plan) Validate() error {
 			}
 		}
 		if c := u.Context; c != nil {
+			if c.Embed != "" && (!c.Existing || c.Adapter == "" || !token.IsIdentifier(c.Embed) || c.Embed == "_") {
+				return fmt.Errorf("invalid native context embed")
+			}
+			if c.RedirectTrace && c.Adapter == "" {
+				return fmt.Errorf("trace redirection requires an adapter")
+			}
 			if previous := contexts[pkg]; previous != nil {
-				if previous.Type != c.Type || previous.Constructor != c.Constructor || previous.Adapter != c.Adapter || previous.Existing != c.Existing || previous.Selective != c.Selective {
+				if previous.Type != c.Type || previous.Constructor != c.Constructor || previous.Adapter != c.Adapter || previous.Existing != c.Existing || previous.Selective != c.Selective || previous.Embed != c.Embed || previous.RedirectTrace != c.RedirectTrace || previous.PreserveNilArgs != c.PreserveNilArgs {
 					return fmt.Errorf("inconsistent package context: %s", pkg)
 				}
 			} else {

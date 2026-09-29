@@ -7,6 +7,7 @@ import (
 	"go-backend-ssa/syntax"
 	"go-backend-ssa/target"
 	"go-backend-ssa/types"
+	"go-backend-ssa/types2"
 	"go/constant"
 	"strings"
 	"testing"
@@ -160,5 +161,25 @@ func TestNativeSyntaxFromPublicModule(t *testing.T) {
 	ret := fn.Body.List[0].(*syntax.ReturnStmt)
 	if native != f || fn.Name.Value != "Sum" || ret.Results.(*syntax.Operation).Op != syntax.Add {
 		t.Fatal("syntax bridge identity")
+	}
+}
+
+func TestNativeCheckerFromPublicModule(t *testing.T) {
+	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1)"), nil, nil, syntax.CheckBranches)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := types2.NewContext()
+	var native *gcbridge.CheckerContext = state
+	conf := types2.Config{Context: state, GoVersion: "go1.27", Sizes: state.SizesFor("gc", "amd64")}
+	var options *gcbridge.CheckerConfig = &conf
+	p, err := options.Check("example/p", []*syntax.File{file}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pkg *gcbridge.CheckedPackage = p
+	var typ gcbridge.SourceType = pkg.Scope().Lookup("X").Type()
+	if native != state || typ != state.Typ[types2.Int] {
+		t.Fatal("checker bridge identity")
 	}
 }

@@ -101,6 +101,26 @@ func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.Fil
 		return nil, err
 	}
 	if u.WholeFile {
+		methods := map[string]bool{}
+		for _, d := range f.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok {
+				key := fn.Name.Name
+				if fn.Recv != nil {
+					key = receiverType(fn) + "." + key
+				}
+				methods[key] = true
+			}
+		}
+		for name := range u.Nullable {
+			if !methods[name] {
+				return nil, fmt.Errorf("nullable function not selected: %s", name)
+			}
+		}
+		for name := range u.Checks {
+			if !methods[name] {
+				return nil, fmt.Errorf("checked function not selected: %s", name)
+			}
+		}
 		for _, d := range f.Decls {
 			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == "init" && (u.ReceiverState == nil || !u.ReceiverState.RunInit) && (u.Context == nil || !u.Context.Init) {
 				return nil, fmt.Errorf("package init requires an explicit adaptation rule: %s", name)

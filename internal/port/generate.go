@@ -197,6 +197,13 @@ func auditOutput(pkg *types.Package, files []*ast.File, info *types.Info) error 
 			continue
 		}
 		p := obj.Pkg().Path()
+		// Caller reads this invocation's stack, not mutable process settings.
+		// Retain the upstream assertion's source-location diagnostic.
+		if p == "runtime" && obj.Name() == "Caller" {
+			if _, ok := obj.(*types.Func); ok {
+				continue
+			}
+		}
 		if p == "unsafe" || p == "os" || p == "os/exec" || p == "syscall" || p == "log" || p == "flag" || p == "runtime" {
 			return fmt.Errorf("unclassified environment dependency %s.%s", p, obj.Name())
 		}

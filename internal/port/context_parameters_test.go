@@ -34,7 +34,7 @@ func TestContextParameters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{{Source: "src/cmd/compile/internal/p/p.go", WholeFile: true, ContextParams: []string{"terms.sum", "terms.norm", "checker.check", "terms.length", "terms.unnamed"}, Context: &ContextRule{Existing: true, Selective: true, Type: "Context", Constructor: "NewContext", Fields: map[string]string{"total": "total"}}}}}
+	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{{Source: "src/cmd/compile/internal/p/p.go", WholeFile: true, ContextParams: []string{"terms.*", "checker.check"}, Context: &ContextRule{Existing: true, Selective: true, Type: "Context", Constructor: "NewContext", Fields: map[string]string{"total": "total"}}}}}
 	dir := t.TempDir()
 	r, err := Render(s, plan, dir)
 	if err != nil {

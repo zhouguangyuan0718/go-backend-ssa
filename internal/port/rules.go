@@ -15,7 +15,7 @@ func Baseline() Pin {
 // Paths/imports are derived; package names come from the upstream AST.
 // InspectRoots cover candidate dependencies beyond the currently ported files.
 func Migration() Plan {
-	return Plan{
+	plan := Plan{
 		SupportFiles: []string{"position/position.go", "diagnostic/diagnostic.go"},
 		InspectRoots: []string{
 			"cmd/compile/internal/gc",
@@ -60,7 +60,7 @@ func Migration() Plan {
 			},
 			{Source: "src/internal/goexperiment/flags.go", Declarations: []string{"Flags"}},
 			{Source: "src/internal/buildcfg/exp.go", Declarations: []string{"ExperimentFlags"}},
-			{Source: "src/internal/types/errors/codes.go", Declarations: []string{"Code", "InvalidSyntaxTree", "Test"}},
+			{Source: "src/internal/types/errors/codes.go", WholeFile: true},
 			{Source: "src/cmd/compile/internal/base/base.go", Declarations: []string{"EnableTrace"}},
 			{Source: "src/cmd/compile/internal/types/utils.go", WholeFile: true},
 			{Source: "src/cmd/compile/internal/types/kind_string.go", WholeFile: true, ReadTables: []string{"_Kind_index"}},
@@ -157,4 +157,6 @@ func Migration() Plan {
 			},
 		},
 	}
+	plan.Units = append(plan.Units, types2Migration()...)
+	return plan
 }

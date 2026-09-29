@@ -175,6 +175,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	if err := checkStateAdapters(units, before, outpkg, imports); err != nil {
 		return nil, nil, err
 	}
+	if err := checkTraceAdapters(units, info, outpkg); err != nil {
+		return nil, nil, err
+	}
 	if err := checkCallAdapters(units, before, outpkg, imports); err != nil {
 		return nil, nil, err
 	}

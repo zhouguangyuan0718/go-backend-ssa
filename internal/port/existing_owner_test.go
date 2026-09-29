@@ -17,13 +17,15 @@ func TestExistingOwnerField(t *testing.T) {
  func(c *Config)Check()int{count++;return count}
  func Configured()*Config{return new(Config)}
  func Use(c *Config)int{before:=count;return before+c.Check()}
+ func Optional(c *Config)bool{return c==nil||count==0}
+ func Inputs(configs ...*Config)int{return count+len(configs)}
  `
 	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", "src/cmd/compile/internal/p/p.go": code})
 	s, err := OpenSource(context.Background(), repo, pin)
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{{Source: "src/cmd/compile/internal/p/p.go", WholeFile: true, Owner: &OwnerRule{Existing: true, Types: []string{"Config"}, Context: "Context", Field: "Context"}, Context: &ContextRule{Existing: true, Selective: true, Type: "Context", Constructor: "NewContext", Fields: map[string]string{"count": "count"}}}}}
+	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{{Source: "src/cmd/compile/internal/p/p.go", WholeFile: true, Owner: &OwnerRule{Existing: true, Types: []string{"Config"}, Context: "Context", Field: "Context"}, Context: &ContextRule{Existing: true, Selective: true, PreserveNilArgs: true, Type: "Context", Constructor: "NewContext", Fields: map[string]string{"count": "count"}}}}}
 	dir := t.TempDir()
 	r, err := Render(s, plan, dir)
 	if err != nil {
@@ -35,7 +37,7 @@ func TestExistingOwnerField(t *testing.T) {
 	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
 	writeTestFile(t, dir, "internal/p/adapter_test.go", `package p
  import "testing"
- func TestNativeField(t *testing.T){a,b:=NewContext(),NewContext();conf:=a.Configured();if conf.Context!=a||conf.Check()!=1||b.Configured().Check()!=1||a.Use(conf)!=3{t.Fatal("existing context field")};defer func(){if recover()==nil{t.Fatal("foreign config accepted")}}();b.Use(conf)}
+ func TestNativeField(t *testing.T){a,b:=NewContext(),NewContext();conf:=a.Configured();if conf.Context!=a||conf.Check()!=1||b.Configured().Check()!=1||a.Use(conf)!=3{t.Fatal("existing context field")};if !a.Optional(nil)||a.Inputs(nil,conf)!=4{t.Fatal("native nil argument semantics")};func(){defer func(){if recover()==nil{t.Fatal("foreign variadic config accepted")}}();b.Inputs(nil,conf)}();defer func(){if recover()==nil{t.Fatal("foreign config accepted")}}();b.Use(conf)}
  `)
 	cmd := exec.Command("go", "test", "-race", "./...")
 	cmd.Dir = dir
