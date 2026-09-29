@@ -1,0 +1,21 @@
+package logopt
+import("encoding/json";"fmt";"testing";"IMPORT_OBJ";"IMPORT_SRC";IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T) {
+ SETUP
+ var out []string
+ file:=src.NewFileBase("log.go","/src/log.go")
+ pos:=LINK.PosTable.XPos(src.MakePos(file,12,3));end:=LINK.PosTable.XPos(src.MakePos(file,14,5))
+ UP.LogOpt(pos,"ignored","inline","F")
+ out=append(out,fmt.Sprintf("disabled:%t:%d",UP.Enabled(),len(UP.loggedOpts)))
+ UP.Format=Json0
+ child:=NewLoggedOpt(pos,end,"callee detail","escape pass","G",7)
+ UP.LogOpt(pos,"inline","inline pass","F","reason",[]*LoggedOpt{child})
+ UP.LogOptRange(pos,end,"loop","loop pass","F","range")
+ out=append(out,fmt.Sprintf("enabled:%t:%d",UP.Enabled(),len(UP.loggedOpts)))
+ for _,e:=range UP.loggedOpts {
+  out=append(out,fmt.Sprintf("event:%v:%v:%s:%s:%s:%v",LINK.PosTable.Pos(e.pos),LINK.PosTable.Pos(e.lastPos),e.compilerPass,e.functionName,e.what,e.target[0]))
+  if len(e.target)>1{for _,detail:=range e.target[1].([]*LoggedOpt){out=append(out,fmt.Sprintf("detail:%s:%s:%s:%v",detail.compilerPass,detail.functionName,detail.what,detail.target))}}
+ }
+ func(){defer func(){out=append(out,fmt.Sprint(recover()))}();UP.Format=99;UP.Enabled()}()
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(data))
+}

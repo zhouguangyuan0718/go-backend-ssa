@@ -132,3 +132,18 @@ func (c *Context) trimInlineHash(name string) string {
 	}
 	return a + b[inlHashLen+1:]
 }
+
+// The native oracle already retains its analyzed function. Use that function's
+// graph for diagnostics and helper calls, keeping the upstream zero-value Init.
+func oracleContext(ro *ReassignOracle) *Context {
+	if ro == nil || ro.fn == nil {
+		panic("reassignment oracle is not initialized")
+	}
+	return nodeContext(ro.fn)
+}
+
+func (c *Context) checkOracleNode(n Node) {
+	if n == nil || nodeContext(n) != c {
+		panic("oracle node belongs to another compilation")
+	}
+}

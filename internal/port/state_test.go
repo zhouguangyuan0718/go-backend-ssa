@@ -13,10 +13,12 @@ func TestExternalStateIsolationAndSignatureDrift(t *testing.T) {
  type Flags struct { SIMD bool }
  var Current Flags = environmentThatMustNotBeCopied()
  var Count int
+ var Hook func(original int) int
  `
 	const source = `package p
  import h "cmd/compile/internal/host"
  type Node struct{}
+ func Invoke(n int)int{return h.Hook(n)}
  func Set(n int) { h.Count=n; h.Current.SIMD=n>0 }
  func Pointer()*int { return &h.Count }
  func Callback()func()int {return func()int{return h.Count}}
@@ -31,12 +33,12 @@ func TestExternalStateIsolationAndSignatureDrift(t *testing.T) {
 	stateSource := "src/cmd/compile/internal/host/host.go"
 	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{
 		{Source: stateSource, Declarations: []string{"Flags"}},
-		{Source: "src/cmd/compile/internal/p/p.go", Functions: []string{"Set", "Pointer", "Callback", "Shadow"}, Declarations: []string{"Node", "Node.Bump"}, Owner: &OwnerRule{Types: []string{"Node"}, Context: "Context", Field: "owner"}, Context: &ContextRule{Type: "Context", Constructor: "newContext", Adapter: "adapter_context.go"}, State: []StateRule{{Source: stateSource, Variable: "Current", Field: "flags"}, {Source: stateSource, Variable: "Count", Field: "count"}}},
+		{Source: "src/cmd/compile/internal/p/p.go", Functions: []string{"Invoke", "Set", "Pointer", "Callback", "Shadow"}, Declarations: []string{"Node", "Node.Bump"}, Owner: &OwnerRule{Types: []string{"Node"}, Context: "Context", Field: "owner"}, Context: &ContextRule{Type: "Context", Constructor: "newContext", Adapter: "adapter_context.go"}, State: []StateRule{{Source: stateSource, Variable: "Current", Field: "flags"}, {Source: stateSource, Variable: "Count", Field: "count"}, {Source: stateSource, Variable: "Hook", Field: "hook"}}},
 	}}
 	dir := t.TempDir()
 	const adapter = `package p
  import "go-backend-ssa/internal/host"
- type Context struct{flags host.Flags;count int}
+ type Context struct{flags host.Flags;count int;hook func(renamed int) int}
  `
 	writeTestFile(t, dir, "internal/p/adapter_context.go", adapter)
 	r, err := Render(s, plan, dir)
@@ -57,7 +59,7 @@ func TestExternalStateIsolationAndSignatureDrift(t *testing.T) {
 	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
 	writeTestFile(t, dir, "internal/p/adapter_test.go", `package p
  import("testing";"sync")
- func TestState(t *testing.T){a,b:=newContext(),newContext();a.Set(1);b.Set(2);old:=a.Callback();ptr:=a.Pointer();*ptr=3;(&Node{owner:b}).Bump();if old()!=3||b.count!=3||!a.flags.SIMD||a.Shadow()!=7{t.Fatal("state isolation")};b.Set(0);if !a.flags.SIMD||b.flags.SIMD{t.Fatal("nested state")};var wg sync.WaitGroup;for i:=range 16{wg.Go(func(){c:=newContext();c.Set(i);for range 100{(&Node{owner:c}).Bump()};if c.Callback()()!=i+100{t.Error("parallel state")}})};wg.Wait()}
+ func TestState(t *testing.T){a,b:=newContext(),newContext();a.hook=func(x int)int{return x+5};if a.Invoke(2)!=7{t.Fatal("callback")};a.Set(1);b.Set(2);old:=a.Callback();ptr:=a.Pointer();*ptr=3;(&Node{owner:b}).Bump();if old()!=3||b.count!=3||!a.flags.SIMD||a.Shadow()!=7{t.Fatal("state isolation")};b.Set(0);if !a.flags.SIMD||b.flags.SIMD{t.Fatal("nested state")};var wg sync.WaitGroup;for i:=range 16{wg.Go(func(){c:=newContext();c.Set(i);for range 100{(&Node{owner:c}).Bump()};if c.Callback()()!=i+100{t.Error("parallel state")}})};wg.Wait()}
  `)
 	cmd := exec.Command("go", "test", "-race", "./...")
 	cmd.Dir = dir
@@ -77,6 +79,12 @@ func TestExternalStateIsolationAndSignatureDrift(t *testing.T) {
 				t.Fatalf("want %s, got %v", tc.want, err)
 			}
 		})
+	}
+	// Callback names are irrelevant, but assignment-compatible parameter types
+	// must still exactly match the pinned callback signature.
+	writeTestFile(t, dir, "internal/p/adapter_context.go", strings.Replace(adapter, "hook func(renamed int)", "hook func(renamed any)", 1))
+	if _, err := Render(s, plan, dir); err == nil || !strings.Contains(err.Error(), "state type mismatch") {
+		t.Fatalf("wrong callback type accepted: %v", err)
 	}
 	// Even assignment-compatible types are checked against the pinned signature.
 	writeTestFile(t, dir, "internal/p/adapter_context.go", strings.Replace(adapter, "count int", "count any", 1))

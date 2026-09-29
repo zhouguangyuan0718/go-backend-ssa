@@ -105,7 +105,7 @@ func Migration() Plan {
 					"Type.NumRecvs", "Type.NumParams", "Type.NumResults", "Type.IsVariadic", "Type.Recv", "Type.Param", "Type.Result",
 					"Type.wantEtype", "Type.Elem", "Type.Key", "Type.MapType", "Type.chanType", "Type.NumElem", "Type.ChanDir", "Type.PtrTo",
 					"Type.IsPtr", "Type.IsSlice", "Type.IsArray", "Type.IsMap", "Type.IsChan", "Type.IsPtrShaped", "Type.HasNil",
-					"Type.IsKind", "Type.IsBoolean", "Type.IsInteger", "Type.IsSigned", "Type.IsUnsigned", "Type.IsFloat", "Type.IsComplex", "Type.IsString", "Type.IsUntyped",
+					"Type.IsKind", "Type.IsBoolean", "Type.IsInteger", "Type.IsScalar", "Type.IsSigned", "Type.IsUnsigned", "Type.IsFloat", "Type.IsComplex", "Type.IsString", "Type.IsUntyped",
 					"Type.IsMemory", "Type.IsFlags", "Type.IsVoid", "Type.IsTuple", "Type.IsResults", "Type.IsSIMD",
 					"Type.Kind", "Type.Underlying", "Type.Sym", "Type.CanBeAnSSAAux", "Type.HasShape", "Type.SetHasShape", "Type.IsShape", "Type.SetIsShape", "Type.NotInHeap", "Type.SetNotInHeap", "Type.Noalg", "Type.SetNoalg",
 					"fields.Slice", "fields.Set", "ChanDir.CanRecv", "ChanDir.CanSend",
@@ -181,6 +181,8 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, irMigration()...)
 	plan.Units = append(plan.Units, typecheckMigration()...)
 	plan.Units = append(plan.Units, pgoMigration()...)
+	plan.Units = append(plan.Units, logoptMigration()...)
+	plan.Units = append(plan.Units, inlheurMigration()...)
 	plan.Units = append(plan.Units, types2Migration()...)
 	plan.Units = append(plan.Units, pkgbitsMigration()...)
 	plan.Units = append(plan.Units, rangefuncMigration()...)

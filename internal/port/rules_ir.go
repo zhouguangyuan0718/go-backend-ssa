@@ -2,6 +2,15 @@ package port
 
 func irMigration() []Unit {
 	units := []Unit{
+		{Source: "src/cmd/compile/internal/ir/reassignment.go", WholeFile: true, Checks: map[string]string{"ReassignOracle.StaticValue": "checkOracleNode"}, ContextFrom: map[string]ContextSource{
+			"ReassignOracle.Init":            {Argument: "fn", Resolver: "nodeContext"},
+			"ReassignOracle.StaticValue":     {Argument: "ro", Resolver: "oracleContext"},
+			"ReassignOracle.staticValue1":    {Argument: "ro", Resolver: "oracleContext"},
+			"ReassignOracle.Reassigned":      {Argument: "ro", Resolver: "oracleContext"},
+			"ReassignOracle.FuncAssignments": {Argument: "ro", Resolver: "oracleContext"},
+		}},
+		{Source: "src/cmd/compile/internal/ir/reassign_consistency_check.go", WholeFile: true},
+		{Source: "src/cmd/compile/internal/ir/check_reassign_no.go", WholeFile: true},
 		{Source: "src/cmd/compile/internal/ir/scc.go", WholeFile: true, Owner: &OwnerRule{Types: []string{"bottomUpVisitor"}, Context: "Context", Field: "compilation"}},
 		{Source: "src/cmd/compile/internal/ir/symtab.go", WholeFile: true},
 		{Source: "src/cmd/compile/internal/ir/mini.go",

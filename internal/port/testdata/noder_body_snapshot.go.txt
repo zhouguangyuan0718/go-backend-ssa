@@ -1,5 +1,5 @@
 package noder
-import("fmt";"encoding/json";"encoding/binary";"os";"strings";"sort";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_PKGBITS";BODY_RUNTIME IMPORT_BASE)
+import("fmt";"encoding/json";"encoding/binary";"os";"strings";"sort";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_PKGBITS";BODY_RUNTIME HEUR_IMPORT IMPORT_BASE)
 func TestSyncgoNativeSnapshot(t *testing.T){
  target:=struct{arch string;size int;order binary.ByteOrder}{strings.SplitN(os.Getenv("SYNCGO_TARGET"),"-",2)[0],8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
  SETUP
@@ -12,6 +12,19 @@ func TestSyncgoNativeSnapshot(t *testing.T){
  if len(wanted)!=0{t.Fatal("missing",wanted)}
  pr.newReader(pkgbits.SectionMeta,pkgbits.PrivateRootIdx,pkgbits.SyncPrivate).pkgInit(TY.LocalPkg,TC.Target)
  BODY_DRAIN
+ HEUR_SETUP
+ // Supply identical precomputed inlinability metadata to isolate the native
+ // heuristics pass. This fixture does not replace production CanInlineFuncs.
+ markInline:=func(fn *ir.Func){fn.Inl=&ir.Inline{Cost:50};fn.SetInlinabilityChecked(true)}
+ for _,fn:=range TC.Target.Funcs{markInline(fn)}
+ for _,fn:=range TC.Target.Funcs{HEUR.AnalyzeFunc(fn,markInline,func(*ir.Func)int32{return 2000},80)}
+ for _,fn:=range TC.Target.Funcs{
+  if fn.Inl!=nil{out=append(out,fmt.Sprintf("properties:%v:%x:%s",fn.Sym(),fn.Inl.Properties,inlheur.DeserializeFromString(fn.Inl.Properties)))}
+  HEUR.ScoreCalls(fn)
+  ir.VisitList(fn.Body,func(n ir.Node){if call,ok:=n.(*ir.CallExpr);ok{score,found:=HEUR.GetCallSiteScore(fn,call);out=append(out,fmt.Sprintf("score:%v:%v:%d:%t",fn.Sym(),LINK.PosTable.Pos(call.Pos()),score,found))}})
+  HEUR.ScoreCallsCleanup()
+ }
+ HEUR.TearDown()
  for _,fn:=range TC.Target.Inits {
   out=append(out,fmt.Sprintf("init:%v:%t",fn.Sym(),fn.IsPackageInit()))
   if fn.IsPackageInit(){

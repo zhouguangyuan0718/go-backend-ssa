@@ -336,3 +336,6 @@ const ConstPrec = compiler.ConstPrec
 func IsConstNode(n Node) bool        { return compiler.IsConstNode(n) }
 func IsSmallIntConst(n Node) bool    { return compiler.IsSmallIntConst(n) }
 func ConstType(n Node) constant.Kind { return compiler.ConstType(n) }
+
+// ReassignOracle is the native function-local reassignment analysis.
+type ReassignOracle = compiler.ReassignOracle

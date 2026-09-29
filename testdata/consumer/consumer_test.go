@@ -6,7 +6,9 @@ import (
 	"go-backend-ssa/bitvec"
 	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/gcbridge"
+	"go-backend-ssa/inline/inlheur"
 	"go-backend-ssa/ir"
+	"go-backend-ssa/logopt"
 	"go-backend-ssa/noder"
 	"go-backend-ssa/objw"
 	"go-backend-ssa/pgo"
@@ -549,6 +551,26 @@ func TestPublicCallGraph(t *testing.T) {
 	c.PostLookupCleanup = func() { cleaned = true }
 	profile := c.NewProfile(input)
 	key := input.NamedEdgeMap.ByWeight[0]
+	heur := inlheur.NewContext(tc, c)
+	fn.Body = ir.Nodes{graph.NewReturnStmt(pos, nil)}
+	fn.Inl = &ir.Inline{Cost: 1}
+	heur.AnalyzeFunc(fn, func(*ir.Func) { t.Fatal("unexpected closure") }, func(*ir.Func) int32 { return 80 }, 80)
+	if inlheur.DeserializeFromString(fn.Inl.Properties) == nil {
+		t.Fatal("public inline properties")
+	}
+	var oracle ir.ReassignOracle
+	oracle.Init(fn)
+	lit := graph.NewInt(pos, 42)
+	if oracle.StaticValue(lit) != lit {
+		t.Fatal("public reassignment oracle")
+	}
+	logger := logopt.NewContext()
+	logger.Format = logopt.Json0
+	logger.LogOpt(pos, "canInlineFunction", "inline", "F", fn.Inl.Cost)
+	event := logger.Snapshot()[0]
+	if event.Position() != pos || event.What() != "canInlineFunction" || event.Arguments()[0] != int32(1) {
+		t.Fatal("public native log")
+	}
 	var node *pgoir.IRNode = profile.WeightedCG.IRNodes["example/p.F"]
 	if visits != 1 || !cleaned || node.AST != fn || node.OutEdges[key].Weight != 7 || c.DirectCallee(fn.Nname) != fn {
 		t.Fatal("public native graph")

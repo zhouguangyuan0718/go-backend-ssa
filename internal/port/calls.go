@@ -228,7 +228,7 @@ func checkStateAdapters(units []Unit, before *packageImporter, out *types.Packag
 				}
 				return p.Path()
 			})
-			if got := types.TypeString(field.Type(), nil); got != want {
+			if got := types.TypeString(unnamedSignature(field.Type()), nil); got != want {
 				return fmt.Errorf("external state type mismatch for %s: got %s, want %s", state.Field, got, want)
 			}
 		}

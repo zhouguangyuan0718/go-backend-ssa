@@ -11,7 +11,8 @@ import (
 
 // Offset and name tables contain constant array or slice elements. Localize the table
 // once per consuming function, retaining the upstream table type and indexing.
-// Only len(table) and indexed reads are accepted, never writes or escapes.
+// Only len(table), indexed reads and range traversal are accepted; writes and
+// escapes are rejected, including table elements used as range destinations.
 func localizeReadTables(fs *token.FileSet, files []*ast.File, info *types.Info, units []Unit) error {
 	tables := map[types.Object]*ast.ValueSpec{}
 	for i, u := range units {
@@ -110,6 +111,10 @@ func localizeReadTables(fs *token.FileSet, files []*ast.File, info *types.Info, 
 								read = false
 							}
 						}
+					case *ast.RangeStmt:
+						if outer.Key == top || outer.Value == top {
+							read = false
+						}
 					case *ast.IncDecStmt:
 						read = false
 					case *ast.UnaryExpr:
@@ -118,6 +123,8 @@ func localizeReadTables(fs *token.FileSet, files []*ast.File, info *types.Info, 
 						}
 					}
 				}
+			case *ast.RangeStmt:
+				read = p.X == id
 			case *ast.CallExpr:
 				if name, ok := p.Fun.(*ast.Ident); ok && len(p.Args) == 1 && p.Args[0] == id {
 					if b, ok := info.Uses[name].(*types.Builtin); ok && b.Name() == "len" {
