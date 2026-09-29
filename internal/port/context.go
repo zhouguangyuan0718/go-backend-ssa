@@ -72,7 +72,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			}
 		}
 		for _, d := range files[i].Decls {
-			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name != "init" {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name != "init" && !(c.Existing && fn.Name.Name == c.Constructor) {
 				functions[info.Defs[fn.Name]] = fn.Name.Name
 			}
 		}
@@ -88,7 +88,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	for _, f := range files {
 		collision := false
 		ast.Inspect(f, func(n ast.Node) bool {
-			if id, ok := n.(*ast.Ident); ok && (strings.HasPrefix(id.Name, "syncgo") || id.Name == context.Type || id.Name == context.Constructor) {
+			if id, ok := n.(*ast.Ident); ok && (strings.HasPrefix(id.Name, "syncgo") || !context.Existing && (id.Name == context.Type || id.Name == context.Constructor)) {
 				collision = true
 			}
 			return true
@@ -178,10 +178,50 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		var decls []ast.Decl
 		for _, d := range f.Decls {
 			if g, ok := d.(*ast.GenDecl); ok && g.Tok == token.VAR {
+				for _, spec := range g.Specs {
+					for _, id := range spec.(*ast.ValueSpec).Names {
+						if states[info.Defs[id]] == "" {
+							return fmt.Errorf("package variable has no context rule: %s", id.Name)
+						}
+					}
+				}
 				continue
 			}
 			fn, ok := d.(*ast.FuncDecl)
 			if !ok {
+				decls = append(decls, d)
+				continue
+			}
+			if context.Existing && fn.Recv == nil && fn.Name.Name == context.Constructor {
+				sig := info.Defs[fn.Name].Type().(*types.Signature)
+				var pointer *types.Pointer
+				if sig.Results().Len() == 1 {
+					pointer, _ = sig.Results().At(0).Type().(*types.Pointer)
+				}
+				ok := pointer != nil
+				if sig.Params().Len() != 0 || sig.Results().Len() != 1 || !ok || types.TypeString(pointer.Elem(), func(*types.Package) string { return "" }) != context.Type {
+					return fmt.Errorf("native context constructor must have signature func() *%s", context.Type)
+				}
+				dependent := false
+				refs := replacements(ast.NewIdent(recv))
+				ast.Inspect(fn.Body, func(n ast.Node) bool {
+					if id, ok := n.(*ast.Ident); ok {
+						if refs[id] != nil {
+							dependent = true
+						}
+						// A package call can read moved state indirectly (including
+						// native receiver methods). Require an explicit adaptation
+						// before allowing such calls during original allocation.
+						if called, ok := info.Uses[id].(*types.Func); ok && called.Pkg() == info.Defs[fn.Name].Pkg() {
+							dependent = true
+						}
+					}
+					return true
+				})
+				if dependent || hasOwnedAllocation(fn.Body, info, owners) {
+					return fmt.Errorf("native context constructor depends on state before initialization")
+				}
+				fn.Name = &ast.Ident{Name: "syncgoNewContext", NamePos: fn.Name.Pos()}
 				decls = append(decls, d)
 				continue
 			}
@@ -215,12 +255,16 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 						break
 					}
 				}
-				if owner == nil || len(fn.Recv.List[0].Names) != 1 {
+				nativeReceiver := context.Existing && receiverType(fn) == context.Type
+				if (!nativeReceiver && owner == nil) || len(fn.Recv.List[0].Names) != 1 {
 					return fmt.Errorf("receiver context requires an owner rule: %s", fn.Name.Name)
 				}
 				receiver := fn.Recv.List[0].Names[0].Name
 				// A value receiver has an owner too, but cannot be compared to nil.
-				condition := receiver + "." + owner.Field + " == nil"
+				condition := "false"
+				if !nativeReceiver {
+					condition = receiver + "." + owner.Field + " == nil"
+				}
 				if _, pointer := fn.Recv.List[0].Type.(*ast.StarExpr); pointer {
 					condition = receiver + " == nil || " + condition
 				}
@@ -229,8 +273,15 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				if err != nil {
 					return err
 				}
-				ctx = &ast.SelectorExpr{X: ast.NewIdent(receiver), Sel: ast.NewIdent(owner.Field)}
+				if nativeReceiver {
+					ctx = ast.NewIdent(receiver)
+				} else {
+					ctx = &ast.SelectorExpr{X: ast.NewIdent(receiver), Sel: ast.NewIdent(owner.Field)}
+				}
 				for n, name := range nullable {
+					if nativeReceiver && name == receiver {
+						return fmt.Errorf("native context receiver cannot be nullable")
+					}
 					if name == receiver {
 						if _, ok := fn.Recv.List[0].Type.(*ast.StarExpr); !ok {
 							return fmt.Errorf("nullable receiver must be pointer: %s", key)
@@ -307,7 +358,11 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		f.Decls = decls
 		f.Comments = comments.Filter(f).Comments()
 	}
-	constructor := fmt.Sprintf("\nfunc %s() *%s {\n%s := &%s{}\n", context.Constructor, context.Type, recv, context.Type)
+	allocate := "&" + context.Type + "{}"
+	if context.Existing {
+		allocate = "syncgoNewContext()"
+	}
+	constructor := fmt.Sprintf("\nfunc %s() *%s {\n%s := %s\n", context.Constructor, context.Type, recv, allocate)
 	for _, name := range calls {
 		constructor += recv + "." + name + "()\n"
 	}
@@ -369,7 +424,11 @@ func hasOwnedAllocation(node ast.Node, info *types.Info, owners []*OwnerRule) bo
 	ast.Inspect(node, func(n ast.Node) bool {
 		switch n := n.(type) {
 		case *ast.CompositeLit:
-			found = found || ownedTypeRule(info.TypeOf(n.Type), owners, info) != nil
+			typ := info.TypeOf(n)
+			if ptr, ok := typ.(*types.Pointer); ok {
+				typ = ptr.Elem()
+			}
+			found = found || ownedTypeRule(typ, owners, info) != nil
 		case *ast.ValueSpec:
 			if n.Type != nil && len(n.Values) == 0 {
 				found = found || ownedTypeRule(info.TypeOf(n.Type), owners, info) != nil

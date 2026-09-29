@@ -81,8 +81,14 @@ func (i *packageImporter) Import(p string) (*types.Package, error) {
 }
 
 func checkTypes(fset *token.FileSet, pkg string, files []*ast.File, imp types.Importer) (*types.Package, *types.Info, error) {
-	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}, Types: map[ast.Expr]types.TypeAndValue{}}
-	c := types.Config{Importer: imp, GoVersion: "go1.27"}
+	return checkTypesImports(fset, pkg, files, imp, false)
+}
+
+// Selection may remove every use of a dot import. Resolve identifiers first,
+// then remove unused imports; final output still gets normal strict checking.
+func checkTypesImports(fset *token.FileSet, pkg string, files []*ast.File, imp types.Importer, allowUnused bool) (*types.Package, *types.Info, error) {
+	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}, Types: map[ast.Expr]types.TypeAndValue{}, Implicits: map[ast.Node]types.Object{}}
+	c := types.Config{Importer: imp, GoVersion: "go1.27", DisableUnusedImportCheck: allowUnused}
 	p, err := c.Check(pkg, fset, files, info)
 	return p, info, err
 }
@@ -96,7 +102,7 @@ func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.Fil
 	}
 	if u.WholeFile {
 		for _, d := range f.Decls {
-			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == "init" && (u.ReceiverState == nil || !u.ReceiverState.RunInit) {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == "init" && (u.ReceiverState == nil || !u.ReceiverState.RunInit) && (u.Context == nil || !u.Context.Init) {
 				return nil, fmt.Errorf("package init requires an explicit adaptation rule: %s", name)
 			}
 		}
@@ -219,7 +225,20 @@ func pruneImports(f *ast.File, extra ...ast.Node) {
 
 func pruneImportsWithInfo(f *ast.File, info *types.Info, extra ...ast.Node) {
 	used := map[string]bool{}
+	usedPackages := map[string]bool{}
+	unresolved := map[string]bool{}
+	members := map[*ast.Ident]bool{}
 	visit := func(n ast.Node) bool {
+		if s, ok := n.(*ast.SelectorExpr); ok {
+			members[s.Sel] = true
+		}
+		if id, ok := n.(*ast.Ident); ok && info != nil && !members[id] {
+			if obj := info.Uses[id]; obj != nil && obj.Pkg() != nil {
+				usedPackages[obj.Pkg().Path()] = true
+			} else if info.Defs[id] == nil {
+				unresolved[id.Name] = true
+			}
+		}
 		if s, ok := n.(*ast.SelectorExpr); ok {
 			if id, ok := s.X.(*ast.Ident); ok {
 				if info != nil {
@@ -254,7 +273,21 @@ func pruneImportsWithInfo(f *ast.File, info *types.Info, extra ...ast.Node) {
 			if im.Name != nil {
 				alias = im.Name.Name
 			}
-			if used[alias] || alias == "." || alias == "_" {
+			dotUsed := alias == "."
+			if dotUsed && info != nil {
+				dotUsed = usedPackages[p]
+				// Initializer helpers are parsed after source checking; their
+				// new identifiers have no entries in Info.Uses.
+				if pkg, ok := info.Defs[im.Name].(*types.PkgName); ok {
+					for name := range unresolved {
+						if obj := pkg.Imported().Scope().Lookup(name); obj != nil && obj.Exported() {
+							dotUsed = true
+							break
+						}
+					}
+				}
+			}
+			if used[alias] || dotUsed || alias == "_" {
 				specs = append(specs, im)
 				f.Imports = append(f.Imports, im)
 			}
@@ -326,8 +359,8 @@ func transform(fset *token.FileSet, f *ast.File, info *types.Info, u Unit, mappi
 	pruneImportsWithInfo(f, info)
 	for _, im := range f.Imports {
 		p, _ := strconv.Unquote(im.Path.Value)
-		if im.Name != nil && (im.Name.Name == "." || im.Name.Name == "_") {
-			return nil, fmt.Errorf("unsupported dot/side-effect import %s", p)
+		if im.Name != nil && im.Name.Name == "_" {
+			return nil, fmt.Errorf("unsupported side-effect import %s", p)
 		}
 		if dst := mapping[p]; dst != "" {
 			if im.Name == nil && path.Base(dst) != path.Base(p) {

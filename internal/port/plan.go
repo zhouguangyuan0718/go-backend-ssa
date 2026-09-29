@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v1"
+const ToolVersion = "syncgo-m3-v2"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -70,6 +70,7 @@ type OwnerRule struct {
 }
 
 type ContextRule struct {
+	Existing          bool // Extend the upstream Type and run its original Constructor first.
 	Type, Constructor string
 	Fields            map[string]string
 	Adapter           string // Handwritten filename in the ported package.
@@ -184,7 +185,7 @@ func (p Plan) Validate() error {
 		}
 		pkg := path.Dir(output)
 		outputs[output] = true
-		if u.WholeFile && (len(u.Functions)+len(u.Declarations) != 0 || u.Context != nil) || !u.WholeFile && len(u.ZeroValues)+len(u.ReadTables) != 0 {
+		if u.WholeFile && (len(u.Functions)+len(u.Declarations) != 0) || !u.WholeFile && len(u.ZeroValues)+len(u.ReadTables) != 0 {
 			return fmt.Errorf("incompatible whole-file rules: %s", u.Source)
 		}
 		if owner := u.Owner; owner != nil {
@@ -204,7 +205,7 @@ func (p Plan) Validate() error {
 		}
 		if c := u.Context; c != nil {
 			if previous := contexts[pkg]; previous != nil {
-				if previous.Type != c.Type || previous.Constructor != c.Constructor || previous.Adapter != c.Adapter {
+				if previous.Type != c.Type || previous.Constructor != c.Constructor || previous.Adapter != c.Adapter || previous.Existing != c.Existing {
 					return fmt.Errorf("inconsistent package context: %s", pkg)
 				}
 			} else {
@@ -220,7 +221,7 @@ func (p Plan) Validate() error {
 				}
 				states[pkg][state], fields[pkg][field] = true, true
 			}
-			if !safePath(c.Adapter) || path.Base(c.Adapter) != c.Adapter || !strings.HasPrefix(c.Adapter, "adapter_") || path.Ext(c.Adapter) != ".go" || strings.HasSuffix(c.Adapter, "_test.go") {
+			if !(c.Existing && c.Adapter == "") && (!safePath(c.Adapter) || path.Base(c.Adapter) != c.Adapter || !strings.HasPrefix(c.Adapter, "adapter_") || path.Ext(c.Adapter) != ".go" || strings.HasSuffix(c.Adapter, "_test.go")) {
 				return fmt.Errorf("invalid context adapter: %s", c.Adapter)
 			}
 		}

@@ -57,7 +57,7 @@ func TestOwnership(t *testing.T){
 		t.Fatalf("%v\n%s", err, out)
 	}
 	for _, tc := range []struct{ name, source, want string }{
-		{"unkeyed", strings.Replace(source, "return &Node{N:p.N}", "return &Node{p.N}", 1), "unkeyed"},
+
 		{"missing owner", source, "requires an owner rule"},
 		{"zero local", strings.Replace(source, "return new(Node)", "var n Node; return &n", 1), "zero declaration"},
 		{"zero local in receiver", strings.Replace(source, "return &Node{N:p.N}", "var n Node; return &n", 1), "zero declaration"},

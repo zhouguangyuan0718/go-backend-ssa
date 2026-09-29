@@ -27,6 +27,7 @@
 10. [M2 基础设施](docs/m2.md)：第一批位置设施与归属设计。
 11. [M2 类型与 Universe](docs/m2-universe.md)：第二至七批实现、对外入口及类型布局边界。
 12. [M3 原生语法树](docs/m3-syntax.md)：Parse、AST、无全局解析状态与上游差分。
+13. [M3 类型检查迁移](docs/m3-types2.md)：复用上游 Context、点导入和类型表迁移验证。
 
 ## 当前可运行的工具
 

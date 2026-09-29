@@ -80,8 +80,29 @@ func injectOwnedAllocations(node ast.Node, info *types.Info, rule *OwnerRule, ct
 	ast.Inspect(node, func(n ast.Node) bool {
 		switch n := n.(type) {
 		case *ast.CompositeLit:
-			if !matches(n.Type) {
+			typ := info.TypeOf(n)
+			if ptr, ok := typ.(*types.Pointer); ok {
+				typ = ptr.Elem()
+			}
+			if !owned[typ] {
 				break
+			}
+			if len(n.Elts) > 0 {
+				if _, keyed := n.Elts[0].(*ast.KeyValueExpr); !keyed {
+					st, ok := typ.Underlying().(*types.Struct)
+					if !ok || len(n.Elts) != st.NumFields() {
+						err = fmt.Errorf("owned literal no longer matches source fields")
+						return false
+					}
+					for i, value := range n.Elts {
+						name := st.Field(i).Name()
+						if name == "_" {
+							err = fmt.Errorf("unkeyed owned literal has blank field")
+							return false
+						}
+						n.Elts[i] = &ast.KeyValueExpr{Key: &ast.Ident{Name: name, NamePos: value.Pos()}, Value: value}
+					}
+				}
 			}
 			present := false
 			for _, e := range n.Elts {

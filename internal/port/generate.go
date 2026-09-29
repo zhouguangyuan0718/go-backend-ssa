@@ -137,7 +137,7 @@ func auditProductionFiles(root string, p Plan) error {
 	}
 	for _, u := range p.Units {
 		allowed[u.output()] = true
-		if u.Context != nil {
+		if u.Context != nil && u.Context.Adapter != "" {
 			allowed[u.adapterPath()] = true
 		}
 	}

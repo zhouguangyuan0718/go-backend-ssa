@@ -100,7 +100,7 @@ func testUpstreamSyntax(t *testing.T, s *Source, r *Rendered) {
 	writeTestFile(t, dir, "internal/syntax/adapter_parsefile_test.go", string(out))
 	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
 	writeTestFile(t, dir, "compare_test.go", syntaxComparison)
-	cmd := exec.Command("go", "test", "-race", "-v", ".", "./internal/syntax")
+	cmd := exec.Command("go", "test", "-race", ".", "./internal/syntax")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.27.1")
 	output, err := cmd.CombinedOutput()

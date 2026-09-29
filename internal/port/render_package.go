@@ -39,7 +39,7 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		original = append(original, f)
 	}
 	sourcePkg := units[0].sourcePackage()
-	pkg, info, err := checkTypes(fs, sourcePkg, original, before)
+	pkg, info, err := checkTypesImports(fs, sourcePkg, original, before, true)
 	if err != nil {
 		return nil, nil, fmt.Errorf("selected package %s: %w", sourcePkg, err)
 	}
@@ -62,6 +62,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		return nil, nil, err
 	}
 	if err := rewritePackageContext(fs, original, info, units); err != nil {
+		return nil, nil, err
+	}
+	if err := extendNativeContext(original, info, units); err != nil {
 		return nil, nil, err
 	}
 	adapters := map[string][]byte{}
@@ -101,6 +104,10 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			prov.Declarations = append(prov.Declarations, sortedKeys(state.Fields)...)
 		}
 		if c := u.Context; c != nil {
+			prov.Rule = "package-state-to-context-methods-v2"
+			prov.Declarations = append(prov.Declarations, sortedKeys(c.Fields)...)
+		}
+		if c := u.Context; c != nil && c.Adapter != "" {
 			if _, exists := s.Blobs[path.Join(path.Dir(u.Source), c.Adapter)]; exists {
 				return nil, nil, fmt.Errorf("adapter filename collides with upstream: %s", u.adapterPath())
 			}
@@ -120,8 +127,6 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 				output = append(output, af)
 				adapters[u.adapterPath()] = adapter
 			}
-			prov.Rule = "package-state-to-context-methods-v2"
-			prov.Declarations = append(prov.Declarations, sortedKeys(c.Fields)...)
 			prov.AdapterSHA256 = hash(adapter)
 		}
 		result[u.output()] = out
