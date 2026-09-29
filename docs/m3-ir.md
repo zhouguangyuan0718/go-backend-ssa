@@ -10,15 +10,8 @@ link := &gcbridge.Link{}
 u, _ := types.NewUniverseWithPositions(layout, &link.PosTable)
 c := ir.NewContext(u, link)
 
-// 原生 typecheck.InitUniverse 所用的类型名称回调。
-// 完整 InitUniverse 将在后续迁入；本例只初始化 compiler types。
-u.InitTypes(func(sym *types.Sym, typ *types.Type) types.Object {
-    n := c.NewDeclNameAt(position.XPos{}, ir.OTYPE, sym)
-    n.SetType(typ)
-    n.SetTypecheck(1)
-    sym.Def = n
-    return n
-})
+tc := typecheck.NewContext(c)
+tc.InitUniverse() // 原生内建名称、类型、常量和操作表初始化
 v := c.NewInt(position.XPos{}, 1)
 expr := c.NewBinaryExpr(position.XPos{}, ir.OADD, v, v)
 copy := ir.DeepCopy(position.XPos{}, expr)
@@ -48,8 +41,8 @@ noder 的 `PosMap` 可以继续写入同一个 Link。原生 `FmtPos/AllPos`、�
 
 ## 尚未完成
 
-这些入口可以构造和消费原生 IR；尚未把已检查源码经 noder reader 还原为此图。完整 `typecheck.InitUniverse`、IR 类型检查、reader、优化、walk、SSA 构造和原生后端回接仍待推进。`OKForConst` 和 `IsSimple` 等在官方 typecheck 阶段填充的表目前保留其阶段前的值，不冒充已完成该初始化。ABI 文本符号初始化及 HTML/文件 dump 驱动也未迁入。
+这些入口可以构造和消费原生 IR；尚未把已检查源码经 noder reader 还原为此图。[原生 typecheck.InitUniverse](m3-typecheck.md) 已接入；IR 类型检查、reader、优化、walk、SSA 构造和原生后端回接仍待推进。`OKForConst`、`IsSimple` 等表必须通过该原生入口填充；仅创建 `ir.Context` 不执行此阶段。ABI 文本符号初始化及 HTML/文件 dump 驱动也未迁入。
 
-下一批先迁入真实 typecheck universe 与所需辅助函数，再接 reader 的类型/声明读取；保持现有对象身份，逐步扩展到函数体。
+下一批继续迁入 runtime 声明和 reader 所需的 typecheck 能力，再接 reader 的类型/声明读取；保持现有对象身份，逐步扩展到函数体。
 
 本批验证完成：167 份生成文件通过 `syncgo check`；带来源仓库的全量 `go test -race -v ./...` 通过，包含独立 consumer 和两版官方差分。相同规则从 go1.27.0 到 go1.27.1 仅有 1 份 Go 产物内容变化，来源工作树状态保持不变。验证日志：`_work/m3-ir-tests.log`。验证宿主为 darwin/arm64；这仍不构成源码到 SSA、原生后端执行或工具链自举完成的证据。

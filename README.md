@@ -4,7 +4,7 @@
 
 库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。每次调用拥有独立编译状态，返回结果在后续调用期间仍有效。
 
-当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口，并提供已检查 AST 到原生 Unified IR stub 的 writer，以及实例独立的原生 IR 图构造接口；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
+当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口，并提供已检查 AST 到原生 Unified IR stub 的 writer，以及实例独立的原生 IR 图构造接口与 typecheck universe 初始化；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
 
 - 语言范围：Go 1.27；其他语言版本尚不支持。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
@@ -35,6 +35,7 @@
 18. [M3 rangefunc 重写](docs/m3-rangefunc.md)：原生函数迭代 lowering、实例 helper 包和完整编码对照。
 19. [M3 原生符号与内联位置](docs/m3-link.md)：ABI 符号身份、Link 显式绑定和内联位置还原。
 20. [M3 原生 IR 图](docs/m3-ir.md)：节点构造/复制/遍历、真实 ir.Name 类型绑定、函数/闭包及位置归属。
+21. [M3 原生 typecheck universe](docs/m3-typecheck.md)：内建名称、常量、操作表初始化及共享函数状态。
 
 ## 当前可运行的工具
 

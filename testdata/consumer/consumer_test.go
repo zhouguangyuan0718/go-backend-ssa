@@ -9,6 +9,7 @@ import (
 	"go-backend-ssa/position"
 	"go-backend-ssa/syntax"
 	"go-backend-ssa/target"
+	"go-backend-ssa/typecheck"
 	"go-backend-ssa/types"
 	"go-backend-ssa/types2"
 	"go/constant"
@@ -277,13 +278,12 @@ func TestNativeIRPublicGraph(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := ir.NewContext(u, link)
-	u.InitTypes(func(s *types.Sym, typ *types.Type) types.Object {
-		n := c.NewDeclNameAt(position.XPos{}, ir.OTYPE, s)
-		n.SetType(typ)
-		n.SetTypecheck(1)
-		s.Def = n
-		return n
-	})
+	tc := typecheck.NewContext(c)
+	tc.InitUniverse()
+	if c.BlankNode != u.BlankSym.Def || u.BuiltinPkg.Lookup("append").Def.(*ir.Name).BuiltinOp != ir.OAPPEND {
+		t.Fatal("native universe not installed")
+	}
+
 	typ := u.Types[types.Int]
 	if _, ok := typ.Obj().(*ir.Name); !ok {
 		t.Fatal("builtin type is not bound to native ir.Name")

@@ -1,0 +1,25 @@
+package typecheck
+import("fmt";"encoding/json";"testing";"go/constant";"IMPORT_TYPES";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_IR";IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ SETUP
+ UP.InitUniverse()
+ var out []string
+ for _,entry:=range UP.builtinFuncs{n:=TY.BuiltinPkg.Lookup(entry.name).Def.(*ir.Name);out=append(out,fmt.Sprintf("builtin:%s:%d:%d:%t",entry.name,n.BuiltinOp,n.Typecheck(),n.Sym().Def==n))}
+ for _,entry:=range UP.unsafeFuncs{n:=TY.UnsafePkg.Lookup(entry.name).Def.(*ir.Name);out=append(out,fmt.Sprintf("unsafe:%s:%d:%d:%t",entry.name,n.BuiltinOp,n.Typecheck(),n.Sym().Def==n))}
+ for _,kind:=range []types.Kind{types.TINT,types.TBOOL,types.TSTRING,types.TUINTPTR,types.TFLOAT32,types.TCOMPLEX128}{typ:=TY.Types[kind];n:=typ.Obj().(*ir.Name);out=append(out,fmt.Sprintf("type:%v:%d:%t:%t:%t",typ,typ.Size(),n.Type()==typ,n.Sym().Def==n,GRAPH.TypeNode(typ)==n))}
+ for _,name:=range []string{"true","false"}{n:=TY.BuiltinPkg.Lookup(name).Def.(*ir.Name);out=append(out,fmt.Sprintf("constant:%s:%t:%t",name,constant.BoolVal(n.Val()),n.Type()==TY.UntypedBool))}
+ blank:=GRAPH.BlankNode
+ out=append(out,fmt.Sprintf("blank:%t:%t:%t:%t",TY.BlankSym==UP.Lookup("_"),TY.BlankSym.Def==blank,blank.Type()==TY.Types[types.TBLANK],TY.BuiltinPkg.Lookup("_").Def!=blank))
+ n:=TY.BuiltinPkg.Lookup("nil").Def.(ir.Node);out=append(out,fmt.Sprintf("nil:%v:%t",n,n.Type()==TY.Types[types.TNIL]))
+ for op:=ir.Op(0);op<ir.OEND;op++{out=append(out,fmt.Sprintf("table:%d:%v",op,UP.okfor[op]))}
+ out=append(out,fmt.Sprintf("flags:%v:%v:%v",TY.IsSimple,TY.IsOrdered,GRAPH.OKForConst))
+ out=append(out,fmt.Sprintf("aliases:%t:%t:%t",&UP.okfor[ir.OADD][0]==&UP.okforadd[0],&UP.okfor[ir.OLT][0]==&TY.IsOrdered[0],&UP.okfor[ir.OXXX][0]==&UP.okfornone[0]))
+ pos:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase("fn.go","/src/fn.go"),3,2))
+ fn:=GRAPH.NewFunc(pos,pos,UP.Lookup("F"),TY.NewSignature(nil,nil,nil))
+ GRAPH.WithFunc(fn,func(){out=append(out,fmt.Sprintf("scope:%t:%t:%s:%s",POS==pos,UP.NodNil().Pos()==pos,UP.AutoLabel(".loop").Name,UP.AutoLabel(".loop").Name))})
+ out=append(out,fmt.Sprintf("restored:%t:%t",GRAPH.CurFunc==nil,POS==(src.XPos{})))
+ field:=TY.NewField(pos,UP.Lookup("args"),TY.NewSlice(TY.Types[types.TINT]));field.SetIsDDD(true)
+ params:=UP.NewFuncParams([]*types.Field{field})
+ out=append(out,fmt.Sprintf("params:%t:%t:%t:%t:%t",params[0]!=field,params[0].Type==field.Type,params[0].Sym==field.Sym,params[0].Pos==field.Pos,params[0].IsDDD()))
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

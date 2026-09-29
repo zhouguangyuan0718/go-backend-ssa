@@ -124,7 +124,7 @@ func Migration() Plan {
 						"UntypedString": "UntypedString", "UntypedBool": "UntypedBool",
 						"UntypedInt": "UntypedInt", "UntypedRune": "UntypedRune", "UntypedFloat": "UntypedFloat", "UntypedComplex": "UntypedComplex",
 						"UntypedTypes": "UntypedTypes", "DefaultKinds": "DefaultKinds",
-						"ComparableType": "ComparableType", "recvType": "recvType", "ShapePkg": "ShapePkg", "IsSimple": "IsSimple", "IsInt": "IsInt", "IsFloat": "IsFloat", "IsComplex": "IsComplex",
+						"ComparableType": "ComparableType", "recvType": "recvType", "ShapePkg": "ShapePkg", "IsOrdered": "IsOrdered", "IsSimple": "IsSimple", "IsInt": "IsInt", "IsFloat": "IsFloat", "IsComplex": "IsComplex",
 					},
 				},
 			},
@@ -173,6 +173,7 @@ func Migration() Plan {
 	}
 	plan.Units = append(plan.Units, linkMigration()...)
 	plan.Units = append(plan.Units, irMigration()...)
+	plan.Units = append(plan.Units, typecheckMigration()...)
 	plan.Units = append(plan.Units, types2Migration()...)
 	plan.Units = append(plan.Units, pkgbitsMigration()...)
 	plan.Units = append(plan.Units, rangefuncMigration()...)
