@@ -17,6 +17,7 @@ func testUpstreamObjectDeclarations(t *testing.T, s *Source, r *Rendered) {
 	testUpstreamObjectMethods(t, s, r)
 	units := objectDeclarations()
 	units = append(units, runtimeABIMigration()...)
+	units = append(units, Unit{Source: "src/cmd/compile/internal/bitvec/bv.go", Declarations: []string{"BitVec", "Bulk"}})
 	units = append(units, Unit{Source: "src/cmd/compile/internal/ir/node.go", Declarations: []string{"Op", "PragmaFlag"}})
 	units = append(units, Unit{Source: "src/cmd/internal/obj/link.go", Declarations: []string{"Link", "LinkArch", "Prog", "LSym", "Addr"}})
 	imports := Migration().importMap(s.Pin.TargetModule)
@@ -104,6 +105,7 @@ func testUpstreamObjectDeclarations(t *testing.T, s *Source, r *Rendered) {
 func testUpstreamObjectMethods(t *testing.T, s *Source, r *Rendered) {
 	t.Helper()
 	selected := map[string][]string{
+		"src/cmd/compile/internal/bitvec/bv.go":    {"New", "NewBulk", "Bulk.Next", "BitVec.Copy", "BitVec.Next", "BitVec.IsEmpty", "BitVec.Count", "BitVec.Not", "BitVec.Or", "BitVec.And", "BitVec.AndNot", "BitVec.String", "BitVec.Clear"},
 		"src/cmd/compile/internal/base/timings.go": {"Timings.append", "Timings.Start", "Timings.Stop", "Timings.AddEvent", "Timings.Write", "commonPrefix", "lines.add", "lines.write", "isnumber"},
 	}
 	for _, u := range Migration().Units {

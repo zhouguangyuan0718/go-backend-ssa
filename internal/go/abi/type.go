@@ -264,3 +264,19 @@ type StructType struct {
 type Name struct {
 	Bytes *byte
 }
+
+// MaxPtrmaskBytes is the maximum length of a GC ptrmask bitmap,
+// which holds 1-bit entries describing where pointers are in a given type.
+// Above this length, the runtime computes the GC ptrmask bitmap as needed.
+// The information is used by the runtime to initialize the heap bitmap.
+//
+// There is a bit of overhead to computing the GC ptrmask bitmap
+// the first time. On the other hand building GC ptrmask bitmaps
+// for all types at compile time takes space in the binary for
+// large types that have a lot of pointers, such as large array types.
+// Using 16 means that types that keep their pointers in the first
+// 512 (on 32-bit) or 1024 (on 64-bit) bytes are computed at compile time,
+// and types with more pointers are computed at run time.
+// This tradeoff sounds reasonable, and 16 was the cutoff back when
+// we used GC programs, but this has not been benchmarked.
+const MaxPtrmaskBytes = 16

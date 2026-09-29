@@ -185,6 +185,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, objwMigration()...)
 	plan.Units = append(plan.Units, runtimeABIMigration()...)
 	plan.Units = append(plan.Units, rttypeMigration()...)
+	plan.Units = append(plan.Units, typebitsMigration()...)
 	plan.Units = append(plan.Units, reflectdataMigration()...)
 	plan.Units = append(plan.Units, dwarfgenMigration()...)
 	plan.Units = append(plan.Units, noderMigration()...)

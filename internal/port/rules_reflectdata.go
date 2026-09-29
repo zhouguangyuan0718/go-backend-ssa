@@ -8,8 +8,8 @@ func reflectdataMigration() []Unit {
 		Source:       "src/cmd/compile/internal/reflectdata/reflect.go",
 		Context:      context(),
 		Declarations: []string{"typeAndStr"},
-		Functions:    []string{"TrackSym", "TypeSymPrefix", "TypeSym", "TypeLinksymPrefix", "TypeLinksymLookup", "TypeLinksym", "TypePtrAt", "NeedRuntimeType", "writtenByWriteBasicTypes", "NeedEmit", "typesStrCmp", "MarkTypeUsedInInterface", "MarkTypeSymUsedInInterface"},
-		Checks:       map[string]string{"TypeSym": "checkType", "TypeSymPrefix": "checkPrefix", "TypeLinksym": "checkType", "TypeLinksymPrefix": "checkPrefix", "TypePtrAt": "checkTypeAt", "NeedRuntimeType": "checkType", "NeedEmit": "checkType", "MarkTypeUsedInInterface": "checkFrom", "TrackSym": "checkField"},
+		Functions:    []string{"WriteGCSymbols", "GCSym", "dgcsym", "dgcptrmask", "fillptrmask", "dgcptrmaskOnDemand", "ZeroAddr", "TrackSym", "TypeSymPrefix", "TypeSym", "TypeLinksymPrefix", "TypeLinksymLookup", "TypeLinksym", "TypePtrAt", "NeedRuntimeType", "writtenByWriteBasicTypes", "NeedEmit", "typesStrCmp", "MarkTypeUsedInInterface", "MarkTypeSymUsedInInterface"},
+		Checks:       map[string]string{"GCSym": "checkGCType", "TypeSym": "checkType", "TypeSymPrefix": "checkPrefix", "TypeLinksym": "checkType", "TypeLinksymPrefix": "checkPrefix", "TypePtrAt": "checkTypeAt", "NeedRuntimeType": "checkType", "NeedEmit": "checkType", "MarkTypeUsedInInterface": "checkFrom", "TrackSym": "checkField"},
 		State:        []StateRule{{Source: "src/cmd/compile/internal/base/link.go", Variable: "Ctxt", Field: "Typecheck.IR.Base.Ctxt"}},
 		Calls: []CallRule{
 			{Source: "src/cmd/compile/internal/base/print.go", Function: "Fatalf", Method: "fatalf"},
@@ -18,7 +18,7 @@ func reflectdataMigration() []Unit {
 			{Source: "src/cmd/compile/internal/typecheck/subr.go", Function: "LinksymAddr", Method: "Typecheck.LinksymAddr"},
 		},
 	}
-	reflect.Context.Fields = map[string]string{"signatmu": "signatmu", "signatset": "signatset", "signatslice": "signatslice"}
+	reflect.Context.Fields = map[string]string{"signatmu": "signatmu", "signatset": "signatset", "signatslice": "signatslice", "gcsymmu": "gcsymmu", "gcsymset": "gcsymset", "ZeroSize": "ZeroSize"}
 	for _, name := range []string{"Types", "ErrorType"} {
 		reflect.State = append(reflect.State, StateRule{Source: "src/cmd/compile/internal/types/type.go", Variable: name, Field: "Typecheck.IR.Types." + name})
 	}
@@ -27,6 +27,17 @@ func reflectdataMigration() []Unit {
 	}
 	for _, name := range []string{"TypeSym", "TypeSymLookup", "TypeSymName"} {
 		reflect.Calls = append(reflect.Calls, CallRule{Source: "src/cmd/compile/internal/types/type.go", Function: name, Method: "Typecheck.IR.Types." + name})
+	}
+
+	reflect.State = append(reflect.State, StateRule{Source: "src/cmd/compile/internal/base/print.go", Variable: "Pos", Field: "Typecheck.IR.Types.Pos"})
+	reflect.Calls = append(reflect.Calls,
+		CallRule{Source: "src/cmd/compile/internal/types/size.go", Function: "PtrDataSize", Method: "Typecheck.IR.Types.PtrDataSize"},
+		CallRule{Source: "src/cmd/compile/internal/ir/expr.go", Function: "NewLinksymExpr", Method: "Typecheck.IR.NewLinksymExpr"},
+		CallRule{Source: "src/cmd/compile/internal/typecheck/typecheck.go", Function: "Expr", Method: "Typecheck.Expr"},
+		CallRule{Source: "src/cmd/compile/internal/typecheck/subr.go", Function: "NodAddr", Method: "Typecheck.NodAddr"},
+	)
+	for _, name := range []string{"Uint8", "Global"} {
+		reflect.Calls = append(reflect.Calls, CallRule{Source: "src/cmd/compile/internal/objw/objw.go", Function: name, Method: "Runtime.Writer." + name})
 	}
 	// ConvIfaceTypeWord also emits non-empty-interface ITabs. Preserve that full
 	// native path in the later descriptor batch rather than substituting a stub.

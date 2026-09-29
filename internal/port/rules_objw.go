@@ -20,7 +20,7 @@ func objectDataMigration() []Unit {
 }
 func objwMigration() []Unit {
 	return []Unit{
-		{Source: "src/cmd/compile/internal/bitvec/bv.go", Declarations: []string{"BitVec", "wordBits"}, Functions: []string{"New"}},
+		bitvecMigration(),
 		{Source: "src/cmd/compile/internal/objw/objw.go", WholeFile: true, Context: &ContextRule{Type: "Context", Constructor: "newContext", Adapter: "adapter_context.go", Selective: true}, State: []StateRule{
 			{Source: "src/cmd/compile/internal/base/link.go", Variable: "Ctxt", Field: "Link"},
 			{Source: "src/cmd/compile/internal/types/size.go", Variable: "PtrSize", Field: "ptrSize"},

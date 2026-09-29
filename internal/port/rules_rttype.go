@@ -4,7 +4,7 @@ package port
 // target layout and write cursors acquire compilation ownership.
 func runtimeABIMigration() []Unit {
 	return []Unit{
-		{Source: "src/internal/abi/type.go", Declarations: []string{"Type", "Kind", "Invalid", "TFlag", "TFlagUncommon", "NameOff", "TypeOff", "TextOff", "Method", "UncommonType", "Imethod", "ArrayType", "ChanDir", "RecvDir", "ChanType", "InterfaceType", "SliceType", "FuncType", "PtrType", "StructField", "StructType", "Name"}},
+		{Source: "src/internal/abi/type.go", Declarations: []string{"MaxPtrmaskBytes", "Type", "Kind", "Invalid", "TFlag", "TFlagUncommon", "NameOff", "TypeOff", "TextOff", "Method", "UncommonType", "Imethod", "ArrayType", "ChanDir", "RecvDir", "ChanType", "InterfaceType", "SliceType", "FuncType", "PtrType", "StructField", "StructType", "Name"}},
 		{Source: "src/internal/abi/map.go", Declarations: []string{"MapType", "MapGroupSlotsBits", "MapNeedKeyUpdate"}},
 		{Source: "src/internal/abi/iface.go", Declarations: []string{"ITab"}},
 		{Source: "src/internal/abi/switch.go", Declarations: []string{"InterfaceSwitch", "InterfaceSwitchCache", "InterfaceSwitchCacheEntry", "TypeAssert", "TypeAssertCache", "TypeAssertCacheEntry"}},

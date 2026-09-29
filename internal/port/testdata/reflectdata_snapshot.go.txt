@@ -1,5 +1,5 @@
 package reflectdata
-import("fmt";"encoding/json";"encoding/binary";"os";"slices";"testing";"IMPORT_TYPES";"IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_RTTYPE";RD_OBJW IMPORT_BASE IMPORT_BUILDCFG)
+import("fmt";"encoding/json";"encoding/binary";"os";"slices";"testing";"IMPORT_TYPES";"IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_RTTYPE";"IMPORT_BITVEC";"IMPORT_TYPEBITS";RD_OBJW IMPORT_BASE IMPORT_BUILDCFG)
 func TestSyncgoNativeSnapshot(t *testing.T){
  target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian}
  switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
@@ -54,6 +54,34 @@ func TestSyncgoNativeSnapshot(t *testing.T){
  out=append(out,fmt.Sprintf("group:%t:%v:%v:%d:%d:%t:%t:%t",split,typ,group,group.Size(),group.Alignment(),group==UP.MapGroupType(typ),group.StructType().Map==typ,group.Noalg()))
  for _,f:=range group.Fields(){out=append(out,fmt.Sprintf("gfield:%s:%d:%d:%t",f.Sym.Name,f.Offset,f.Type.Size(),f.Type.Noalg()))}
  }}
+
+ // Full native bit-vector API, including word boundaries and the final partial word.
+ for _,n:=range []int32{0,1,31,32,33,65}{
+ a,b,dst:=bitvec.New(n),bitvec.New(n),bitvec.New(n)
+ for i:=int32(0);i<n;i++{if i%2==0{a.Set(i)};if i%3==0{b.Set(i)}}
+ emit:=func(label string,v bitvec.BitVec){var indexes []int32;for i:=v.Next(0);i>=0;i=v.Next(i+1){indexes=append(indexes,i)};out=append(out,fmt.Sprintf("bits:%d:%s:%s:%d:%t:%v:%x",n,label,v.String(),v.Count(),v.IsEmpty(),indexes,v.B))}
+ emit("a",a);emit("b",b);dst.Or(a,b);emit("or",dst);dst.And(a,b);emit("and",dst);dst.AndNot(a,b);emit("andnot",dst);dst.Copy(a);out=append(out,fmt.Sprintf("eq:%d:%t",n,dst.Eq(a)));dst.Not();emit("not",dst);dst.Clear();emit("clear",dst)
+ if n>0{a.Unset(n-1);emit("unset",a)}
+ bulk:=bitvec.NewBulk(n,2);x,y:=bulk.Next(),bulk.Next();if n>0{x.Set(n-1)};emit("bulk1",x);emit("bulk2",y)
+ }
+ // Native GC scan rules and deferred symbol emission.
+ p:=TY.NewPtr(integer)
+ record:=TY.NewStruct([]*types.Field{TY.NewField(pos,nil,p),TY.NewField(pos,nil,integer),TY.NewField(pos,nil,TY.NewInterface(nil)),TY.NewField(pos,nil,TY.NewSlice(p))})
+ nonheap:=TY.NewStruct([]*types.Field{TY.NewField(pos,nil,p)});nonheap.SetNotInHeap(true)
+ cases:=[]*types.Type{integer,p,TY.Types[types.TUNSAFEPTR],TY.Types[types.TSTRING],TY.NewInterface(nil),TY.NewSignature(nil,nil,nil),m,ch,TY.NewSlice(p),record,TY.NewArray(record,3),TY.NewArray(p,0),TY.NewArray(p,128),TY.NewArray(p,129),TY.NewPtr(nonheap)}
+ for _,typ:=range cases{
+ TY.CalcSize(typ);bv:=bitvec.New(int32(typ.Size()/int64(target.size))+3);typebits.Set(typ,int64(target.size),bv)
+ noCheck:=bitvec.New(bv.N);typebits.SetNoCheck(typ,int64(target.size),noCheck)
+ out=append(out,fmt.Sprintf("scan:%v:%s:%t",typ,bv.String(),bv.Eq(noCheck)))
+ for _,allow:=range []bool{false,true}{sym,n:=UP.GCSym(typ,allow);out=append(out,fmt.Sprintf("gcreg:%v:%t:%s:%d:%t:%d",typ,allow,sym.Name,n,sym.OnList(),len(sym.P)))}
+ }
+ UP.WriteGCSymbols()
+ snapshotGC:=func(s *obj.LSym){out=append(out,fmt.Sprintf("gcdata:%s:%v:%d:%d:%x:%v:%t",s.Name,s.Type,s.Size,s.Align,s.P,uint32(s.Attribute),s.OnList()))}
+ for _,s:=range LINK.Data{snapshotGC(s)}
+ count:=len(LINK.Data);UP.WriteGCSymbols();out=append(out,fmt.Sprintf("gc-repeat:%t",count==len(LINK.Data)))
+ large:=TY.NewArray(p,129);cell,demand,n:=UP.dgcsym(large,true,true);out=append(out,fmt.Sprintf("ondemand:%t:%d",demand,n));snapshotGC(cell)
+ var zeroSym *obj.LSym
+ for _,size:=range []int64{0,8,1,128,64}{z:=UP.ZeroAddr(size).(*ir.AddrExpr);sym:=z.X.(*ir.LinksymOffsetExpr).Linksym;if zeroSym==nil{zeroSym=sym};out=append(out,fmt.Sprintf("zero:%d:%d:%s:%t:%v:%d",size,UP.ZeroSize,sym.Name,sym==zeroSym,z.Type(),z.Typecheck()))}
  queue:=append([]typeAndStr(nil),UP.signatslice...);slices.SortFunc(queue,typesStrCmp)
  for _,ts:=range queue{out=append(out,fmt.Sprintf("queued:%s:%s",ts.short,ts.regular))}
  encoded,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(encoded))

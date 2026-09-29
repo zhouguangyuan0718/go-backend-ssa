@@ -1,5 +1,5 @@
 // Package reflectdata exposes the native compiler's runtime type symbols and
-// IR references. Descriptor and ITab emission are not yet ported.
+// IR references and GC bitmap data. Full descriptor and ITab emission are not yet ported.
 package reflectdata
 
 import (
@@ -11,7 +11,8 @@ import (
 type Context = compiler.Context
 
 // NewContext binds initialized typechecking and runtime layouts from one
-// compilation. Calls and mutation of the attached graphs must be serialized.
+// compilation. Serialize phase operations. GCSym supports concurrent registration
+// with complete, unchanged type layouts; join callers before WriteGCSymbols.
 func NewContext(tc *typecheck.Context, rt *rttype.Context) *Context {
 	return compiler.NewContext(tc, rt)
 }

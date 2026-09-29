@@ -3,6 +3,7 @@ package consumer
 import (
 	"encoding/binary"
 	"fmt"
+	"go-backend-ssa/bitvec"
 	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/gcbridge"
 	"go-backend-ssa/ir"
@@ -13,6 +14,7 @@ import (
 	"go-backend-ssa/rttype"
 	"go-backend-ssa/syntax"
 	"go-backend-ssa/target"
+	"go-backend-ssa/typebits"
 	"go-backend-ssa/typecheck"
 	"go-backend-ssa/types"
 	"go-backend-ssa/types2"
@@ -384,4 +386,22 @@ func TestNativeReflectionDataPublicAPI(t *testing.T) {
 	if group != c.MapGroupType(typ) || group.StructType().Map != typ || c.MapType().Size() != 32 || c.MapIterType().Size() != 64 {
 		t.Fatal("public native map layout")
 	}
+	var bitmap objw.BitVec = bitvec.New(1)
+	typebits.Set(typ, 0, bitmap)
+	if bitmap.Count() != 1 || !bitmap.Get(0) {
+		t.Fatal("public native GC scan")
+	}
+	gc, ptrdata := c.GCSym(typ, false)
+	if gc.OnList() || ptrdata != 4 {
+		t.Fatal("GC symbols should be deferred")
+	}
+	c.WriteGCSymbols()
+	if !gc.OnList() || gc.Size != 4 || gc.Align != 4 || binary.LittleEndian.Uint32(gc.P) != 1 {
+		t.Fatal("public GC bitmap data")
+	}
+	zero := c.ZeroAddr(17).(*ir.AddrExpr)
+	if c.ZeroSize != 17 || zero.X.(*ir.LinksymOffsetExpr).Linksym.Name != "go:map.zero" {
+		t.Fatal("native zero extent")
+	}
+
 }

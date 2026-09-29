@@ -6,9 +6,17 @@
 package reflectdata
 
 import (
+	"fmt"
+	"go-backend-ssa/internal/go/abi"
+	"slices"
+
 	"strings"
 
+	"go-backend-ssa/internal/bitvec"
+
 	"go-backend-ssa/internal/ir"
+
+	"go-backend-ssa/internal/typebits"
 
 	"go-backend-ssa/internal/cmd/obj"
 	"go-backend-ssa/internal/cmd/objabi"
@@ -115,6 +123,21 @@ func (syncgoCtx *Context) NeedRuntimeType(t *types.Type) {
 	}
 }
 
+func (syncgoCtx *Context) WriteGCSymbols() {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	// Emit GC data symbols.
+	gcsyms := make([]typeAndStr, 0, len(syncgoCtx.gcsymset))
+	for t := range syncgoCtx.gcsymset {
+		gcsyms = append(gcsyms, typeAndStr{t: t, short: syncgoCtx.Typecheck.IR.Types.TypeSymName(t), regular: t.String()})
+	}
+	slices.SortFunc(gcsyms, typesStrCmp)
+	for _, ts := range gcsyms {
+		syncgoCtx.dgcsym(ts.t, true, false)
+	}
+}
+
 // writtenByWriteBasicTypes reports whether typ is written by WriteBasicTypes.
 // WriteBasicTypes always writes pointer types; any pointer has been stripped off typ already.
 func (syncgoCtx *Context) writtenByWriteBasicTypes(typ *types.Type) bool {
@@ -189,6 +212,127 @@ func typesStrCmp(a, b typeAndStr) int {
 	return 0
 }
 
+// GCSym returns a data symbol containing GC information for type t.
+// GC information is always a bitmask, never a gc program.
+// GCSym may be called in concurrent backend, so it does not emit the symbol
+// content.
+func (syncgoCtx *Context) GCSym(t *types.Type, onDemandAllowed bool) (lsym *obj.LSym, ptrdata int64) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	syncgoCtx.checkGCType(t, onDemandAllowed)
+	// Record that we need to emit the GC symbol.
+	syncgoCtx.gcsymmu.Lock()
+	if _, ok := syncgoCtx.gcsymset[t]; !ok {
+		syncgoCtx.gcsymset[t] = struct{}{}
+	}
+	syncgoCtx.gcsymmu.Unlock()
+
+	lsym, _, ptrdata = syncgoCtx.dgcsym(t, false, onDemandAllowed)
+	return
+}
+
+// dgcsym returns a data symbol containing GC information for type t, along
+// with a boolean reporting whether the gc mask should be computed on demand
+// at runtime, and the ptrdata field to record in the reflect type information.
+// When write is true, it writes the symbol data.
+func (syncgoCtx *Context) dgcsym(t *types.Type, write, onDemandAllowed bool) (lsym *obj.LSym, onDemand bool, ptrdata int64) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	ptrdata = syncgoCtx.Typecheck.IR.Types.PtrDataSize(t)
+	if !onDemandAllowed || ptrdata/int64(syncgoCtx.ptrSize) <= abi.MaxPtrmaskBytes*8 {
+		lsym = syncgoCtx.dgcptrmask(t, write)
+		return
+	}
+
+	onDemand = true
+	lsym = syncgoCtx.dgcptrmaskOnDemand(t, write)
+	return
+}
+
+// dgcptrmask emits and returns the symbol containing a pointer mask for type t.
+func (syncgoCtx *Context) dgcptrmask(t *types.Type, write bool) *obj.LSym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	// Bytes we need for the ptrmask.
+	n := (syncgoCtx.Typecheck.IR.Types.PtrDataSize(t)/int64(syncgoCtx.ptrSize) + 7) / 8
+	// Runtime wants ptrmasks padded to a multiple of uintptr in size.
+	n = (n + int64(syncgoCtx.ptrSize) - 1) &^ (int64(syncgoCtx.ptrSize) - 1)
+	ptrmask := make([]byte, n)
+	syncgoCtx.fillptrmask(t, ptrmask)
+	p := fmt.Sprintf("runtime.gcbits.%x", ptrmask)
+
+	lsym := syncgoCtx.Typecheck.IR.Base.Ctxt.Lookup(p)
+	if write && !lsym.OnList() {
+		for i, x := range ptrmask {
+			syncgoCtx.Runtime.Writer.Uint8(lsym, i, x)
+		}
+		syncgoCtx.Runtime.Writer.Global(lsym, int32(len(ptrmask)), obj.DUPOK|obj.RODATA|obj.LOCAL)
+		lsym.Set(obj.AttrContentAddressable, true)
+		// The runtime expects ptrmasks to be aligned
+		// as a uintptr.
+		lsym.Align = int16(syncgoCtx.ptrSize)
+	}
+	return lsym
+}
+
+// fillptrmask fills in ptrmask with 1s corresponding to the
+// word offsets in t that hold pointers.
+// ptrmask is assumed to fit at least types.PtrDataSize(t)/PtrSize bits.
+func (syncgoCtx *Context) fillptrmask(t *types.Type, ptrmask []byte) {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if !t.HasPointers() {
+		return
+	}
+
+	vec := bitvec.New(8 * int32(len(ptrmask)))
+	typebits.Set(t, 0, vec)
+
+	nptr := syncgoCtx.Typecheck.IR.Types.PtrDataSize(t) / int64(syncgoCtx.ptrSize)
+	for i := int64(0); i < nptr; i++ {
+		if vec.Get(int32(i)) {
+			ptrmask[i/8] |= 1 << (uint(i) % 8)
+		}
+	}
+}
+
+// dgcptrmaskOnDemand emits and returns the symbol that should be referenced by
+// the GCData field of a type, for large types.
+func (syncgoCtx *Context) dgcptrmaskOnDemand(t *types.Type, write bool) *obj.LSym {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	lsym := syncgoCtx.TypeLinksymPrefix(".gcmask", t)
+	if write && !lsym.OnList() {
+		// Note: contains a pointer, but a pointer to a
+		// persistentalloc allocation. Starts with nil.
+		// Allocated in BSS.
+		syncgoCtx.Runtime.Writer.Global(lsym, int32(syncgoCtx.ptrSize), obj.DUPOK|obj.NOPTR|obj.LOCAL)
+	}
+	return lsym
+}
+
+// ZeroAddr returns the address of a symbol with at least
+// size bytes of zeros.
+func (syncgoCtx *Context) ZeroAddr(size int64) ir.Node {
+	if syncgoCtx == nil {
+		panic("uninitialized compilation")
+	}
+	if size >= 1<<31 {
+		syncgoCtx.fatalf("map elem too big %d", size)
+	}
+	if syncgoCtx.ZeroSize < size {
+		syncgoCtx.ZeroSize = size
+	}
+	lsym := syncgoCtx.Typecheck.IR.Base.PkgLinksym("go:map", "zero", obj.ABI0)
+	x := syncgoCtx.Typecheck.IR.NewLinksymExpr(syncgoCtx.Typecheck.IR.Types.Pos, lsym, syncgoCtx.Typecheck.IR.Types.Types[types.TUINT8])
+	return syncgoCtx.Typecheck.Expr(syncgoCtx.Typecheck.NodAddr(x))
+}
+
 // NeedEmit reports whether typ is a type that we need to emit code
 // for (e.g., runtime type descriptors, method wrappers).
 func (syncgoCtx *Context) NeedEmit(typ *types.Type) bool {
@@ -257,4 +401,5 @@ func (syncgoCtx *Context) MarkTypeSymUsedInInterface(tsym *obj.LSym, from *obj.L
 }
 func (syncgoCtx *Context) syncgoInitVars0() {
 	syncgoCtx.signatset = make(map[*types.Type]struct{})
+	syncgoCtx.gcsymset = make(map[*types.Type]struct{})
 }

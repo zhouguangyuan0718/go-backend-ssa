@@ -12,8 +12,13 @@ import (
 
 // Context owns the native runtime-type emission queue, retaining the same IR,
 // types, symbols and target writer as the rest of this compiler instance.
-// Serialize use with the attached typecheck context and runtime layouts.
+// Serialize phase operations with the attached compiler graph. GCSym alone may
+// register concurrently once layouts are complete and no phase mutates types;
+// call WriteGCSymbols only after those registrations have finished.
 type Context struct {
+	gcsymmu                                              sync.Mutex
+	gcsymset                                             map[*types.Type]struct{}
+	ZeroSize                                             int64
 	ptrSize                                              int
 	cachedMapTableType, cachedMapType, cachedMapIterType *types.Type
 	Typecheck                                            *typecheck.Context
@@ -66,3 +71,5 @@ func (c *Context) makefield(name string, t *types.Type) *types.Field {
 	}
 	return c.Typecheck.IR.Types.NewField(src.XPos{}, sym, t)
 }
+
+func (c *Context) checkGCType(t *types.Type, onDemandAllowed bool) { c.checkType(t) }
