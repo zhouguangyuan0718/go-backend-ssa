@@ -918,6 +918,12 @@ func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
 	rt := rttype.NewContext(objw.NewContext(u, link, "linux"))
 	rt.Init()
 	c := ssa.NewContext(abi.NewContext(graph), reflectdata.NewContext(tc, rt, staticdata.NewContext(graph, rt.Writer)), logopt.NewContext())
+	if err := c.PhaseOption("build", "dump", 1, "public"); err != "" || !c.BuildDump["public"] {
+		t.Fatalf("public native SSA phase option: %s", err)
+	}
+	if err := c.PhaseOption("regalloc", "off", 1, ""); !strings.Contains(err, "Cannot disable required") {
+		t.Fatalf("public mandatory phase protection: %s", err)
+	}
 	c.GOAMD64 = 1
 	cfg := c.NewConfig("amd64", *c.NewTypes(), link, true, false)
 	var cache ssa.Cache

@@ -147,6 +147,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			prov.Declarations = append(prov.Declarations, sortedKeys(state.Fields)...)
 		}
 		if c := u.Context; c != nil {
+			if c.InitGroup != "" {
+				prov.Declarations = append(prov.Declarations, "initializer-group:"+c.InitGroup)
+			}
 			prov.Rule = "package-state-to-context-methods-v2"
 			prov.Declarations = append(prov.Declarations, sortedKeys(c.Fields)...)
 			prov.Declarations = append(prov.Declarations, u.ContextParams...)

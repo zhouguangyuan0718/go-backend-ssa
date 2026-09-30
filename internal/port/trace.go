@@ -30,6 +30,9 @@ func hostReferences(info *types.Info, trace, exit, readFile bool) map[types.Obje
 				refs[obj] = "tracePrint"
 			}
 		case "log":
+			if _, ok := obj.(*types.Func); ok && trace && obj.Name() == "Panicf" {
+				refs[obj] = "panicLogf"
+			}
 			if _, ok := obj.(*types.Func); ok && exit {
 				switch obj.Name() {
 				case "Fatal":

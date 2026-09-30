@@ -19,17 +19,27 @@ import (
 // This adapter binds native SSA type operations to their compilation's universe.
 // It introduces no separate public session or process-global state.
 type Context struct {
-	archWasm       *sys.Arch
-	noRegisters    [32]register
-	pairableLoads  map[Op]pairableLoadInfo
-	pairableStores map[Op]pairableStoreInfo
-	archRISCV64    *sys.Arch
-	combineFirst   map[Op]bool
-	combine        map[[2]Op]Op
-	needSplit      map[Op]bool
-	faultOnLoad    bool
-	tmpVal         Value
-	targetOS       string
+	checkRandSeed     int
+	IntrinsicsDebug   int
+	IntrinsicsDisable bool
+	BuildDebug        int
+	BuildTest         int
+	BuildStats        int
+	BuildDump         map[string]bool
+	GenssaDump        map[string]bool
+	passes            [59]pass
+	passOrder         [42]constraint
+	archWasm          *sys.Arch
+	noRegisters       [32]register
+	pairableLoads     map[Op]pairableLoadInfo
+	pairableStores    map[Op]pairableStoreInfo
+	archRISCV64       *sys.Arch
+	combineFirst      map[Op]bool
+	combine           map[[2]Op]Op
+	needSplit         map[Op]bool
+	faultOnLoad       bool
+	tmpVal            Value
+	targetOS          string
 	// FramePointerEnabled is the native platform frame-pointer policy supplied by the driver.
 	FramePointerEnabled bool
 	checkpointBound     limitFact
@@ -234,6 +244,11 @@ func (c *Context) tracePrintf(format string, args ...any) (int, error) {
 func (c *Context) tracePrintln(args ...any) (int, error) {
 	return fmt.Fprintln(c.traceWriter(), args...)
 }
+func (c *Context) panicLogf(format string, args ...any) {
+	message := fmt.Sprintf(format, args...)
+	fmt.Fprintln(c.traceWriter(), message)
+	panic(message)
+}
 func (c *Context) command(name string, args ...string) *exec.Cmd {
 	if c.Command == nil {
 		panic("SSA graph rendering requires a command provider")
@@ -297,6 +312,7 @@ func NewContext(a *abi.Context, rd *reflectdata.Context, log *logopt.Context) *C
 	}
 	c.opcodeTables = new(opcodeTables)
 	c.initialize()
+	c.initializePhases()
 	return c
 }
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v43"
+const ToolVersion = "syncgo-m3-v44"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -116,6 +116,7 @@ type OwnerRule struct {
 }
 
 type ContextRule struct {
+	InitGroup         string // Separate receiver initializer for an independently initialized set of native state.
 	Initialize        bool   // Emit a receiver initializer; the adapter supplies dependent instance inputs first.
 	PreserveNilArgs   bool   // Keep original nil argument semantics; still reject foreign non-nil owners.
 	Embed             string // Handwritten instance fields embedded into the original context.
@@ -387,6 +388,9 @@ func (p Plan) Validate() error {
 			}
 		}
 		if c := u.Context; c != nil {
+			if c.InitGroup != "" && (!c.Initialize || c.Existing || !token.IsIdentifier(c.InitGroup) || c.InitGroup == "_" || c.InitGroup == c.Constructor || c.DeferInit) {
+				return fmt.Errorf("invalid context initializer group")
+			}
 			if c.Embed != "" && (!c.Existing || c.Adapter == "" || !token.IsIdentifier(c.Embed) || c.Embed == "_") {
 				return fmt.Errorf("invalid native context embed")
 			}

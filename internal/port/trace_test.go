@@ -10,11 +10,12 @@ import (
 
 func TestInstanceTrace(t *testing.T) {
 	const source = `package p
- import("fmt";"os";"runtime")
+ import("fmt";"os";"runtime";"log")
  type Context struct{}
  func NewContext()*Context{return &Context{}}
  func Emit(){fmt.Printf("%s", "hello");fmt.Println(" world");fmt.Fprint(os.Stderr,"error\n");f:=fmt.Printf;f("callback\n")}
  func Caller()bool{_,_,_,ok:=runtime.Caller(0);return ok}
+ func Fail(){log.Panicf("invalid pass %d",7)}
  `
 	const adapter = `package p
  import("fmt";"io")
@@ -24,6 +25,7 @@ func TestInstanceTrace(t *testing.T) {
  func(c *Context)traceWriter()io.Writer{if c.TraceWriter!=nil{return c.TraceWriter};return discardTrace{}}
  func(c *Context)tracePrintf(f string,args ...any)(int,error){return fmt.Fprintf(c.traceWriter(),f,args...)}
  func(c *Context)tracePrintln(args ...any)(int,error){return fmt.Fprintln(c.traceWriter(),args...)}
+ func(c *Context)panicLogf(f string,args ...any){s:=fmt.Sprintf(f,args...);fmt.Fprintln(c.traceWriter(),s);panic(s)}
  `
 	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", "src/cmd/compile/internal/p/p.go": source})
 	s, err := OpenSource(context.Background(), repo, pin)
@@ -44,6 +46,7 @@ func TestInstanceTrace(t *testing.T) {
 	writeTestFile(t, dir, "internal/p/adapter_test.go", `package p
  import("testing";"bytes";"sync")
  func TestTrace(t *testing.T){NewContext().Emit();if !Caller(){t.Fatal("stack lookup")};var wg sync.WaitGroup;for range 16{wg.Go(func(){c:=NewContext();var b bytes.Buffer;c.TraceWriter=&b;c.Emit();if b.String()!="hello world\nerror\ncallback\n"{t.Error(b.String())}})};wg.Wait()}
+ func TestPanic(t *testing.T){c:=NewContext();var b bytes.Buffer;c.TraceWriter=&b;defer func(){if got:=recover();got!="invalid pass 7"||b.String()!="invalid pass 7\n"{t.Errorf("panic=%v trace=%q",got,b.String())}}();c.Fail();t.Fatal("panic returned")}
  `)
 	cmd := exec.Command("go", "test", "-race", "./...")
 	cmd.Dir = dir

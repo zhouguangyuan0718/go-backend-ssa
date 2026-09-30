@@ -1,0 +1,58 @@
+package ssa
+
+import (
+ IMPORT_BASE
+ "IMPORT_IR"
+ "IMPORT_OBJ"
+ "IMPORT_SRC"
+ "IMPORT_SYS"
+ "IMPORT_TYPECHECK"
+ "IMPORT_TYPES"
+ LOWER_IMPORT
+ "encoding/binary"
+ "encoding/json"
+ "fmt"
+ "os"
+ "reflect"
+ "runtime"
+ "strings"
+ "testing"
+)
+
+func TestSyncgoNativeSnapshot(t *testing.T) {
+ mode:=os.Getenv("SYNCGO_TARGET")
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.Split(mode,"-")[0],8,binary.LittleEndian}
+ if target.arch=="386"{target.size=4}
+ SETUP
+ var _ *ir.Func
+ var _ src.XPos
+ var out []string
+ add:=func(s string,args ...any){out=append(out,fmt.Sprintf(s,args...))}
+ state:=func(label string){
+  add("state:%s:check=%t/%d:poset=%t:intrinsics=%d/%t:build=%d/%d/%d:%v:genssa=%v",label,UP.checkEnabled,UP.checkRandSeed,UP.debugPoset,UP.IntrinsicsDebug,UP.IntrinsicsDisable,UP.BuildDebug,UP.BuildTest,UP.BuildStats,UP.BuildDump,UP.GenssaDump)
+  for i,p:=range UP.passes{
+   fn:=runtime.FuncForPC(reflect.ValueOf(p.fn).Pointer()).Name();fn=fn[strings.LastIndex(fn,".")+1:]
+   add("phase:%d:%s:%s:required=%t:disabled=%t:time=%t:mem=%t:stats=%d:debug=%d:test=%d:dump=%v",i,p.String(),fn,p.required,p.disabled,p.time,p.mem,p.stats,p.debug,p.test,p.dump)
+  }
+ }
+ for _,p:=range UP.passOrder{add("order:%s:%s",p.a,p.b)}
+ add("nil-pass:%s",(*pass)(nil).String())
+ state("initial")
+ for _,op:=range []struct{phase,flag string;val int;arg string}{
+  {"","",0,""},{"help","",0,""},
+  {"check","on",1,""},{"check","off",1,""},{"check","off",0,""},{"check","seed",1234,""},{"check","on",0,""},{"check","bad",1,""},
+  {"intrinsics","debug",7,""},{"intrinsics","off",1,""},{"intrinsics","off",0,""},{"intrinsics","on",0,""},{"intrinsics","on",1,""},{"intrinsics","bad",1,""},
+  {"build","debug",3,""},{"build","test",4,""},{"build","stats",5,""},{"build","dump",1,"name /:with space"},{"build","bad",1,""},
+  {"genssa","dump",1,"second"},{"genssa","bad",1,""},
+  {"all","time",1,""},{"all","mem",1,""},{"all","dump",1,"first"},{"all","dump",0,"disabled"},{"all","dump",1,"second"},{"all","bad",1,""},
+  {"generic_cse","off",1,""},{"generic cse","on",1,""},{"generic_cse","time",1,""},{"generic_cse","mem",1,""},{"generic_cse","stats",9,""},{"generic_cse","debug",2,""},{"generic_cse","test",6,""},{"generic_cse","dump",0,"third"},
+  {"~.*cse$","debug",11,""},{"~.*opt.*","dump",1,"regex"},{"~[","debug",1,""},{"~nomatch$","debug",1,""},
+  {"regalloc","off",1,""},{"regalloc","on",0,""},{"cpufeatures","off",1,""},{"rewrite_tern","on",1,""},{"insert_resched_checks","on",1,""},
+  {"unknown","debug",1,""},{"prove","bad",1,""},{"all","time",0,""},
+ }{
+  add("option:%s/%s/%d/%s:%s",op.phase,op.flag,op.val,op.arg,UP.PhaseOption(op.phase,op.flag,op.val,op.arg))
+  state(op.phase+"/"+op.flag)
+ }
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)}
+ fmt.Printf("SYNCGO_IR=%s\n",data)
+}

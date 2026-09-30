@@ -123,6 +123,18 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	if context == nil {
 		return nil
 	}
+	groups, err := contextInitializerGroups(files, info, units, states)
+	if err != nil {
+		return err
+	}
+	fieldGroups := map[string]string{}
+	for object, field := range states {
+		for i, file := range files {
+			if object.Pos() >= file.Pos() && object.Pos() < file.End() {
+				fieldGroups[field] = groups[i]
+			}
+		}
+	}
 	projections, projectedDependencies, err := projectedStateBindings(files, info, units)
 	if err != nil {
 		return err
@@ -302,6 +314,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	// Save initializer expressions before declaration rewriting changes their roots.
 	helpers := make([]string, len(files))
 	var calls []string
+	callGroups := map[string]string{}
 	previous := -1
 	for _, entry := range info.InitOrder {
 		if len(entry.Lhs) != 1 || states[entry.Lhs[0]] == "" {
@@ -324,6 +337,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			name := fmt.Sprintf("syncgoInitVars%d", len(calls))
 			helpers[index] += fmt.Sprintf("\nfunc (%s *%s) %s() {\n", recv, context.Type, name)
 			calls = append(calls, name)
+			callGroups[name] = groups[index]
 			previous = index
 		}
 		expr := &ast.ParenExpr{X: entry.Rhs}
@@ -550,6 +564,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 					name := fmt.Sprintf("syncgoInit%d", len(calls))
 					fn.Name = ast.NewIdent(name)
 					calls = append(calls, name)
+					callGroups[name] = groups[i]
 				}
 				if name := functions[info.Defs[fn.Name]]; name != "" && name != fn.Name.Name {
 					fn.Name = &ast.Ident{Name: name, NamePos: fn.Name.Pos()}
@@ -678,16 +693,42 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 
 	}
 	for _, field := range sortedKeys(valueOwners) {
-		constructor += fmt.Sprintf("%s.%s.%s = %s\n", recv, field, valueOwners[field], recv)
+		if fieldGroups[field] == "" {
+			constructor += fmt.Sprintf("%s.%s.%s = %s\n", recv, field, valueOwners[field], recv)
+		}
 	}
 	for _, name := range calls {
-		constructor += recv + "." + name + "()\n"
+		if callGroups[name] == "" {
+			constructor += recv + "." + name + "()\n"
+		}
 	}
 	if !context.Initialize {
 		constructor += "return " + recv + "\n"
 	}
 	constructor += "}\n"
 	helpers[constructorFile] += constructor
+	groupFiles := map[string]int{}
+	for i, group := range groups {
+		if group != "" {
+			if _, exists := groupFiles[group]; !exists {
+				groupFiles[group] = i
+			}
+		}
+	}
+	for _, group := range sortedKeys(groupFiles) {
+		body := fmt.Sprintf("\nfunc (%s *%s) %s() {\nif %s == nil { panic(\"uninitialized compilation\") }\n", recv, context.Type, group, recv)
+		for _, field := range sortedKeys(valueOwners) {
+			if fieldGroups[field] == group {
+				body += fmt.Sprintf("%s.%s.%s = %s\n", recv, field, valueOwners[field], recv)
+			}
+		}
+		for _, name := range calls {
+			if callGroups[name] == group {
+				body += recv + "." + name + "()\n"
+			}
+		}
+		helpers[groupFiles[group]] += body + "}\n"
+	}
 	for i, code := range helpers {
 		if code == "" {
 			continue
