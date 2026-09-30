@@ -84,6 +84,16 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				}
 			}
 		}
+		for _, call := range u.HostCalls {
+			for _, object := range info.Uses {
+				if hostCallFunction(object, call) {
+					if previous := external[object]; previous != "" && previous != call.Method {
+						return fmt.Errorf("conflicting host call binding")
+					}
+					external[object] = call.Method
+				}
+			}
+		}
 		for _, d := range files[i].Decls {
 			if fn, ok := d.(*ast.FuncDecl); ok {
 				selective[info.Defs[fn.Name]] = c.Selective

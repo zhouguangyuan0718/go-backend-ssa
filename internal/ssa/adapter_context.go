@@ -14,11 +14,18 @@ import (
 	"go-backend-ssa/internal/types"
 	"io"
 	"os/exec"
+	"runtime"
+	"time"
 )
 
 // This adapter binds native SSA type operations to their compilation's universe.
 // It introduces no separate public session or process-global state.
 type Context struct {
+	// Host services are explicit; no process environment or filesystem fallback.
+	Now               func() time.Time
+	ReadMemStats      func(*runtime.MemStats)
+	DumpDirectory     string
+	CreateDump        func(string) (io.WriteCloser, error)
 	checkRandSeed     int
 	IntrinsicsDebug   int
 	IntrinsicsDisable bool
@@ -392,4 +399,29 @@ func (c *Context) tempAt(pos src.XPos, fn *ir.Func, typ *types.Type) *ir.Name {
 		panic("SSA temporary type belongs to another universe")
 	}
 	return c.ReflectData.Typecheck.TempAt(pos, fn, typ)
+}
+
+func (c *Context) now() time.Time {
+	if c.Now == nil {
+		panic("SSA compilation requires a clock provider")
+	}
+	return c.Now()
+}
+func (c *Context) readMemStats(stats *runtime.MemStats) {
+	if c.ReadMemStats == nil {
+		panic("SSA memory statistics require a metric provider")
+	}
+	c.ReadMemStats(stats)
+}
+func (c *Context) dumpEnvironment(key string) string {
+	if key != "GOSSADIR" {
+		panic("unsupported SSA environment input")
+	}
+	return c.DumpDirectory
+}
+func (c *Context) createDump(name string) (io.WriteCloser, error) {
+	if c.CreateDump == nil {
+		panic("SSA dumping requires an output provider")
+	}
+	return c.CreateDump(name)
 }

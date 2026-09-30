@@ -9,7 +9,10 @@ func ssaPhaseMigration(units []Unit) []Unit {
 		if u.Source != "src/cmd/compile/internal/ssa/compile.go" {
 			continue
 		}
-		u.Declarations = []string{"pass", "pass.addDump", "pass.String", "constraint", "PhaseOption"}
+		u.WholeFile = true
+		u.Declarations = nil
+		u.ContextFrom = map[string]ContextSource{"Compile": {Argument: "f", Resolver: "diagnosticContext"}, "Func.DumpFileForPhase": {Argument: "f", Resolver: "diagnosticContext"}}
+		u.HostCalls = []HostCallRule{{Package: "os", Function: "Getenv", Method: "dumpEnvironment", StringArgument: "GOSSADIR"}, {Package: "os", Function: "Create", Method: "createDump"}, {Package: "runtime", Function: "ReadMemStats", Method: "readMemStats"}, {Package: "time", Function: "Now", Method: "now"}}
 		u.Context.DeferInit = false
 		u.Context.Init = true
 		u.Context.InitGroup = "initializePhases"

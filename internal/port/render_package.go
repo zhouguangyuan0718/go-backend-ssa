@@ -139,6 +139,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		for _, rule := range u.FixedSizeof {
 			prov.Declarations = append(prov.Declarations, "fixed-sizeof:"+rule.Function+":"+rule.Type)
 		}
+		for _, rule := range u.HostCalls {
+			prov.Declarations = append(prov.Declarations, "host-call:"+rule.Package+"."+rule.Function+":"+rule.Method+":"+rule.StringArgument)
+		}
 		for _, name := range u.AdapterMethods {
 			prov.Declarations = append(prov.Declarations, "adapter-method:"+name)
 		}
@@ -202,7 +205,11 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := auditOutput(outpkg, output, outinfo, sliceOperations, resourceOperations, sizeOperations); err != nil {
+	hostOperations, err := reviewedHostCalls(output, info, outinfo, outpkg, units)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := auditOutput(outpkg, output, outinfo, sliceOperations, resourceOperations, sizeOperations, hostOperations); err != nil {
 		return nil, nil, err
 	}
 	for _, u := range units {

@@ -51,6 +51,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_calls")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_allocation")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_phases")
+	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_compile")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -123,7 +124,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		setup = strings.Replace(setup, "typecheck.NewContext(ir.NewContext(u,link)).InitUniverse()", "graph:=ir.NewContext(u,link);typecheck.NewContext(graph).InitUniverse();c:=&Context{Types:u}", 1)
 	}
 
-	if snapshotName == "ssa_lower" || snapshotName == "ssa_generic" || snapshotName == "ssa_optimizer" || snapshotName == "ssa_calls" || snapshotName == "ssa_allocation" || snapshotName == "ssa_phases" {
+	if snapshotName == "ssa_lower" || snapshotName == "ssa_generic" || snapshotName == "ssa_optimizer" || snapshotName == "ssa_calls" || snapshotName == "ssa_allocation" || snapshotName == "ssa_phases" || snapshotName == "ssa_compile" {
 		setup = `link:=&obj.Link{Arch:&obj.LinkArch{Arch:&sys.Arch{Name:target.arch,PtrSize:target.size,RegSize:target.size,ByteOrder:target.order,FixedFrameSize:16}}};u:=types.NewUniverseWithPositions(target.size,target.size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");graph:=ir.NewContext(u,link);tc:=typecheck.NewContext(graph);tc.InitUniverse();rt:=rttype.NewContext(objw.NewContext(u,link,"linux"));rt.Init();c:=NewContext(abi.NewContext(graph),reflectdata.NewContext(tc,rt,staticdata.NewContext(graph,rt.Writer)),logopt.NewContext())`
 	}
 
@@ -131,8 +132,12 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		setup = strings.Replace(setup, ";c:=NewContext", `;u.Experiment.SIMD=strings.Contains(mode,"simd");u.Experiment.PreemptibleLoops=strings.Contains(mode,"loops");c:=NewContext`, 1)
 	}
 
-	if snapshotName == "ssa_allocation" {
+	if snapshotName == "ssa_allocation" || snapshotName == "ssa_compile" {
 		setup = `archs:=sys.NewContext();var targetArch *sys.Arch;for _,a:=range archs.Archs{if a.Name==target.arch{targetArch=a}};link:=&obj.Link{Arch:&obj.LinkArch{Arch:targetArch}};u:=types.NewUniverseWithPositions(target.size,target.size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");graph:=ir.NewContext(u,link);tc:=typecheck.NewContext(graph);tc.InitUniverse();rt:=rttype.NewContext(objw.NewContext(u,link,target.os));rt.Init();c:=NewContext(abi.NewContext(graph),reflectdata.NewContext(tc,rt,staticdata.NewContext(graph,rt.Writer)),logopt.NewContext())`
+	}
+
+	if snapshotName == "ssa_compile" {
+		setup = strings.Replace(setup, ";c:=NewContext", `;u.Experiment.SIMD=strings.Contains(mode,"simd");u.Experiment.PreemptibleLoops=strings.Contains(mode,"loops");c:=NewContext`, 1)
 	}
 
 	if pkgName == "abi" {
@@ -194,6 +199,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		setup = strings.Replace(setup, "c,err:=NewContext(types2.NewContext(),tc)", "c,err:=noder.NewContext(types2.NewContext(),tc)", 1)
 	}
 	ported := strings.NewReplacer(
+		"COMPILE_IMPORT", `"time";`, "COMPILE_SERVICES", "c.Now=func()time.Time{return time.Time{}}",
 		"ALLOC_ARCHS", "archs.Archs", "ALLOC_FLAGS", `c.FramePointerEnabled=(target.arch=="amd64"||target.arch=="arm64")&&!strings.Contains(mode,"nofp");graph.Base.Flag.ClobberDeadReg=strings.Contains(mode,"clobber");if strings.Contains(mode,"noopt"){graph.Base.Flag.N=1}`,
 		"LOWER_IMPORT", `"go-backend-ssa/internal/abi";"go-backend-ssa/internal/rttype";"go-backend-ssa/internal/objw";"go-backend-ssa/internal/reflectdata";"go-backend-ssa/internal/staticdata";"go-backend-ssa/internal/logopt";`, "LOWER_FEATURES", "c", "OPT_CHECKS", "c.checkEnabled=true;c.debugPoset=true",
 		"MERGE_DEBUG", "graph.Debug", "MERGE_FLAG", "graph.Base.Flag", "IMPORT_S390X", "go-backend-ssa/internal/cmd/obj/s390x",
@@ -246,7 +252,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	packages := []string{"cmd/compile/internal/ir", "cmd/compile/internal/types", "cmd/compile/internal/base", "cmd/internal/obj", "cmd/compile/internal/typecheck", "cmd/compile/internal/noder", "cmd/compile/internal/dwarfgen", "cmd/compile/internal/objw", "cmd/compile/internal/bitvec", "cmd/internal/objabi", "internal/bisect", "internal/abi", "cmd/compile/internal/rttype", "cmd/compile/internal/reflectdata", "cmd/compile/internal/typebits", "cmd/compile/internal/staticdata", "cmd/internal/hash", "cmd/compile/internal/compare", "cmd/compile/internal/staticinit", "cmd/compile/internal/pgoir", "cmd/internal/pgo", "cmd/compile/internal/inline/inlheur", "cmd/compile/internal/inline", "cmd/compile/internal/logopt", "cmd/compile/internal/devirtualize", "cmd/compile/internal/inline/interleaved", "cmd/compile/internal/loopvar", "cmd/compile/internal/pkginit", "cmd/compile/internal/ssagen", "cmd/compile/internal/deadlocals", "cmd/compile/internal/escape", "cmd/compile/internal/slice"}
 	if pkgName == "ssa" {
 		packages = append(packages, "cmd/compile/internal/ssa", "cmd/compile/internal/abt")
-		if snapshotName == "ssa_objects" || snapshotName == "ssa_opcodes" || snapshotName == "ssa_check" || snapshotName == "ssa_lower" || snapshotName == "ssa_generic" || snapshotName == "ssa_optimizer" || snapshotName == "ssa_calls" || snapshotName == "ssa_allocation" || snapshotName == "ssa_phases" {
+		if snapshotName == "ssa_objects" || snapshotName == "ssa_opcodes" || snapshotName == "ssa_check" || snapshotName == "ssa_lower" || snapshotName == "ssa_generic" || snapshotName == "ssa_optimizer" || snapshotName == "ssa_calls" || snapshotName == "ssa_allocation" || snapshotName == "ssa_phases" || snapshotName == "ssa_compile" {
 			for _, arch := range []string{"arm", "arm64", "loong64", "mips", "ppc64", "riscv", "s390x", "wasm", "x86"} {
 				packages = append(packages, "cmd/internal/obj/"+arch)
 			}
@@ -286,16 +292,16 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		// Match the position universe created by NewUniverseWithPositions before numbering files.
 		nativeSetup += `;base.AutogeneratedPos=base.Ctxt.PosTable.XPos(src.MakePos(src.NewFileBase("<autogenerated>","<autogenerated>"),1,0))`
 	}
-	if snapshotName == "ssa_lower" || snapshotName == "ssa_generic" || snapshotName == "ssa_optimizer" || snapshotName == "ssa_calls" || snapshotName == "ssa_allocation" || snapshotName == "ssa_phases" {
+	if snapshotName == "ssa_lower" || snapshotName == "ssa_generic" || snapshotName == "ssa_optimizer" || snapshotName == "ssa_calls" || snapshotName == "ssa_allocation" || snapshotName == "ssa_phases" || snapshotName == "ssa_compile" {
 		nativeSetup += `;base.Ctxt.Arch.FixedFrameSize=16;buildcfg.GOARCH=target.arch;buildcfg.GOOS="linux";base.AutogeneratedPos=base.Ctxt.PosTable.XPos(src.MakePos(src.NewFileBase("<autogenerated>","<autogenerated>"),1,0))`
 	}
 
-	if snapshotName == "ssa_phases" {
+	if snapshotName == "ssa_phases" || snapshotName == "ssa_compile" {
 		nativeSetup += `;buildcfg.Experiment.SIMD=strings.Contains(mode,"simd");buildcfg.Experiment.PreemptibleLoops=strings.Contains(mode,"loops")`
 		nativeSetup += ";" + pinnedVariableAssignment(t, s, "src/cmd/compile/internal/ssa/compile.go", "passes")
 	}
 
-	if snapshotName == "ssa_allocation" {
+	if snapshotName == "ssa_allocation" || snapshotName == "ssa_compile" {
 		nativeSetup += `;for _,a:=range sys.Archs{if a.Name==target.arch{base.Ctxt.Arch.Arch=a}};buildcfg.GOOS=target.os`
 		// Re-run the pinned initializer after selecting the target. Native package
 		// initialization otherwise used the host GOOS before this fixture started.
@@ -329,6 +335,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		nativeSetup = `Ctxt=&obj.Link{}`
 	}
 	native := strings.NewReplacer(
+		"COMPILE_IMPORT", "", "COMPILE_SERVICES", "",
 		"ALLOC_ARCHS", "sys.Archs", "ALLOC_FLAGS", `buildcfg.FramePointerEnabled=(target.arch=="amd64"||target.arch=="arm64")&&!strings.Contains(mode,"nofp");base.Flag.ClobberDeadReg=strings.Contains(mode,"clobber");if strings.Contains(mode,"noopt"){base.Flag.N=1}`,
 		"LOWER_IMPORT", `"internal/buildcfg";`, "LOWER_FEATURES", "buildcfg", "OPT_CHECKS", "checkEnabled=true;debugPoset=true",
 		"MERGE_DEBUG", "base.Debug", "MERGE_FLAG", "base.Flag", "IMPORT_S390X", "cmd/internal/obj/s390x",
@@ -541,14 +548,18 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		targets = []string{"386", "amd64", "arm", "arm64", "ppc64", "ppc64le", "mips", "mipsle", "mips64", "mips64le", "loong64", "riscv64", "s390x", "wasm", "amd64-v4", "arm-v5", "ppc64-v10", "riscv64-v23"}
 	}
 
-	if snapshotName == "ssa_generic" || snapshotName == "ssa_optimizer" || snapshotName == "ssa_calls" || snapshotName == "ssa_allocation" || snapshotName == "ssa_phases" {
+	if snapshotName == "ssa_generic" || snapshotName == "ssa_optimizer" || snapshotName == "ssa_calls" || snapshotName == "ssa_allocation" || snapshotName == "ssa_phases" || snapshotName == "ssa_compile" {
 		targets = append(targets, "arm64")
 	}
-	if snapshotName == "ssa_allocation" {
+	if snapshotName == "ssa_allocation" || snapshotName == "ssa_compile" {
 		targets = []string{"386", "amd64", "arm", "arm64", "ppc64", "ppc64le", "mips", "mipsle", "mips64", "mips64le", "loong64", "riscv64", "s390x", "wasm", "amd64-nofp", "amd64-clobber", "ppc64-aix", "amd64-noopt"}
 	}
 	if snapshotName == "ssa_phases" {
 		targets = []string{"386", "amd64", "386-simd", "amd64-simd", "386-loops", "amd64-loops", "386-simd-loops", "amd64-simd-loops"}
+	}
+
+	if snapshotName == "ssa_compile" {
+		targets = append(targets, "amd64-seed1", "amd64-seed314159", "amd64-loops", "amd64-simd", "amd64-checked-noopt")
 	}
 
 	for _, snapshotTarget = range targets {

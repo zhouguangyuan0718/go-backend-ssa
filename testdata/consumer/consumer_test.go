@@ -38,6 +38,7 @@ import (
 	"go/constant"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPublicObjects(t *testing.T) {
@@ -962,6 +963,25 @@ func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
 	var _ *ssa.Value = v
 	var _ *ssa.Block = b
 	var _ *ssa.Func = f
+
+	compiledIR := graph.NewFunc(position.XPos{}, position.XPos{}, u.LocalPkg.Lookup("compiled"), u.NewSignature(nil, nil, nil))
+	compiledIR.DeclareParams(true)
+	var compiledCache ssa.Cache
+	compiledCache.Reset()
+	compiled := cfg.NewFunc(&publicSplitFrontend{fn: compiledIR}, &compiledCache)
+	compiled.Name, compiled.Type = "compiled", compiledIR.Type()
+	compiled.ABI0, compiled.ABI1, compiled.ABISelf, compiled.ABIDefault = cfg.ABI0, cfg.ABI1, cfg.ABI1, cfg.ABI1
+	compiled.OwnAux = ssa.OwnAuxCall(compiledIR.Linksym(), cfg.ABI1.ABIAnalyze(compiledIR.Type(), true))
+	entry := compiled.NewBlock(ssa.BlockRet)
+	compiled.Entry = entry
+	mem := entry.NewValue0(position.XPos{}, ssa.OpInitMem, u.TypeMem)
+	entry.SetControl(entry.NewValue1(position.XPos{}, ssa.OpMakeResult, u.TypeResultMem, mem))
+	clockCalls := 0
+	c.Now = func() time.Time { clockCalls++; return time.Time{} }
+	ssa.Compile(compiled)
+	if clockCalls == 0 || compiled.RegAlloc == nil {
+		t.Fatal("public native SSA pipeline did not run")
+	}
 }
 
 // Parameter slots retain their Name and offset under the native Frontend contract.
@@ -969,6 +989,15 @@ type publicSplitFrontend struct {
 	ssa.Frontend
 	calls int
 	fn    *ir.Func
+}
+
+func (*publicSplitFrontend) Log() bool                           { return false }
+func (*publicSplitFrontend) Logf(string, ...any)                 {}
+func (*publicSplitFrontend) Warnl(position.XPos, string, ...any) {}
+func (*publicSplitFrontend) Debug_checknil() bool                { return false }
+func (*publicSplitFrontend) UseWriteBarrier() bool               { return false }
+func (*publicSplitFrontend) Fatalf(_ position.XPos, format string, args ...any) {
+	panic(fmt.Sprintf(format, args...))
 }
 
 func (fe *publicSplitFrontend) SplitSlot(parent *ssa.LocalSlot, suffix string, offset int64, typ *types.Type) ssa.LocalSlot {

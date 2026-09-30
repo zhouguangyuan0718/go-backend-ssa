@@ -15,6 +15,7 @@ func TestInstanceTrace(t *testing.T) {
  func NewContext()*Context{return &Context{}}
  func Emit(){fmt.Printf("%s", "hello");fmt.Println(" world");fmt.Fprint(os.Stderr,"error\n");f:=fmt.Printf;f("callback\n")}
  func Caller()bool{_,_,_,ok:=runtime.Caller(0);return ok}
+ func Stack()bool{var buf [1024]byte;return runtime.Stack(buf[:],false)>0}
  func Fail(){log.Panicf("invalid pass %d",7)}
  `
 	const adapter = `package p
@@ -47,6 +48,7 @@ func TestInstanceTrace(t *testing.T) {
  import("testing";"bytes";"sync")
  func TestTrace(t *testing.T){NewContext().Emit();if !Caller(){t.Fatal("stack lookup")};var wg sync.WaitGroup;for range 16{wg.Go(func(){c:=NewContext();var b bytes.Buffer;c.TraceWriter=&b;c.Emit();if b.String()!="hello world\nerror\ncallback\n"{t.Error(b.String())}})};wg.Wait()}
  func TestPanic(t *testing.T){c:=NewContext();var b bytes.Buffer;c.TraceWriter=&b;defer func(){if got:=recover();got!="invalid pass 7"||b.String()!="invalid pass 7\n"{t.Errorf("panic=%v trace=%q",got,b.String())}}();c.Fail();t.Fatal("panic returned")}
+ func TestStack(t *testing.T){if !Stack(){t.Fatal("current stack diagnostic")}}
  `)
 	cmd := exec.Command("go", "test", "-race", "./...")
 	cmd.Dir = dir
@@ -54,7 +56,7 @@ func TestInstanceTrace(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	for _, extra := range []string{"func Bad(){os.Exit(1)}", "func Bad(){runtime.GOMAXPROCS(1)}"} {
+	for _, extra := range []string{"func Bad(){os.Exit(1)}", "func Bad(){runtime.GOMAXPROCS(1)}", "func Bad(){runtime.Stack(nil,true)}", "func Bad(all bool){runtime.Stack(nil,all)}", "func Bad(){_ = runtime.Stack}"} {
 		s.cache[plan.Units[0].Source] = []byte(source + extra)
 		if _, err := Render(s, plan, dir); err == nil || !strings.Contains(err.Error(), "unclassified environment") {
 			t.Fatalf("ambient operation audit: %v", err)

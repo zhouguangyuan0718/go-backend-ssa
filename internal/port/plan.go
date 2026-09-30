@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v44"
+const ToolVersion = "syncgo-m3-v45"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -58,6 +58,7 @@ type Unit struct {
 	FixedSizeof            []FixedSizeofRule
 	SliceReinterpretations []SliceReinterpretationRule
 	HostResources          []HostResourceRule
+	HostCalls              []HostCallRule
 	State                  []StateRule
 	ReceiverState          *ReceiverStateRule
 	Context                *ContextRule
@@ -75,6 +76,14 @@ type Unit struct {
 type HostResourceRule struct {
 	Package, Factory, Method string
 	Members                  []string
+}
+
+// HostCallRule binds reviewed compiler diagnostics to an explicit instance
+// service. Create returns io.WriteCloser instead of exposing the host file.
+// Getenv only accepts the reviewed literal key; metrics remain local data.
+type HostCallRule struct {
+	Package, Function, Method string
+	StringArgument            string
 }
 
 // CallRule derives the upstream signature from Source; no replacement package
@@ -310,6 +319,15 @@ func (p Plan) Validate() error {
 				}
 				seen[member] = true
 			}
+		}
+		seenHostCalls := map[string]bool{}
+		for _, call := range u.HostCalls {
+			key := call.Package + "." + call.Function
+			allowed := key == "os.Create" || key == "os.Getenv" || key == "runtime.ReadMemStats" || key == "time.Now"
+			if !allowed || u.Context == nil || u.Context.Adapter == "" || !token.IsIdentifier(call.Method) || call.Method == "_" || seenHostCalls[key] || (key == "os.Getenv") != (call.StringArgument != "") {
+				return fmt.Errorf("invalid host call binding: %s", key)
+			}
+			seenHostCalls[key] = true
 		}
 		for _, call := range u.Calls {
 			if u.Context == nil || !safePath(call.Source) || portPath(call.Source) == "" || !token.IsIdentifier(call.Function) || !memberPath(call.Method) {

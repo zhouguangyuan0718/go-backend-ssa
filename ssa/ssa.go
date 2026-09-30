@@ -61,3 +61,7 @@ type GoarmFeatures = buildcfg.GoarmFeatures
 func NewContext(a *abi.Context, rd *reflectdata.Context, log *logopt.Context) *Context {
 	return compiler.NewContext(a, rd, log)
 }
+
+// Compile runs the complete native SSA pipeline on f. Configure the owning
+// Context's clock and any enabled metric or dump providers before calling it.
+func Compile(f *Func) { compiler.Compile(f) }

@@ -181,6 +181,7 @@ func auditProductionFiles(root string, p Plan) error {
 }
 
 func auditOutput(pkg *types.Package, files []*ast.File, info *types.Info, reviewed ...map[ast.Node]bool) error {
+	reviewed = append(reviewed, currentStackOperations(files, info))
 	classified := func(n ast.Node) bool {
 		for _, set := range reviewed {
 			if set[n] {

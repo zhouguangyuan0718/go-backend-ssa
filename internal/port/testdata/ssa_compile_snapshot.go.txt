@@ -1,0 +1,233 @@
+package ssa
+
+import (
+	IMPORT_BASE
+	"IMPORT_IR"
+	"IMPORT_OBJ"
+	"IMPORT_SRC"
+	"IMPORT_SYS"
+	"IMPORT_TYPECHECK"
+	"IMPORT_TYPES"
+	LOWER_IMPORT
+	COMPILE_IMPORT
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+	"testing"
+)
+
+type snapshotAllocationFrontend struct {
+	Frontend
+	fn   *ir.Func
+	link *obj.Link
+	wb   bool
+}
+
+func (fe *snapshotAllocationFrontend) Func() *ir.Func { return fe.fn }
+func (fe *snapshotAllocationFrontend) Syslook(n string) *obj.LSym {
+	return fe.link.Lookup("runtime." + n)
+}
+func (fe *snapshotAllocationFrontend) UseWriteBarrier() bool       { return fe.wb }
+func (*snapshotAllocationFrontend) Log() bool                      { return false }
+func (*snapshotAllocationFrontend) Logf(string, ...any)            {}
+func (*snapshotAllocationFrontend) Warnl(src.XPos, string, ...any) {}
+func (*snapshotAllocationFrontend) Debug_checknil() bool           { return false }
+func (*snapshotAllocationFrontend) Fatalf(p src.XPos, s string, a ...any) {
+	panic(fmt.Sprintf(s, a...))
+}
+func (*snapshotAllocationFrontend) SplitSlot(p *LocalSlot, s string, o int64, t *types.Type) LocalSlot {
+	return LocalSlot{N: p.N, Type: t, Off: p.Off + o}
+}
+func TestSyncgoNativeSnapshot(t *testing.T) {
+	mode := os.Getenv("SYNCGO_TARGET")
+	target := struct {
+		arch  string
+		os    string
+		size  int
+		order binary.ByteOrder
+	}{strings.Split(mode, "-")[0], "linux", 8, binary.LittleEndian}
+	if strings.Contains(mode, "aix") {
+		target.os = "aix"
+	}
+	switch target.arch {
+	case "386", "arm", "mips", "mipsle":
+		target.size = 4
+	}
+	switch target.arch {
+	case "mips", "mips64", "ppc64", "s390x":
+		target.order = binary.BigEndian
+	}
+	SETUP
+	LOWER_FEATURES.GOAMD64 = 1
+	LOWER_FEATURES.GOARM.Version = 7
+	LOWER_FEATURES.GOPPC64 = 8
+	LOWER_FEATURES.GORISCV64 = 20
+	switch target.arch {
+	case "386":
+		LINK.Arch.Family = sys.I386
+	case "amd64":
+		LINK.Arch.Family = sys.AMD64
+	case "arm64":
+		LINK.Arch.Family = sys.ARM64
+	case "mips":
+		LINK.Arch.Family = sys.MIPS
+	case "ppc64":
+		LINK.Arch.Family = sys.PPC64
+	}
+	COMPILE_SERVICES
+	if strings.Contains(mode,"seed1"){UP.PhaseOption("check","seed",1,"")}
+	if strings.Contains(mode,"seed314159"){UP.PhaseOption("check","seed",314159,"")}
+	if strings.Contains(mode,"checked"){UP.PhaseOption("check","seed",7,"")}
+	ALLOC_FLAGS
+	cfg := UP.NewConfig(target.arch, *UP.NewTypes(), LINK, !strings.Contains(mode, "noopt"), false)
+	ty := cfg.Types
+	pos := LINK.PosTable.XPos(src.MakePos(src.NewFileBase("allocation.go", "allocation.go"), 10, 1))
+	var out []string
+	add := func(n string, a ...any) { out = append(out, n+":"+fmt.Sprint(a...)) }
+	for _, a := range ALLOC_ARCHS {
+		add("arch", a.Name, a.Family, a.ByteOrder, a.PtrSize, a.RegSize, a.MinLC, a.Alignment, a.CanMergeLoads, a.CanJumpTable, a.HasLR, a.FixedFrameSize)
+	}
+
+	fresh := func(in, outs []*types.Type, stack bool) (*Func, *snapshotAllocationFrontend, []*Value, *Value) {
+		fields := func(ts []*types.Type, prefix string) []*types.Field {
+			var fs []*types.Field
+			for i, tp := range ts {
+				fs = append(fs, TY.NewField(pos, TY.LocalPkg.Lookup(fmt.Sprint(prefix, i)), tp))
+			}
+			return fs
+		}
+		fn := GRAPH.NewFunc(pos, pos, TY.LocalPkg.Lookup("fixture"), TY.NewSignature(nil, fields(in, "a"), fields(outs, "r")))
+		fn.DeclareParams(true)
+		fe := &snapshotAllocationFrontend{fn: fn, link: LINK, wb: true}
+		cache := new(Cache)
+		cache.Reset()
+		f := cfg.NewFunc(fe, cache)
+		f.Name = "fixture"
+		f.Type = fn.Type()
+		f.ABI0 = cfg.ABI0
+		f.ABI1 = cfg.ABI1
+		f.ABISelf = cfg.ABI1
+		if stack {
+			f.ABISelf = cfg.ABI0
+		}
+		f.ABIDefault = f.ABISelf
+		f.OwnAux = OwnAuxCall(fn.Linksym(), f.ABISelf.ABIAnalyze(fn.Type(), true))
+		f.pass = &pass{name: "calls"}
+		b := f.NewBlock(BlockRet)
+		f.Entry = b
+		b.Pos = pos
+		mem := b.NewValue0(pos, OpInitMem, TY.TypeMem)
+		f.spSb()
+		var args []*Value
+		for _, a := range f.OwnAux.abiInfo.InParams() {
+			v := b.NewValue0IA(pos, OpArg, a.Type, a.FrameOffset(f.OwnAux.abiInfo), a.Name)
+			args = append(args, v)
+		}
+		return f, fe, args, mem
+	}
+	finish := func(n string, f *Func) {
+		saved := UP.passes
+		defer func(){UP.passes=saved}()
+		for i := range UP.passes {
+			original, name := UP.passes[i].fn, UP.passes[i].name
+			UP.passes[i].fn=func(fn *Func){original(fn);add(n+"/"+name,fn.String())}
+		}
+		Compile(f)
+		checkFunc(f)
+
+		fe := f.Frontend().(*snapshotAllocationFrontend)
+		for _, n := range fe.fn.Dcl {
+			add("decl", n.Sym().Name, n.Class, n.Type(), n.NonMergeable())
+		}
+		for id, loc := range f.RegAlloc {
+			if loc != nil {
+				add("alloc", id, loc.String())
+			}
+		}
+		add("slots", f.Names)
+		add("regargs", f.RegArgs)
+		add("flags", f.scheduled, f.RegAlloc != nil)
+	}
+	// Values live across a call require real spill homes and reloads in both banks.
+	for _, stack := range []bool{false, true} {
+		var ins []*types.Type
+		for i := 0; i < 24; i++ {
+			ins = append(ins, ty.UInt64, ty.Float64)
+		}
+		f, _, args, mem := fresh(ins, []*types.Type{ty.UInt64, ty.Float64}, stack)
+		b := f.Entry
+		aux := StaticAuxCall(LINK.Lookup("callee"), f.ABIDefault.ABIAnalyzeTypes([]*types.Type{ty.UInt64}, []*types.Type{ty.UInt64, ty.Float64}))
+		call := b.NewValue2A(pos, OpStaticLECall, aux.LateExpansionResultType(), aux, args[0], mem)
+		sum := b.NewValue1I(pos, OpSelectN, ty.UInt64, 0, call)
+		fp := b.NewValue1I(pos, OpSelectN, ty.Float64, 1, call)
+		mem = b.NewValue1I(pos, OpSelectN, TY.TypeMem, 2, call)
+		for i := 0; i < len(args); i += 2 {
+			sum = b.NewValue2(pos, OpAdd64, ty.UInt64, sum, args[i])
+			fp = b.NewValue2(pos, OpAdd64F, ty.Float64, fp, args[i+1])
+		}
+		b.SetControl(b.NewValue3(pos, OpMakeResult, TY.NewResults([]*types.Type{ty.UInt64, ty.Float64, TY.TypeMem}), sum, fp, mem))
+		finish(fmt.Sprint("pressure-stack-", stack), f)
+	}
+	// A critical edge into a phi join must be split before allocation.
+	{
+		f, _, a, mem := fresh([]*types.Type{ty.Bool, ty.UInt64, ty.UInt64}, []*types.Type{ty.UInt64}, false)
+		e := f.Entry
+		e.Kind = BlockIf
+		e.SetControl(a[0])
+		l, j := f.NewBlock(BlockPlain), f.NewBlock(BlockRet)
+		l.Pos = pos
+		j.Pos = pos
+		e.AddEdgeTo(j)
+		e.AddEdgeTo(l)
+		l.AddEdgeTo(j)
+		v := l.NewValue2(pos, OpXor64, ty.UInt64, a[1], a[2])
+		p := j.NewValue2(pos, OpPhi, ty.UInt64, a[1], v)
+		j.SetControl(j.NewValue2(pos, OpMakeResult, TY.NewResults([]*types.Type{ty.UInt64, TY.TypeMem}), p, mem))
+		finish("critical-phi", f)
+	}
+	// Loop-carried scalars and memory, with invariant arithmetic and two exits.
+	{
+		f, _, a, mem := fresh([]*types.Type{ty.Int32, TY.NewPtr(ty.Int64), ty.Int64, ty.Int64}, []*types.Type{ty.Int64}, false)
+		e := f.Entry
+		e.Kind = BlockPlain
+		h, body, end := f.NewBlock(BlockIf), f.NewBlock(BlockPlain), f.NewBlock(BlockRet)
+		for _, b := range []*Block{h, body, end} {
+			b.Pos = pos
+		}
+		e.AddEdgeTo(h)
+		h.AddEdgeTo(body)
+		h.AddEdgeTo(end)
+		body.AddEdgeTo(h)
+		i := h.NewValue1(pos, OpPhi, ty.Int32, f.ConstInt32(ty.Int32, 0))
+		i.AddArg(body.NewValue2(pos, OpAdd32, ty.Int32, i, f.ConstInt32(ty.Int32, 1)))
+		h.SetControl(h.NewValue2(pos, OpLess32, ty.Bool, i, a[0]))
+		x := h.NewValue1(pos, OpPhi, ty.Int64, a[2])
+		inv := body.NewValue2(pos, OpMul64, ty.Int64, a[2], a[3])
+		x.AddArg(body.NewValue2(pos, OpAdd64, ty.Int64, x, inv))
+		m := h.NewValue1(pos, OpPhi, TY.TypeMem, mem)
+		m.AddArg(body.NewValue3A(pos, OpStore, TY.TypeMem, ty.Int64, a[1], x, m))
+		end.SetControl(end.NewValue2(pos, OpMakeResult, TY.NewResults([]*types.Type{ty.Int64, TY.TypeMem}), x, m))
+		finish("loop", f)
+	}
+	// Adjacent loads/stores, indexed addressing and a removable nil check.
+	{
+		f, _, a, mem := fresh([]*types.Type{TY.NewPtr(ty.Int64), TY.NewPtr(ty.Int64), ty.Uintptr}, nil, false)
+		b := f.Entry
+		ptr := b.NewValue2(pos, OpNilCheck, a[0].Type, a[0], mem)
+		x := b.NewValue2(pos, OpLoad, ty.Int64, ptr, mem)
+		next := b.NewValue1I(pos, OpOffPtr, ptr.Type, 8, ptr)
+		y := b.NewValue2(pos, OpLoad, ty.Int64, next, mem)
+		mem = b.NewValue3A(pos, OpStore, TY.TypeMem, ty.Int64, a[1], x, mem)
+		mem = b.NewValue3A(pos, OpStore, TY.TypeMem, ty.Int64, b.NewValue1I(pos, OpOffPtr, a[1].Type, 8, a[1]), y, mem)
+		indexed := b.NewValue2(pos, OpAddPtr, a[1].Type, a[1], a[2])
+		b.SetControl(b.NewValue3A(pos, OpStore, TY.TypeMem, ty.Int64, indexed, b.NewValue2(pos, OpAdd64, ty.Int64, x, y), mem))
+		finish("memory-pairs-index-nil", f)
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("SYNCGO_IR=%s\n", data)
+}

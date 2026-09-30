@@ -89,6 +89,7 @@
 72. [M3 原生 SSA 调用和内存阶段](docs/m3-ssa-calls.md)：ABI 调用展开、写屏障、循环抢占检查及真实临时变量。
 73. [M3 原生 SSA 调度和分配](docs/m3-ssa-allocation.md)：后期优化、调度、寄存器/栈槽分配及原生架构身份。
 74. [M3 SSA 阶段配置与初始化](docs/m3-ssa-phases.md)：原生阶段表、选项解析、顺序校验及实例初始化分组。
+75. [M3 完整原生 SSA Compile](docs/m3-ssa-compile.md)：完整阶段循环、统计/转储服务、公开入口及物理位置执行验证。
 
 ## 当前可运行的工具
 
@@ -108,7 +109,7 @@ go test -race -timeout 30m ./...
 
 设定 `GO_SSA_SOURCE_REPO` 时，测试额外验证官方 go1.27.1 再生成、两版上游位置/符号回归与 SSA 类型切片差分测试、源码树未变以及 go1.27.0 → go1.27.1 升级；仓库需包含两个 tag。完整双版本差分包含多组独立原生编译，使用 `-timeout 30m`，避免默认 10 分钟时限。无该变量时仅跳过这项集成测试，其他测试照常执行。
 
-编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造与完整 typecheck 生产包，以及 types/objabi 的结构和算法切片；reader 的类型/对象实例化、函数体和字典读取主体已接入并完成源码差分；整包内联、方法包装、loopvar、pkginit、ABI wrappers、deadlocals、escape、slice 和完整 walk 已接通；源码经 ssagen 构造 SSA 尚未接通；原生手动图构造及架构配置已公开。
+编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造与完整 typecheck 生产包，以及 types/objabi 的结构和算法切片；reader 的类型/对象实例化、函数体和字典读取主体已接入并完成源码差分；整包内联、方法包装、loopvar、pkginit、ABI wrappers、deadlocals、escape、slice 和完整 walk 已接通；源码经 ssagen 构造 SSA 尚未接通；原生手动图构造、架构配置及 `ssa.Compile` 完整阶段入口已公开。
 
 移植后的源码直接保存在本项目，和手写适配、转换规则一起纳入版本管理。使用本库时不需要先运行移植工具；维护者更新上游版本时再重新生成。
 
