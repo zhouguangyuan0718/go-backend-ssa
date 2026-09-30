@@ -180,7 +180,15 @@ func auditProductionFiles(root string, p Plan) error {
 	return nil
 }
 
-func auditOutput(pkg *types.Package, files []*ast.File, info *types.Info) error {
+func auditOutput(pkg *types.Package, files []*ast.File, info *types.Info, reviewed ...map[ast.Node]bool) error {
+	classified := func(n ast.Node) bool {
+		for _, set := range reviewed {
+			if set[n] {
+				return true
+			}
+		}
+		return false
+	}
 	passivePointers := passivePointerTypes(files, info)
 	for _, name := range pkg.Scope().Names() {
 		if _, ok := pkg.Scope().Lookup(name).(*types.Var); ok {
@@ -202,12 +210,12 @@ func auditOutput(pkg *types.Package, files []*ast.File, info *types.Info) error 
 		}
 	}
 	for expr, tv := range info.Types {
-		if basic, ok := tv.Type.(*types.Basic); ok && basic.Kind() == types.UnsafePointer && !passivePointers[expr] {
+		if basic, ok := tv.Type.(*types.Basic); ok && basic.Kind() == types.UnsafePointer && !passivePointers[expr] && !classified(expr) {
 			return fmt.Errorf("unclassified environment dependency: unsafe pointer expression")
 		}
 	}
 	for id, obj := range info.Uses {
-		if passivePointers[id] {
+		if passivePointers[id] || classified(id) {
 			continue
 		}
 		if obj == nil || obj.Pkg() == nil {

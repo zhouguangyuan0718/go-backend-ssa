@@ -75,6 +75,7 @@
 58. [M3 公开 SSA opcode](docs/m3-ssa-public-opcodes.md)：自动导出全部原生 opcode/BlockKind 常量和类型。
 59. [M3 原生 SSA 图](docs/m3-ssa-graph.md)：完整图声明、原生基础建图方法和缓存生命周期。
 60. [M3 SSA 稀疏容器和缓存池](docs/m3-ssa-containers.md)：原生泛型稀疏结构及按 Cache 隔离的基础分配器。
+61. [M3 SSA 派生切片分配器](docs/m3-ssa-derived-allocators.md)：按类型审计原生切片重解释并保留完整分配算法。
 
 ## 当前可运行的工具
 

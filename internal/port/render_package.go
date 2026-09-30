@@ -181,7 +181,11 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	if err := checkAdapterMethods(units, pkg, outpkg, imports, outfs); err != nil {
 		return nil, nil, err
 	}
-	if err := auditOutput(outpkg, output, outinfo); err != nil {
+	sliceOperations, err := reviewedSliceOperations(outfs, output, outinfo, units)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := auditOutput(outpkg, output, outinfo, sliceOperations); err != nil {
 		return nil, nil, err
 	}
 	for _, u := range units {

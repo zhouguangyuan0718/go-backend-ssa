@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v30"
+const ToolVersion = "syncgo-m3-v31"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -43,25 +43,26 @@ type Unit struct {
 	// unit's handwritten adapter, with exactly the original receiver/signature.
 	AdapterMethods []string
 
-	ContextFrom     map[string]ContextSource
-	Source          string
-	Functions       []string
-	Declarations    []string // Types, complete constant groups, and Receiver.Method names.
-	ExportConstants bool     // Generate public aliases for this file's exported native constants.
-	Owner           *OwnerRule
-	WholeFile       bool                // Preserve types, constants and existing receivers.
-	ZeroValues      []string            // Reviewed zero-valued struct globals replaced by fresh values.
-	ReadTables      []string            // Constant array/slice/map lookups localized in their consuming functions.
-	ConstantFields  []ConstantFieldRule // Stateless reads of immutable scalar fields in an instance-owned array.
-	State           []StateRule
-	ReceiverState   *ReceiverStateRule
-	Context         *ContextRule
-	ContextMethods  map[string]string   // Free function -> method name when the native Context already uses that name.
-	ContextParams   []string            // Reviewed receiver methods that take an explicit context parameter.
-	Literals        []LiteralRule       // Reviewed external struct values bound to an instance.
-	Calls           []CallRule          // Reviewed external functions bound to context methods.
-	Nullable        map[string][]string // Reviewed owned pointers/receivers that accept nil.
-	Checks          map[string]string   // Selected function/method -> context argument validator.
+	ContextFrom            map[string]ContextSource
+	Source                 string
+	Functions              []string
+	Declarations           []string // Types, complete constant groups, and Receiver.Method names.
+	ExportConstants        bool     // Generate public aliases for this file's exported native constants.
+	Owner                  *OwnerRule
+	WholeFile              bool                // Preserve types, constants and existing receivers.
+	ZeroValues             []string            // Reviewed zero-valued struct globals replaced by fresh values.
+	ReadTables             []string            // Constant array/slice/map lookups localized in their consuming functions.
+	ConstantFields         []ConstantFieldRule // Stateless reads of immutable scalar fields in an instance-owned array.
+	SliceReinterpretations []SliceReinterpretationRule
+	State                  []StateRule
+	ReceiverState          *ReceiverStateRule
+	Context                *ContextRule
+	ContextMethods         map[string]string   // Free function -> method name when the native Context already uses that name.
+	ContextParams          []string            // Reviewed receiver methods that take an explicit context parameter.
+	Literals               []LiteralRule       // Reviewed external struct values bound to an instance.
+	Calls                  []CallRule          // Reviewed external functions bound to context methods.
+	Nullable               map[string][]string // Reviewed owned pointers/receivers that accept nil.
+	Checks                 map[string]string   // Selected function/method -> context argument validator.
 }
 
 // CallRule derives the upstream signature from Source; no replacement package
@@ -189,6 +190,25 @@ func (p Plan) Validate() error {
 		for _, r := range u.ConstantFields {
 			if !u.WholeFile || u.Context == nil || u.Context.Fields[r.Variable] == "" || !token.IsIdentifier(r.Variable) || !token.IsIdentifier(r.Field) || len(r.Functions) == 0 {
 				return fmt.Errorf("invalid constant field rule: %s.%s", r.Variable, r.Field)
+			}
+		}
+		seenSliceMethods := map[string]bool{}
+		for _, r := range u.SliceReinterpretations {
+			for _, name := range []string{r.Allocate, r.Free, r.BaseAllocate, r.BaseFree} {
+				owner, method, ok := splitMethod(name)
+				if !ok || !token.IsIdentifier(owner) || !token.IsIdentifier(method) {
+					return fmt.Errorf("invalid slice reinterpretation method %s", name)
+				}
+			}
+			for _, name := range []string{r.Allocate, r.Free} {
+				selected := u.WholeFile
+				for _, decl := range u.Declarations {
+					selected = selected || decl == name
+				}
+				if !selected || seenSliceMethods[name] {
+					return fmt.Errorf("unselected or duplicate slice reinterpretation method %s", name)
+				}
+				seenSliceMethods[name] = true
 			}
 		}
 		if r := u.ReceiverState; r != nil {

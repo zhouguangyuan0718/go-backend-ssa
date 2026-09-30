@@ -212,6 +212,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, abiMigration()...)
 	plan.Units = append(plan.Units, ssaObjectMigration()...)
 	plan.Units = append(plan.Units, Unit{Source: "src/cmd/compile/internal/abt/avlint32.go", Declarations: []string{"T", "node32"}})
+	plan.Units = append(plan.Units, Unit{Source: "src/internal/unsafeheader/unsafeheader.go", WholeFile: true})
 	plan.Units = append(plan.Units, ssaValueMigration()...)
 	plan.Units = append(plan.Units, walkMigration()...)
 	plan.Units = append(plan.Units, ssaTypesMigration()...)

@@ -3,8 +3,9 @@ package port
 // Preserve the full native graph layout, including backend analysis and debug state.
 func ssaGraphMigration() []Unit {
 	return []Unit{
+		{Source: "src/cmd/compile/internal/ssa/known_bits.go", Declarations: []string{"knownBitsEntry"}},
 		{Source: "src/cmd/compile/internal/ssa/sparsemappos.go", WholeFile: true},
-		{Source: "src/cmd/compile/internal/ssa/allocators.go", Declarations: []string{"Cache.allocValueSlice", "Cache.freeValueSlice", "Cache.allocLimitSlice", "Cache.freeLimitSlice", "Cache.allocSparseSet", "Cache.freeSparseSet", "Cache.allocSparseMap", "Cache.freeSparseMap", "Cache.allocSparseMapPos", "Cache.freeSparseMapPos"}, ReceiverState: &ReceiverStateRule{Type: "Cache", Fields: map[string]string{
+		{Source: "src/cmd/compile/internal/ssa/allocators.go", WholeFile: true, SliceReinterpretations: nativeAllocatorReinterpretations(), ReceiverState: &ReceiverStateRule{Type: "Cache", Fields: map[string]string{
 			"poolFreeValueSlice": "poolFreeValueSlice", "poolFreeLimitSlice": "poolFreeLimitSlice", "poolFreeSparseSet": "poolFreeSparseSet", "poolFreeSparseMap": "poolFreeSparseMap", "poolFreeSparseMapPos": "poolFreeSparseMapPos",
 		}}},
 		{Source: "src/cmd/compile/internal/ssa/numberlines.go", Functions: []string{"notStmtBoundary"}, Declarations: []string{"Block.FirstPossibleStmtValue"}},
@@ -25,4 +26,16 @@ func ssaGraphMigration() []Unit {
 		{Source: "src/cmd/compile/internal/ssa/stackalloc.go", Declarations: []string{"stackAllocState", "stackUseBlock", "stackValState"}},
 		{Source: "src/cmd/compile/internal/ssa/xposmap.go", WholeFile: true},
 	}
+}
+
+func nativeAllocatorReinterpretations() []SliceReinterpretationRule {
+	var rules []SliceReinterpretationRule
+	for _, name := range []string{"BlockSlice", "Int64", "IntSlice", "Int32Slice", "Int8Slice", "BoolSlice", "IDSlice", "UintSlice", "KnownBitsEntriesSlice"} {
+		base := "LimitSlice"
+		if name == "BlockSlice" {
+			base = "ValueSlice"
+		}
+		rules = append(rules, SliceReinterpretationRule{Allocate: "Cache.alloc" + name, Free: "Cache.free" + name, BaseAllocate: "Cache.alloc" + base, BaseFree: "Cache.free" + base})
+	}
+	return rules
 }
