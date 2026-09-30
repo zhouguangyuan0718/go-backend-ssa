@@ -93,6 +93,7 @@
 76. [M3 原生 SSA 前端与初始化](docs/m3-ssagen-frontend.md)：目标配置、运行时符号、defer 布局及原生 Frontend 服务。
 77. [M3 原生栈帧分配](docs/m3-ssagen-frames.md)：局部变量活跃区间与合并、帧布局、栈偏移及实例隔离。
 78. [M3 SSA 源码诊断](docs/m3-ssa-sources.md)：原生 HTML 构造、CFG 阶段选择、源码列及显式宿主输入。
+79. [M3 完整 IR 到 SSA](docs/m3-ssagen-build.md)：原生构图、两套 Phi 算法、intrinsics/SIMD、完整 SSA 优化和帧元数据。
 
 ## 当前可运行的工具
 
@@ -161,4 +162,4 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 
 类型布局入口示例见 [独立消费者测试](testdata/consumer/consumer_test.go)。先创建 Universe，再调用原生 `u.InitTypes(defTypeName)`；回调为传入的 Sym/Type 提供宿主的 `types.Object`。随后可直接调用 `Type.Size/Alignment/Registers/HasPointers` 与 `u.CalcSize/PtrDataSize/AlgType/Identical`。当前不提供假 `ir.Name`；宿主绑定契约及失败处理见 M2 文档。
 
-源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；之后可调用 Interleaved 完成整包优化，再调用 MakeWrappers 生成原生方法包装函数，随后逐函数调用 loopvar.ForCapture 处理循环变量捕获，再调用 pkginit.MakeTask 生成原生初始化任务，随后调用 ssagen 的 SymABIs.GenABIWrappers，并依次执行 deadlocals、escape、slice 和 walk；完整 unified 尾部、实验性 midway 和 compiler directives 尚未接入。源码到 SSA 的 Build 入口尚未接通；可使用公共 ssa 包的原生 Config/Func/Block/Value 手动构造图，见 [SSA 配置与 lowering](docs/m3-ssa-lowering.md)。
+源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；之后可调用 Interleaved 完成整包优化，再调用 MakeWrappers 生成原生方法包装函数，随后逐函数调用 loopvar.ForCapture 处理循环变量捕获，再调用 pkginit.MakeTask 生成原生初始化任务，随后调用 ssagen 的 SymABIs.GenABIWrappers，并依次执行 deadlocals、escape、slice 和 walk；完整 unified 尾部、实验性 midway 和 compiler directives 尚未接入。完成目标、SSA、liveness 配置及 InitConfig/InitTables 后，可对完成 walk 的函数调用 ssagen.BuildSSA，得到原生优化、寄存器分配和帧布局后的 SSA，见 [完整 IR 到 SSA](docs/m3-ssagen-build.md)。统一源码 Build 驱动、机器码输出及上游工具链替换仍待完成。

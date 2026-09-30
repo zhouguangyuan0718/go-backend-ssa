@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/internal/cmd/obj"
+	"go-backend-ssa/internal/cmd/objabi"
 	"go-backend-ssa/internal/cmd/src"
+	"go-backend-ssa/internal/cmd/sys"
+	"go-backend-ssa/internal/go/buildcfg"
+	runtimegc "go-backend-ssa/internal/go/runtime/gc"
 	errorspkg "go-backend-ssa/internal/go/types/errors"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/liveness"
@@ -12,6 +16,7 @@ import (
 	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
 	"io"
+	"io/fs"
 )
 
 // Context binds native ABI wrappers, target initialization and SSA frontend
@@ -19,6 +24,37 @@ import (
 // type and runtime declarations have been initialized. Phase operations within
 // one graph are serialized; separate contexts can compile independently.
 type Context struct {
+	pkgSpecials                          *objabi.Context
+	mallocGC                             *runtimegc.Context
+	capVar                               *ir.Name
+	deferBitsVar                         *ir.Name
+	f32_u32                              f2uCvtTab
+	f32_u64                              f2uCvtTab
+	f64_u32                              f2uCvtTab
+	f64_u64                              f2uCvtTab
+	fpConvOpToSSA                        map[twoTypes]twoOpsAndType
+	fpConvOpToSSA32                      map[twoTypes]twoOpsAndType
+	hashVar                              *ir.Name
+	lenVar                               *ir.Name
+	memVar                               *ir.Name
+	okVar                                *ir.Name
+	opToSSA                              map[opAndType]ssa.Op
+	ptrVar                               *ir.Name
+	shiftOpToSSA                         map[opAndTwoTypes]ssa.Op
+	typVar                               *ir.Name
+	u32_f32                              u322fcvtTab
+	u32_f64                              u322fcvtTab
+	u64_f32                              u642fcvtTab
+	u64_f64                              u642fcvtTab
+	uint64fpConvOpToSSA                  map[twoTypes]twoOpsAndType
+	intrinsics                           intrinsicBuilders
+	ssaVecBySize                         map[int64]*types.Type
+	cvtVToMaskOpcodes, cvtMaskToVOpcodes map[int]map[int]ssa.Op
+	architectures                        *sys.Context
+	GO386, GOMIPS, GOMIPS64              string
+	GOARM64                              buildcfg.Goarm64Features
+	MakeDumpDirectory                    func(string, fs.FileMode) error
+
 	// DumpFunction and DumpDirectory supply native GOSSAFUNC and GOSSADIR inputs.
 	DumpFunction, DumpDirectory string
 	OpenSource                  func(string) (io.ReadCloser, error)
@@ -45,9 +81,13 @@ func NewContext(tc *typecheck.Context) *Context {
 	if tc == nil || tc.IR == nil {
 		panic("ABI generation requires a compiler graph")
 	}
-	c := newContext()
+	c := &Context{mallocGC: runtimegc.NewContext(), pkgSpecials: objabi.NewContext()}
 	c.Typecheck = tc
 	c.ptrSize, c.regSize, c.maxWidth = tc.IR.Types.PointerSize(), tc.IR.Types.RegisterSize(), tc.IR.Types.MaxWidth()
+	if tc.IR.Base.Ctxt.Arch != nil {
+		c.architectures = sys.ContextOfArch(tc.IR.Base.Ctxt.Arch.Arch)
+	}
+	c.initialize()
 	return c
 }
 func (c *Context) readFile(name string) ([]byte, error) {
@@ -198,4 +238,79 @@ func (c *Context) checkDumpInline(fn *ir.Func) {
 	if fn == nil || !c.Typecheck.IR.OwnsNode(fn) {
 		panic("SSA inline source belongs to another compilation")
 	}
+}
+
+func (c *Context) assertCondition(ok bool) {
+	if !ok {
+		c.fatalf("assertion failed")
+	}
+}
+func (c *Context) warn(format string, args ...any) {
+	c.warnfAt(c.Typecheck.IR.Types.Pos, format, args...)
+}
+func (c *Context) makeDumpDirectory(path string, mode fs.FileMode) error {
+	if c.MakeDumpDirectory == nil {
+		panic("SSA HTML output requires a directory provider")
+	}
+	return c.MakeDumpDirectory(path, mode)
+}
+func (c *Context) checkIntrinsicTables() {
+	c.checkBackend()
+	if c.architectures == nil || c.Arch.LinkArch != c.Typecheck.IR.Base.Ctxt.Arch || sys.ContextOfArch(c.Arch.LinkArch.Arch) != c.architectures {
+		panic("intrinsic tables require matching canonical target descriptors")
+	}
+	c.Typecheck.IR.IsIntrinsicCall = c.IsIntrinsicCall
+	c.Typecheck.IR.IsIntrinsicSym = c.IsIntrinsicSym
+}
+func (c *Context) checkBuildSSA(fn *ir.Func, worker int, isPgoHot bool) {
+	c.checkFrontendFunc(fn)
+	if c.ssaConfig == nil || worker < 0 || worker >= len(c.ssaCaches) || c.intrinsics == nil || c.Liveness == nil || c.Liveness.SSA != c.SSA {
+		panic("IR-to-SSA requires initialized target, intrinsics, worker and liveness services")
+	}
+	// Validate graph ownership before native construction changes symbol, debug,
+	// declaration, SSA-cache or frame state. Hidden IR links may form cycles.
+	seen := map[ir.Node]bool{}
+	var visit func(ir.Node) bool
+	visit = func(n ir.Node) bool {
+		if n == nil || seen[n] {
+			return false
+		}
+		seen[n] = true
+		if !c.Typecheck.IR.OwnsNode(n) || n.Type() != nil && n.Type().Universe() != c.Typecheck.IR.Types {
+			panic("IR-to-SSA node belongs to another compilation")
+		}
+		ir.DoChildrenWithHidden(n, visit)
+		return false
+	}
+	visit(fn)
+	for _, n := range fn.Dcl {
+		visit(n)
+	}
+
+}
+
+// BuildSSA runs native IR construction, phi placement, SSA compilation, frame
+// allocation, defer metadata and incoming register spill recording for fn.
+// Run InitConfig and InitTables after configuring target services. The function
+// must have completed frontend lowering. Serialize calls within one Context.
+// Consume the returned graph before reusing the same worker cache.
+func (c *Context) BuildSSA(fn *ir.Func, worker int, isPgoHot bool) *ssa.Func {
+	return c.buildssa(fn, worker, isPgoHot)
+}
+
+func (c *Context) checkIntrinsicBody(fn *ir.Func) { c.checkFrontendFunc(fn) }
+func (c *Context) checkIntrinsicSymbol(sym *types.Sym) {
+	if sym != nil && sym.Pkg != nil && sym.Universe() != c.Typecheck.IR.Types {
+		panic("intrinsic symbol belongs to another compilation")
+	}
+}
+func (c *Context) checkIntrinsicCall(n *ir.CallExpr) {
+	if n != nil && !c.Typecheck.IR.OwnsNode(n) {
+		panic("intrinsic call belongs to another compilation")
+	}
+}
+
+func (c *Context) tracePrint(args ...any) (int, error) { return fmt.Fprint(c.traceWriter(), args...) }
+func (c *Context) tracePrintln(args ...any) (int, error) {
+	return fmt.Fprintln(c.traceWriter(), args...)
 }

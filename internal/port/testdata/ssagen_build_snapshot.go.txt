@@ -1,0 +1,62 @@
+package ssagen_test
+import(BUILD_IMPORT "fmt";"encoding/json";"encoding/binary";"os";"strings";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_LOOPVAR";"IMPORT_NODER";"IMPORT_PKGINIT";"IMPORT_SSAGEN";"IMPORT_DEADLOCALS";"IMPORT_ESCAPE";"IMPORT_SLICE";"IMPORT_WALK";"bytes";"IMPORT_LOGOPT";EXPAND_RUNTIME AUTO_IMPORT PKGINIT_DRIVER_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ mode:=os.Getenv("SYNCGO_TARGET")
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.SplitN(mode,"-",2)[0],8,binary.LittleEndian};switch target.arch{case "386","arm","mipsle":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "mips64","ppc64","s390x":target.order=binary.BigEndian}
+ SETUP
+ data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
+ PKGINIT_READ
+ if strings.Contains(mode,"-inline"){LOOP_BASE.Flag.LowerL=1}
+ PKGINIT_DRIVER
+ INIT_BEFORE_ABI
+ EXPERIMENT.RegabiWrappers=target.arch=="amd64"||target.arch=="ppc64"
+ raw:="ref example/p.Grow ABI0\n"
+ ABI_READ
+ s.GenABIWrappers()
+ PRE_ESCAPE
+ ESC_SETUP
+ ESC_RUN
+ if strings.Contains(mode,"-inline"){seen:=false;for _,fn:=range TC.Target.Funcs{ir.Visit(fn,func(n ir.Node){seen=seen||n.Op()==ir.OINLMARK})};if !seen{t.Fatal("inline configuration produced no inline IR")}}
+ ND_DEBUG.VariableMakeThreshold=64
+ if strings.HasSuffix(mode,"-small"){ND_DEBUG.VariableMakeThreshold=7}
+ if strings.HasSuffix(mode,"-noopt"){LOOP_BASE.Flag.N=1}
+ var hash bytes.Buffer
+ if strings.HasSuffix(mode,"-exclude"){LOOP_BASE.VariableMakeHash=LOOP_BASE.NewHashDebug("variablemakehash","n",&hash)}
+ if strings.HasSuffix(mode,"-all"){LOOP_BASE.VariableMakeHash=LOOP_BASE.NewHashDebug("variablemakehash","y",&hash)}
+ SLICE_RUN
+ WALK_SETUP
+ WALK_SET_SOFT
+ var out []string
+ LOOP_BASE.Flag.LowerC=1;LOOP_BASE.Flag.WB=true;ND_DEBUG.MergeLocals=1
+ LOOP_BASE.Flag.Race=strings.Contains(mode,"race");LOOP_BASE.Flag.Cfg.Instrumenting=LOOP_BASE.Flag.Race
+ EXPERIMENT.RegabiArgs=!strings.Contains(mode,"noregabi");EXPERIMENT.PreemptibleLoops=false;EXPERIMENT.SIMD=false;EXPERIMENT.SizeSpecializedMalloc=true
+ BUILD_INIT
+ var walked []*ir.Func
+ seen:=map[*ir.Func]bool{}
+
+ for _,fn:=range TC.Target.Funcs{
+ todo:=[]*ir.Func{fn};for len(todo)>0{f:=todo[len(todo)-1];todo=todo[:len(todo)-1];if seen[f]||f.IsClosure()&&f==fn{continue};seen[f]=true;GRAPH.InitLSym(f,true);TY.CalcSize(f.Type());WALK_RUN;
+ walked=append(walked,f);todo=append(todo,f.Closures...);GRAPH.CurFunc=nil;LINK.DwTextCount++}
+ }
+ for _,f:=range walked{
+ compiled,stksize,stkptrsize,stkalign:=BUILD_RUN
+ if compiled.RegAlloc==nil{t.Fatal("SSA pipeline did not allocate registers",f)}
+ out=append(out,fmt.Sprintf("ssa:%s:%d:%d:%d:%t:%t\n%s",compiled.NameABI(),stksize,stkptrsize,stkalign,compiled.NoSplit,compiled.IsPgoHot,compiled.String()))
+ for _,r:=range compiled.RegArgs{out=append(out,fmt.Sprintf("spill:%d:%d:%v",r.Reg,r.Offset,r.Type))}
+ if d:=f.LSym.Func().OpenCodedDeferInfo;d!=nil{out=append(out,fmt.Sprintf("defer:%s:%x",d.Name,d.P))}
+ for _,n:=range f.DebugInfo.(*ssa.FuncDebug).OptDcl{out=append(out,fmt.Sprintf("opt:%v:%v",n,n.Type()))}
+ GRAPH.CurFunc=nil
+ }
+ for _,fn:=range walked{
+ out=append(out,fmt.Sprintf("func:%v:%v:%d:%d:%v:%d",fn.Sym(),fn.Type(),fn.ABI,fn.Esc(),fn.Pragma,len(fn.Body)))
+ for i,p:=range fn.Type().RecvParams(){out=append(out,fmt.Sprintf("param:%d:%v:%v:%q",i,p.Sym,p.Type,p.Note))}
+ ir.Visit(fn,func(n ir.Node){out=append(out,fmt.Sprintf("node:%v:%v:%d:%d:%v:%v",n.Op(),n.Type(),n.Typecheck(),n.Esc(),LINK.PosTable.Pos(n.Pos()),n));if call,ok:=n.(*ir.CallExpr);ok{out=append(out,fmt.Sprintf("call:%t:%t:%d",call.IsDDD,call.AppendNoAlias,len(call.KeepAlive)));out=append(out,fmt.Sprintf("buffer:%t",call.UseBuf))}})
+ ir.Visit(fn,func(n ir.Node){if m,ok:=n.(*ir.MoveToHeapExpr);ok{out=append(out,fmt.Sprintf("move:%v:%v:%t",m.Slice,m.RType,m.PreserveCapacity))}})
+ for _,n:=range fn.Dcl{out=append(out,fmt.Sprintf("local:%v:%v:%d:%d:%t:%t:%t:%t",n,n.Type(),n.Class,n.Esc(),n.Curfn==fn,n.Byval(),n.Addrtaken(),n.Opt==nil))}
+ for _,n:=range fn.ClosureVars{out=append(out,fmt.Sprintf("capture:%v:%d:%t:%t:%t",n,n.Esc(),n.Byval(),n.Addrtaken(),n.Opt==nil))}
+ }
+ for _,sym:=range LINK.Data{out=append(out,fmt.Sprintf("data:%s:%d:%d:%x",sym.Name,sym.Type,sym.Size,sym.P));for _,r:=range sym.R{out=append(out,fmt.Sprintf("reloc:%d:%d:%d:%s:%d",r.Type,r.Off,r.Siz,r.Sym.Name,r.Add))}}
+ out=append(out,fmt.Sprintf("state:%d:%t:%v",LINK.DwTextCount,GRAPH.CurFunc==nil,LINK.PosTable.Pos(POS)))
+ out=append(out,BUILD_INTRINSICS...)
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

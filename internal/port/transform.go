@@ -2,6 +2,7 @@ package port
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -90,8 +91,12 @@ func checkTypes(fset *token.FileSet, pkg string, files []*ast.File, imp types.Im
 // then remove unused imports; final output still gets normal strict checking.
 func checkTypesImports(fset *token.FileSet, pkg string, files []*ast.File, imp types.Importer, allowUnused bool) (*types.Package, *types.Info, error) {
 	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}, Types: map[ast.Expr]types.TypeAndValue{}, Implicits: map[ast.Node]types.Object{}, Selections: map[*ast.SelectorExpr]*types.Selection{}}
-	c := types.Config{Importer: imp, GoVersion: "go1.27", DisableUnusedImportCheck: allowUnused}
+	var diagnostics []error
+	c := types.Config{Importer: imp, GoVersion: "go1.27", DisableUnusedImportCheck: allowUnused, Error: func(err error) { diagnostics = append(diagnostics, err) }}
 	p, err := c.Check(pkg, fset, files, info)
+	if len(diagnostics) != 0 {
+		err = errors.Join(diagnostics...)
+	}
 	return p, info, err
 }
 

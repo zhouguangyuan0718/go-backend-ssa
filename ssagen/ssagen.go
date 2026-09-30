@@ -1,6 +1,8 @@
 // Package ssagen exposes native ABI wrappers, SSA target initialization and
 // frontend services for declared IR functions. Run GenABIWrappers after
-// pkginit.MakeTask. Native IR-to-SSA construction is not yet exposed.
+// pkginit.MakeTask. Configure SSA and liveness services, then run InitConfig and
+// InitTables before Walk and BuildSSA. BuildSSA includes phi placement, SSA
+// optimization, register allocation, frame layout and defer metadata.
 package ssagen
 
 import (

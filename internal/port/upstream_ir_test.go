@@ -55,6 +55,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_frontend")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_sources")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_frames")
+	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_build")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -80,6 +81,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if len(snapshots) > 0 {
 		snapshotName = snapshots[0]
 	}
+	isBuildSSA := snapshotName == "ssagen_build"
 	var template []byte
 	var err error
 	if snapshotName == "ssa_objects" {
@@ -177,11 +179,11 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if pkgName == "staticdata" {
 		setup = `link:=&obj.Link{Arch:&obj.LinkArch{Arch:&sys.Arch{Name:target.arch,PtrSize:target.size,RegSize:target.size,ByteOrder:target.order}}};u:=types.NewUniverseWithPositions(target.size,target.size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");graph:=ir.NewContext(u,link);typecheck.NewContext(graph).InitUniverse();c:=NewContext(graph,objw.NewContext(u,link,"linux"))`
 	}
-	if snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_import" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || snapshotName == "walk" {
+	if snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_import" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
 		setup = `link:=&obj.Link{Arch:&obj.LinkArch{Arch:&sys.Arch{Name:target.arch,PtrSize:target.size,RegSize:target.size,ByteOrder:target.order}}};u:=types.NewUniverseWithPositions(target.size,target.size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");graph:=ir.NewContext(u,link);tc:=typecheck.NewContext(graph);tc.InitUniverse();c,err:=NewContext(types2.NewContext(),tc);if err!=nil{t.Fatal(err)}`
 		position = "u.Pos"
 	}
-	if snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || snapshotName == "walk" {
+	if snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
 		setup += `;link.Pathname="/src";link.Pkgpath="example/p";tc.InitRuntime();c.Flag.Dwarf=true;rt:=rttype.NewContext(objw.NewContext(u,link,"linux"));rt.Init();c.ReflectData=reflectdata.NewContext(tc,rt,staticdata.NewContext(graph,rt.Writer));c.StaticInit=staticinit.NewContext(tc,c.ReflectData)`
 	}
 
@@ -198,14 +200,19 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if pkgName == "base" {
 		setup = `link:=&obj.Link{};c:=NewLinkContext(link)`
 	}
-	if snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || snapshotName == "walk" {
+	if snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
 		setup = strings.Replace(setup, "c,err:=NewContext(types2.NewContext(),tc)", "c,err:=noder.NewContext(types2.NewContext(),tc)", 1)
 	}
-	if snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssagen_sources" {
+	if snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssagen_sources" || isBuildSSA {
 		position = "u.Pos"
 		setup = `archs:=sys.NewContext();var targetArch *sys.Arch;for _,a:=range archs.Archs{if a.Name==target.arch{targetArch=a}};link:=&obj.Link{Arch:&obj.LinkArch{Arch:targetArch},Pkgpath:"example/p"};u:=types.NewUniverseWithPositions(target.size,target.size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");graph:=ir.NewContext(u,link);tc:=typecheck.NewContext(graph);tc.InitUniverse();tc.InitRuntime();rt:=rttype.NewContext(objw.NewContext(u,link,"linux"));rt.Init();c:=NewContext(tc);c.SSA=ssa.NewContext(abi.NewContext(graph),reflectdata.NewContext(tc,rt,staticdata.NewContext(graph,rt.Writer)),logopt.NewContext());c.SSA.Now=func()time.Time{return time.Time{}};c.Arch.LinkArch=link.Arch`
 	}
+	if isBuildSSA {
+		position = "u.Pos"
+		setup = `archs:=sys.NewContext();var a *sys.Arch;for _,v:=range archs.Archs{if v.Name==target.arch{a=v}};link:=&obj.Link{Pathname:"/src",Pkgpath:"example/p",Arch:&obj.LinkArch{Arch:a}};u:=types.NewUniverseWithPositions(target.size,target.size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");graph:=ir.NewContext(u,link);tc:=typecheck.NewContext(graph);tc.InitUniverse();tc.InitRuntime();c,err:=noder.NewContext(types2.NewContext(),tc);if err!=nil{t.Fatal(err)};c.Flag.Dwarf=true;rt:=rttype.NewContext(objw.NewContext(u,link,"linux"));rt.Init();c.ReflectData=reflectdata.NewContext(tc,rt,staticdata.NewContext(graph,rt.Writer));c.StaticInit=staticinit.NewContext(tc,c.ReflectData)`
+	}
 	ported := strings.NewReplacer(
+		"BUILD_INTRINSICS", "ssagen.SyncgoIntrinsicSnapshot(backend)", "BUILD_INIT", `backend.SSA=ssa.NewContext(abi.NewContext(graph),c.ReflectData,c.Inline.Log);backend.SSA.GOAMD64=1;backend.SSA.GOARM.Version=7;backend.SSA.GOPPC64=8;backend.SSA.GORISCV64=20;backend.SSA.FramePointerEnabled=target.arch=="amd64"||target.arch=="arm64";backend.SSA.Now=func()time.Time{return time.Time{}};backend.GO386="sse2";backend.GOMIPS="hardfloat";backend.GOMIPS64="hardfloat";backend.GOARM64.Version="v8.0";backend.Arch.LinkArch=link.Arch;backend.Arch.SoftFloat=strings.Contains(mode,"soft");backend.SSA.GOARM.SoftFloat=backend.Arch.SoftFloat;backend.Liveness=liveness.NewContext(backend.SSA);backend.InitConfig();backend.InitTables();if e:=backend.SSA.PhaseOption("check","on",1,"");e!=""{t.Fatal(e)}`, "BUILD_RUN", `ssagen.SyncgoBuildSnapshot(backend,f,ir.FuncName(f)=="Phi")`, "BUILD_IMPORT", `"time";"go-backend-ssa/internal/ssa";"go-backend-ssa/internal/abi";"go-backend-ssa/internal/liveness";`,
 		"SOURCE_INPUTS", `c.DumpFunction=input;c.DumpDirectory="reports"`, "SOURCE_HOST", `c.OpenSource=func(p string)(io.ReadCloser,error){return os.Open(p)};c.ExpandSourcePath=os.ExpandEnv;c.SSA.OpenHTML=func(p string,f int,m fs.FileMode)(io.WriteCloser,error){return os.OpenFile(p,f,m)};c.SSA.WorkingDirectory=os.Getwd`,
 		"FRAME_IMPORT", "go-backend-ssa/internal/liveness", "FRAME_INIT", "c.Liveness=liveness.NewContext(c.SSA)", "FRAME_FRONTEND", "c.NewFrontend(fn,false).(*ssafn)", "FRAME_ALLOC", "c.AllocFrame(f)", "FRAME_DEBUG", "graph.Debug", "FRAME_HASH", "graph.Base.MergeLocalsHash", "FRAME_NEWHASH", "graph.Base.NewHashDebug", "FRAME_ENV", "c.Liveness.ClobberDeadHash=hashSuffix",
 
@@ -246,6 +253,14 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		"DRIVER_DUMP_READ", `dump:=props.String()`,
 		"DRIVER_PROFILE", `input,err:=pgo.FromSerialized(strings.NewReader(raw));if err!=nil{t.Fatal(err)};profile=c.Inline.PGO.NewProfile(input)`,
 		"DRIVER.", "c.Interleaved.", "EXPAND_RUNTIME", `"go-backend-ssa/internal/rttype";"go-backend-ssa/internal/reflectdata";"go-backend-ssa/internal/objw";"go-backend-ssa/internal/staticdata";"go-backend-ssa/internal/staticinit";`, "INLINE_HEUR.", "c.Inline.Heuristics.", "EXPAND_IMPORT", "", "EXPAND_BIND", "", "INLINE.", "c.Inline.", "IMPORT_DWARF", "go-backend-ssa/internal/cmd/dwarf", "SYMBOL_IMPORT", "", "SYMBOL_TARGET", `link.TargetOS="linux"`, "PGO_HOOK_IMPORT", "", "PGO_HOOK_BIND", "", "PGO_LOOKUP", "c.Inline.PGO.LookupFunc", "PGO_CLEANUP", "c.Inline.PGO.PostLookupCleanup", "POLICY_IMPORT", `"go-backend-ssa/internal/inline/inlheur";"go-backend-ssa/internal/logopt";`, "IMPORT_PGOIR", "go-backend-ssa/internal/pgoir", "POLICY_BASE", "graph.Base", "POLICY_DEBUG", "graph.Debug", "POLICY_PGO", "c.PGO", "HASH_LINK", "link", "HEUR_IMPORT", `"go-backend-ssa/internal/inline/inlheur";`, "INLINE_ANALYZE", `c.Flag.LowerL=1;c.Inline.CanInlineFuncs(tc.Target.Funcs,nil)`, "HEUR_SETUP", `heur:=c.Inline.Heuristics`, "HEUR.", "heur.", "IMPORT_PGO", "go-backend-ssa/internal/cmd/pgo", "CG_BUILD", "c.NewProfile(input)", "AUTO_POS", "u.AutogeneratedPos", "BODY_TYPES2", `"go-backend-ssa/internal/types2";`, "BODY_RUNTIME", `"go-backend-ssa/internal/rttype";"go-backend-ssa/internal/reflectdata";"go-backend-ssa/internal/objw";"go-backend-ssa/internal/staticdata";"go-backend-ssa/internal/staticinit";`, "INIT_SCHEDULE", "c.StaticInit.NewSchedule()", "INIT_STATE", "c.StaticInit", "BODY_DRAIN", `c.ReadBodies(duringInlining,nil)`, "IMPORT_TYPES2", "go-backend-ssa/internal/types2", "DICT_CONTEXT", "c,", "DICT_ONLY", "c", "ND_DEBUG", "c.Typecheck.IR.Debug", "RD_STATIC", `"go-backend-ssa/internal/staticdata";`, "RD_FLAG", "c.Typecheck.IR.Base.Flag", "SD_FLAG", "c.IR.Base.Flag", "IMPORT_TYPEBITS", "go-backend-ssa/internal/typebits", "IMPORT_RTTYPE", "go-backend-ssa/internal/rttype", "RD_OBJW", `"go-backend-ssa/internal/objw";`, "EXPERIMENT", "u.Experiment", "TC.", "c.Typecheck.", "IMPORT_OBJW", "go-backend-ssa/internal/objw", "IMPORT_TYPECHECK", "go-backend-ssa/internal/typecheck", "RT_IR_OBJW", `"go-backend-ssa/internal/ir";"go-backend-ssa/internal/objw";`, "IMPORT_SYS", "go-backend-ssa/internal/cmd/sys", "IMPORT_OBJABI", "go-backend-ssa/internal/cmd/objabi", "IMPORT_BITVEC", "go-backend-ssa/internal/bitvec", "FIPSHASH", "link.SetFIPSDebugHash", "IMPORT_PKGBITS", "go-backend-ssa/internal/go/pkgbits", "IMPORT_BUILDCFG", "", "MAKEMARKER", "NewScopeMarker(graph.Base)", "IMPORT_IR", "go-backend-ssa/internal/ir", "GRAPH.", "graph.", "IMPORT_TYPES", "go-backend-ssa/internal/types", "IMPORT_OBJ", "go-backend-ssa/internal/cmd/obj", "IMPORT_SRC", "go-backend-ssa/internal/cmd/src", "IMPORT_BASE", "", "SETUP", setup, "UP.", "c.", "TY.", "u.", "LINK", "link", "POS", position).Replace(string(template))
+	if isBuildSSA {
+		observer, err := os.ReadFile(filepath.Join(root, "internal/port/testdata/ssagen_build_observer.go.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		code := strings.NewReplacer("IMPORT_IR", "go-backend-ssa/internal/ir", "IMPORT_SSA", "go-backend-ssa/internal/ssa", "IMPORT_TYPES", "go-backend-ssa/internal/types", "OBS_IMPORT", "", "OBS_CONTEXT", "c *Context,", "OBS_ONLY", "c *Context", "OBS_FE", "c.NewFrontend(fn,false)", "OBS_OWNER", "compilation:c,", "TY.AutogeneratedPos", "c.Typecheck.IR.Types.AutogeneratedPos", "TY.", "c.Typecheck.IR.Types.", "GRAPH.", "c.Typecheck.IR.", "UP.", "c.").Replace(string(observer))
+		writeTestFile(t, dir, "internal/ssagen/export_snapshot_test.go", code)
+	}
 	writeTestFile(t, dir, "internal/"+pkgName+"/adapter_snapshot_test.go", ported)
 	snapshotTarget := ""
 	run := func(args ...string) []byte {
@@ -261,22 +276,25 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	goroot := strings.TrimSpace(string(run("env", "GOROOT")))
 	overlay := map[string]string{}
 	packages := []string{"cmd/compile/internal/ir", "cmd/compile/internal/types", "cmd/compile/internal/base", "cmd/internal/obj", "cmd/compile/internal/typecheck", "cmd/compile/internal/noder", "cmd/compile/internal/dwarfgen", "cmd/compile/internal/objw", "cmd/compile/internal/bitvec", "cmd/internal/objabi", "internal/bisect", "internal/abi", "cmd/compile/internal/rttype", "cmd/compile/internal/reflectdata", "cmd/compile/internal/typebits", "cmd/compile/internal/staticdata", "cmd/internal/hash", "cmd/compile/internal/compare", "cmd/compile/internal/staticinit", "cmd/compile/internal/pgoir", "cmd/internal/pgo", "cmd/compile/internal/inline/inlheur", "cmd/compile/internal/inline", "cmd/compile/internal/logopt", "cmd/compile/internal/devirtualize", "cmd/compile/internal/inline/interleaved", "cmd/compile/internal/loopvar", "cmd/compile/internal/pkginit", "cmd/compile/internal/ssagen", "cmd/compile/internal/deadlocals", "cmd/compile/internal/escape", "cmd/compile/internal/slice"}
-	if pkgName == "ssa" || snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssagen_sources" {
+	if pkgName == "ssa" || snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssagen_sources" || isBuildSSA {
 		packages = append(packages, "cmd/compile/internal/ssa", "cmd/compile/internal/abt")
-		if snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssagen_sources" || snapshotName == "ssa_objects" || snapshotName == "ssa_opcodes" || snapshotName == "ssa_check" || snapshotName == "ssa_lower" || snapshotName == "ssa_generic" || snapshotName == "ssa_optimizer" || snapshotName == "ssa_calls" || snapshotName == "ssa_allocation" || snapshotName == "ssa_phases" || snapshotName == "ssa_compile" {
+		if snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssagen_sources" || isBuildSSA || snapshotName == "ssa_objects" || snapshotName == "ssa_opcodes" || snapshotName == "ssa_check" || snapshotName == "ssa_lower" || snapshotName == "ssa_generic" || snapshotName == "ssa_optimizer" || snapshotName == "ssa_calls" || snapshotName == "ssa_allocation" || snapshotName == "ssa_phases" || snapshotName == "ssa_compile" {
 			for _, arch := range []string{"arm", "arm64", "loong64", "mips", "ppc64", "riscv", "s390x", "wasm", "x86"} {
 				packages = append(packages, "cmd/internal/obj/"+arch)
 			}
 		}
 	}
-	if snapshotName == "walk_target" || snapshotName == "walk" {
+	if snapshotName == "walk_target" || (snapshotName == "walk" || isBuildSSA) {
 		packages = append(packages, "cmd/compile/internal/walk")
 	}
 	if pkgName == "abi" {
 		packages = append(packages, "cmd/compile/internal/abi")
 	}
-	if snapshotName == "ssagen_frames" {
+	if snapshotName == "ssagen_frames" || isBuildSSA {
 		packages = append(packages, "cmd/compile/internal/liveness")
+	}
+	if isBuildSSA {
+		packages = append(packages, "internal/runtime/gc")
 	}
 	for _, pkg := range packages {
 		for _, name := range s.PackageFiles(pkg) {
@@ -325,13 +343,13 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if pkgName == "reflectdata" {
 		nativeSetup += `;ir.Pkgs.InternalMaps=types.NewPkg("go.internal/runtime/maps","internal/runtime/maps");ir.Pkgs.InternalMaps.Prefix="internal/runtime/maps";ir.Pkgs.Runtime=types.NewPkg("go.runtime","runtime");ir.Pkgs.Runtime.Prefix="runtime";typecheck.Target=&ir.Package{};ir.Pkgs.Itab=types.NewPkg("go.itab","go.itab");ir.Pkgs.Itab.Prefix="go:itab";base.AutogeneratedPos=base.Ctxt.PosTable.XPos(src.MakePos(src.NewFileBase("<autogenerated>","<autogenerated>"),1,0));rttype.Init()`
 	}
-	if snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_import" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || snapshotName == "walk" {
+	if snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_import" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
 		nativeSetup = `base.Ctxt=&obj.Link{Arch:&obj.LinkArch{Arch:&sys.Arch{Name:target.arch,PtrSize:target.size,RegSize:target.size,ByteOrder:target.order}}};types.PtrSize=target.size;types.RegSize=target.size;types.MaxWidth=1<<50;types.BuiltinPkg=types.NewPkg("go.builtin","");types.LocalPkg=types.NewPkg("example/p","p");types.UnsafePkg=types.NewPkg("unsafe","unsafe");base.AutogeneratedPos=base.Ctxt.PosTable.XPos(src.MakePos(src.NewFileBase("<autogenerated>","<autogenerated>"),1,0));typecheck.InitUniverse()`
 	}
 	if snapshotName == "noder_import" {
 		nativeSetup += `;typecheck.Target=&ir.Package{}`
 	}
-	if snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || snapshotName == "walk" {
+	if snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
 		nativeSetup += `;base.Ctxt.Pathname="/src";base.Ctxt.Pkgpath="example/p";base.Flag.Dwarf=true;buildcfg.GOARCH=target.arch;buildcfg.GOOS="linux";ir.Pkgs.Go=types.NewPkg("go","");ir.Pkgs.InternalMaps=types.NewPkg("go.internal/runtime/maps","internal/runtime/maps");ir.Pkgs.InternalMaps.Prefix="internal/runtime/maps";ir.Pkgs.Runtime=types.NewPkg("go.runtime","runtime");ir.Pkgs.Runtime.Prefix="runtime";typecheck.Target=&ir.Package{};ir.Pkgs.Itab=types.NewPkg("go.itab","go.itab");ir.Pkgs.Itab.Prefix="go:itab";typecheck.InitRuntime();rttype.Init()`
 	}
 
@@ -348,10 +366,14 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if pkgName == "base" {
 		nativeSetup = `Ctxt=&obj.Link{}`
 	}
-	if snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssagen_sources" {
+	if snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssagen_sources" || isBuildSSA {
 		nativeSetup = `var targetArch *sys.Arch;for _,a:=range sys.Archs{if a.Name==target.arch{targetArch=a}};base.Ctxt=&obj.Link{Arch:&obj.LinkArch{Arch:targetArch},Pkgpath:"example/p"};types.PtrSize=target.size;types.RegSize=target.size;types.MaxWidth=1<<50;types.BuiltinPkg=types.NewPkg("go.builtin","");types.LocalPkg=types.NewPkg("example/p","p");types.UnsafePkg=types.NewPkg("unsafe","unsafe");typecheck.InitUniverse();base.AutogeneratedPos=base.Ctxt.PosTable.XPos(src.MakePos(src.NewFileBase("<autogenerated>","<autogenerated>"),1,0));buildcfg.GOARCH=target.arch;buildcfg.GOOS="linux";ir.Pkgs.Go=types.NewPkg("go","");ir.Pkgs.InternalMaps=types.NewPkg("go.internal/runtime/maps","internal/runtime/maps");ir.Pkgs.InternalMaps.Prefix="internal/runtime/maps";ir.Pkgs.Runtime=types.NewPkg("go.runtime","runtime");ir.Pkgs.Runtime.Prefix="runtime";typecheck.Target=&ir.Package{};ir.Pkgs.Itab=types.NewPkg("go.itab","go.itab");ir.Pkgs.Itab.Prefix="go:itab";typecheck.InitRuntime();rttype.Init();Arch.LinkArch=base.Ctxt.Arch`
 	}
+	if isBuildSSA {
+		nativeSetup += `;base.Ctxt.Pathname="/src";base.Flag.Dwarf=true`
+	}
 	native := strings.NewReplacer(
+		"BUILD_INTRINSICS", "ssagen.SyncgoIntrinsicSnapshot()", "BUILD_INIT", `buildcfg.GO386="sse2";buildcfg.GOAMD64=1;buildcfg.GOARM.Version=7;buildcfg.GOPPC64=8;buildcfg.GORISCV64=20;buildcfg.GOMIPS="hardfloat";buildcfg.GOMIPS64="hardfloat";buildcfg.GOARM64=buildcfg.Goarm64Features{Version:"v8.0"};buildcfg.FramePointerEnabled=target.arch=="amd64"||target.arch=="arm64";Arch.LinkArch=base.Ctxt.Arch;Arch.SoftFloat=strings.Contains(mode,"soft");buildcfg.GOARM.SoftFloat=Arch.SoftFloat;InitConfig();InitTables();ir.IsIntrinsicCall=IsIntrinsicCall;ir.IsIntrinsicSym=IsIntrinsicSym;if e:=ssa.PhaseOption("check","on",1,"");e!=""{t.Fatal(e)}`, "BUILD_RUN", `ssagen.SyncgoBuildSnapshot(f,ir.FuncName(f)=="Phi")`, "BUILD_IMPORT", `"cmd/compile/internal/ssa";`,
 		"SOURCE_INPUTS", `t.Setenv("GOSSAFUNC",input);t.Setenv("GOSSADIR","reports")`, "SOURCE_HOST", "",
 		"FRAME_IMPORT", "cmd/compile/internal/liveness", "FRAME_INIT", "", "FRAME_FRONTEND", "&ssafn{curfn:fn}", "FRAME_ALLOC", "fe.AllocFrame(f)", "FRAME_DEBUG", "base.Debug", "FRAME_HASH", "base.MergeLocalsHash", "FRAME_NEWHASH", "base.NewHashDebug", "FRAME_ENV", "t.Setenv(\"GOCLOBBERDEADHASH\",hashSuffix)",
 
@@ -391,6 +413,22 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		"DRIVER_DUMP_READ", `var dump string;if data,err:=os.ReadFile(dumpPath);err==nil{dump=string(data)}else if !os.IsNotExist(err){t.Fatal(err)}`,
 		"DRIVER_PROFILE", `pgoir.LookupFunc=LookupFunc;pgoir.PostLookupCleanup=PostLookupCleanup;path:=filepath.Join(t.TempDir(),"profile");if err:=os.WriteFile(path,[]byte(raw),0600);err!=nil{t.Fatal(err)};profile,err=pgoir.New(path);if err!=nil{t.Fatal(err)}`,
 		"DRIVER.", "interleaved.", "EXPAND_RUNTIME", `"cmd/compile/internal/rttype";"internal/buildcfg";`, "INLINE_HEUR.", "inlheur.", "EXPAND_IMPORT", `"cmd/compile/internal/inline";"cmd/compile/internal/inline/inlheur";`, "EXPAND_BIND", `inline.InlineCall=unifiedInlineCall`, "INLINE.", "inline.", "IMPORT_DWARF", "cmd/internal/dwarf", "SYMBOL_IMPORT", `;"internal/buildcfg"`, "SYMBOL_TARGET", `buildcfg.GOOS="linux";buildcfg.GOARCH="amd64"`, "PGO_HOOK_IMPORT", `"cmd/compile/internal/pgoir";`, "PGO_HOOK_BIND", `typecheck.HaveInlineBody=unifiedHaveInlineBody;pgoir.LookupFunc=LookupFunc;pgoir.PostLookupCleanup=PostLookupCleanup`, "PGO_LOOKUP", "pgoir.LookupFunc", "PGO_CLEANUP", "pgoir.PostLookupCleanup", "POLICY_IMPORT", "", "IMPORT_PGOIR", "cmd/compile/internal/pgoir", "POLICY_BASE", "base", "POLICY_DEBUG", "base.Debug", "POLICY_PGO", "pgoir", "HASH_LINK", "Ctxt", "HEUR_IMPORT", `"cmd/compile/internal/inline/inlheur";"cmd/compile/internal/inline";`, "INLINE_ANALYZE", `base.Flag.LowerL=1;inline.CanInlineFuncs(typecheck.Target.Funcs,nil)`, "HEUR_SETUP", "typecheck.HaveInlineBody=unifiedHaveInlineBody", "HEUR.", "inlheur.", "IMPORT_PGO", "cmd/internal/pgo", "CG_BUILD", "&Profile{Profile:input,WeightedCG:createIRGraph(input.NamedEdgeMap)}", "AUTO_POS", "base.AutogeneratedPos", "BODY_TYPES2", "", "BODY_RUNTIME", `"cmd/compile/internal/rttype";"internal/buildcfg";"cmd/compile/internal/staticinit";`, "INIT_SCHEDULE", "&staticinit.Schedule{Plans:make(map[ir.Node]*staticinit.Plan),Temps:make(map[ir.Node]*ir.Name)}", "INIT_STATE", "staticinit", "BODY_DRAIN", `readBodies(typecheck.Target,duringInlining,nil)`, "IMPORT_TYPES2", "cmd/compile/internal/types2", "DICT_CONTEXT", "", "DICT_ONLY", "", "ND_DEBUG", "base.Debug", "RD_STATIC", "", "RD_FLAG", "base.Flag", "SD_FLAG", "base.Flag", "IMPORT_TYPEBITS", "cmd/compile/internal/typebits", "IMPORT_RTTYPE", "cmd/compile/internal/rttype", "RD_OBJW", "", "EXPERIMENT", "buildcfg.Experiment", "TC.", "typecheck.", "IMPORT_OBJW", "cmd/compile/internal/objw", "IMPORT_TYPECHECK", "cmd/compile/internal/typecheck", "RT_IR_OBJW", "", "IMPORT_SYS", "cmd/internal/sys", "IMPORT_OBJABI", "cmd/internal/objabi", "IMPORT_BITVEC", "cmd/compile/internal/bitvec", "FIPSHASH", "obj.SetFIPSDebugHash", "IMPORT_PKGBITS", "internal/pkgbits", "IMPORT_BUILDCFG", `;"internal/buildcfg"`, "MAKEMARKER", "ScopeMarker{}", "IMPORT_IR", "cmd/compile/internal/ir", "GRAPH.", "ir.", "IMPORT_TYPES", "cmd/compile/internal/types", "IMPORT_OBJ", "cmd/internal/obj", "IMPORT_SRC", "cmd/internal/src", "IMPORT_BASE", `"cmd/compile/internal/base"`, "SETUP", nativeSetup, "UP.", "", "TY.", "types.", "LINK", "base.Ctxt", "POS", "base.Pos").Replace(string(template))
+	if isBuildSSA {
+		observer := "reference/ssagen_build_observer_test.go"
+		data, err := os.ReadFile(filepath.Join(root, "internal/port/testdata/ssagen_build_observer.go.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		code := strings.NewReplacer("IMPORT_IR", "cmd/compile/internal/ir", "IMPORT_SSA", "cmd/compile/internal/ssa", "IMPORT_TYPES", "cmd/compile/internal/types", "OBS_IMPORT", `"cmd/compile/internal/base";"internal/buildcfg";`, "OBS_CONTEXT", "", "OBS_ONLY", "", "OBS_FE", "&ssafn{curfn:fn}", "OBS_OWNER", "", "TY.AutogeneratedPos", "base.AutogeneratedPos", "TY.Experiment", "buildcfg.Experiment", "TY.", "types.", "GRAPH.", "ir.", "UP.", "").Replace(string(data))
+		writeTestFile(t, dir, observer, code)
+		overlay[filepath.Join(goroot, "src/cmd/compile/internal/ssagen/syncgo_build_observer_test.go")] = filepath.Join(dir, observer)
+		native = strings.ReplaceAll(native, ";Arch.", ";ssagen.Arch.")
+		native = strings.ReplaceAll(native, "=Arch.", "=ssagen.Arch.")
+		native = strings.ReplaceAll(native, ";InitConfig()", ";ssagen.InitConfig()")
+		native = strings.ReplaceAll(native, ";InitTables()", ";ssagen.InitTables()")
+		native = strings.ReplaceAll(native, "=IsIntrinsicCall", "=ssagen.IsIntrinsicCall")
+		native = strings.ReplaceAll(native, "=IsIntrinsicSym", "=ssagen.IsIntrinsicSym")
+	}
 	writeTestFile(t, dir, "reference/"+pkgName+"_snapshot_test.go", native)
 	overlay[filepath.Join(goroot, "src/cmd/compile/internal/"+pkgName+"/syncgo_snapshot_test.go")] = filepath.Join(dir, "reference/"+pkgName+"_snapshot_test.go")
 	// Observers expose existing buffers only in the temporary reference build.
@@ -405,7 +443,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 			overlay[filepath.Join(goroot, "src/cmd/compile/internal", observer.pkg, "syncgo_loopvar_observer.go")] = filepath.Join(dir, dest)
 		}
 	}
-	if snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || snapshotName == "walk" {
+	if snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
 		data, err := os.ReadFile(filepath.Join(root, "internal/port/testdata/pkginit_reader.go.txt"))
 		if err != nil {
 			t.Fatal(err)
@@ -458,17 +496,17 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	// rejects overlays. Run that exact binary with a private test module cache;
 	// it needs no external modules and never writes to the installed toolchain.
 	targets := []string{""}
-	if pkgName == "rttype" || pkgName == "reflectdata" || pkgName == "staticdata" || pkgName == "abi" || snapshotName == "staticinit_zero" || pkgName == "ssa" || snapshotName == "walk_target" || snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || snapshotName == "walk" {
+	if pkgName == "rttype" || pkgName == "reflectdata" || pkgName == "staticdata" || pkgName == "abi" || snapshotName == "staticinit_zero" || pkgName == "ssa" || snapshotName == "walk_target" || snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
 		targets = []string{"386", "amd64", "mips", "ppc64"}
 	}
 	if snapshotName == "ssa_objects" || snapshotName == "ssa_opcodes" || snapshotName == "ssa_containers" || snapshotName == "ssa_allocators" || snapshotName == "ssa_dom" || snapshotName == "ssa_numeric" {
 		// Metadata covers all architectures in one run; containers use host-sized indexes, and numeric helpers use fixed-width inputs.
 		targets = []string{""}
 	}
-	if snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssagen_sources" {
+	if snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssagen_sources" || isBuildSSA {
 		targets = []string{"386", "amd64", "arm", "arm64", "loong64", "mips", "mipsle", "mips64", "mips64le", "ppc64", "ppc64le", "riscv64", "s390x", "wasm", "amd64-soft", "arm-soft", "amd64-noopt", "amd64-race", "amd64-noregabi"}
 	}
-	if snapshotName == "ssagen_sources" {
+	if snapshotName == "ssagen_sources" || isBuildSSA {
 		targets = []string{"386", "amd64", "mips", "ppc64"}
 	}
 	if snapshotName == "ssagen_frames" {
@@ -558,7 +596,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		}
 		writeTestFile(t, dir, "internal/noder/adapter_fixture_test.go", strings.ReplaceAll(string(fixture), "BODY_INPUT_PATH", fmt.Sprintf("%q", filepath.Join(dir, "reader-input"))))
 	}
-	if snapshotName == "walk" {
+	if snapshotName == "walk" || isBuildSSA {
 		targets = append(targets, "amd64-soft", "amd64-noopt", "amd64-inline", "amd64-fips", "amd64-jumptable", "amd64-split", "amd64-libfuzzer")
 		fixture, err := os.ReadFile(filepath.Join(root, "internal/port/testdata/walk_fixture.go.txt"))
 		if err != nil {
@@ -592,6 +630,14 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		targets = append(targets, "amd64-seed1", "amd64-seed314159", "amd64-loops", "amd64-simd", "amd64-checked-noopt")
 	}
 
+	if isBuildSSA {
+		targets = []string{"arm-soft", "amd64-race", "amd64-noregabi", "amd64-largephi", "386", "amd64", "arm", "arm64", "loong64", "mips", "mipsle", "mips64", "mips64le", "ppc64", "ppc64le", "riscv64", "s390x", "wasm", "amd64-noopt"}
+		fixture, err := os.ReadFile(filepath.Join(root, "internal/port/testdata/ssagen_build_fixture.go.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeTestFile(t, dir, "internal/noder/adapter_fixture_test.go", strings.ReplaceAll(string(fixture), "BODY_INPUT_PATH", fmt.Sprintf("%q", filepath.Join(dir, "reader-input"))))
+	}
 	for _, snapshotTarget = range targets {
 		if snapshotName == "escape" {
 			// The library selects this build-time feature per instance. Only force
@@ -619,7 +665,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		if snapshotName == "noder_inline" && strings.HasSuffix(snapshotTarget, "-newinline") {
 			prepareNativeImport(t, root, dir, true)
 		}
-		if snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || snapshotName == "walk" {
+		if snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
 			run("test", "-count=1", "-run", "^TestSyncgoBodyFixture$", "./internal/noder")
 		}
 

@@ -216,7 +216,7 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 		t.Fatal("checker bridge identity")
 	}
 	layout, _ := target.NewLayout("linux", "amd64")
-	link := &gcbridge.Link{Pathname: "/src", Pkgpath: "example/p", Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8, ByteOrder: binary.LittleEndian}}}
+	link := &gcbridge.Link{Pathname: "/src", Pkgpath: "example/p", Arch: &gcbridge.LinkArch{Arch: gcbridge.NewArchitectures().ArchAMD64}}
 	universe, err := types.NewUniverseWithPositions(layout, &link.PosTable)
 	if err != nil {
 		t.Fatal(err)
@@ -412,9 +412,34 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	if assigned.Config() != cfg || len(assigned.InParams()) != 2 || len(assigned.OutParams()) != 1 || len(abiLayout.RegisterTypes(assigned.InParams())) != 2 {
 		t.Fatal("public ABI layout", assigned)
 	}
+
+	nativeSSA := ssa.NewContext(abi.NewContext(graph), writer.ReflectData, writer.Inline.Log)
+	nativeSSA.GOAMD64 = 1
+	nativeSSA.GOARM.Version = 7
+	nativeSSA.GOPPC64 = 8
+	nativeSSA.GORISCV64 = 20
+	nativeSSA.FramePointerEnabled = true
+	nativeSSA.Now = func() time.Time { return time.Time{} }
+	graph.Base.Flag.LowerC = 1
+	graph.Base.Flag.WB = true
+	backend.SSA = nativeSSA
+	backend.Liveness = liveness.NewContext(nativeSSA)
+	backend.Arch.LinkArch = link.Arch
+	backend.GO386 = "sse2"
+	backend.GOMIPS = "hardfloat"
+	backend.GOMIPS64 = "hardfloat"
+	backend.GOARM64.Version = "v8.0"
+	backend.InitConfig()
+	backend.InitTables()
 	lowering := walk.NewContext(writer, analysis)
 	seen := map[*ir.Func]bool{}
+	var prepared []*ir.Func
 	for _, root := range result.Funcs {
+		// Native gc.enqueueFunc prepares closures through their enclosing function.
+		// Inlined closures can remain in the package list without executable captures.
+		if root.IsClosure() {
+			continue
+		}
 		todo := []*ir.Func{root}
 		for len(todo) > 0 {
 			fn := todo[len(todo)-1]
@@ -428,13 +453,31 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 			}
 			graph.Types.CalcSize(fn.Type())
 			lowering.Walk(fn)
+
 			if graph.CurFunc != fn {
 				t.Fatal("public Walk lost current function")
 			}
 			graph.CurFunc = nil
+			prepared = append(prepared, fn)
 			todo = append(todo, fn.Closures...)
 		}
 	}
+	// Match native preparation: finish Walk for all reachable functions before SSA.
+	for _, fn := range prepared {
+		compiled := backend.BuildSSA(fn, 0, false)
+		if compiled == nil || compiled.RegAlloc == nil || compiled.Frontend().Func() != fn {
+			t.Fatal("public source-to-SSA pipeline", fn)
+		}
+		for _, block := range compiled.Blocks {
+			for _, value := range block.Values {
+				if value.Op == ssa.OpFwdRef {
+					t.Fatal("unresolved SSA variable", fn)
+				}
+			}
+		}
+		graph.CurFunc = nil
+	}
+
 	if len(seen) == 0 {
 		t.Fatal("public Walk did not process functions")
 	}

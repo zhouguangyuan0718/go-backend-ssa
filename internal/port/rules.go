@@ -230,6 +230,7 @@ func Migration() Plan {
 	plan.Units = ssagenFrontendMigration(plan.Units)
 	plan.Units = ssagenFrameMigration(plan.Units)
 	plan.Units = ssaSourceDiagnosticMigration(plan.Units)
+	plan.Units = ssagenBuildMigration(plan.Units)
 	for i := range plan.Units {
 		if plan.Units[i].Source == "src/cmd/internal/obj/link.go" {
 			plan.Units[i].Declarations = append(plan.Units[i].Declarations, "AXXX", "ABase386", "LSym.CanBeAnSSASym", "LSym.CanBeAnSSAAux")

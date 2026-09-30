@@ -276,9 +276,9 @@ func symbolUniverse(sym *Sym) *Universe {
 // LinkContext returns the explicitly bound native compiler symbol inputs.
 func (u *Universe) LinkContext() *base.LinkContext { return u.links }
 
-// Nil symbol formatting returns the native <S> marker before touching state.
+// Nil symbols and package-less SSA markers return before touching format state.
 func formatUniverse(s *Sym) *Universe {
-	if s == nil {
+	if s == nil || s.Pkg == nil {
 		return &Universe{}
 	}
 	u := s.Universe()
