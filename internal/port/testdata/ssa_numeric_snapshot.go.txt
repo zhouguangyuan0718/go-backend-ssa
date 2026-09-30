@@ -1,0 +1,88 @@
+package ssa
+
+import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"math"
+	"math/rand"
+	"testing"
+)
+
+func TestSyncgoNativeSnapshot(t *testing.T) {
+	var out []string
+	h := sha256.New()
+	record := func(format string, args ...any) { fmt.Fprintf(h, format+"\n", args...) }
+	flush := func(name string) { out = append(out, fmt.Sprintf("%s:%x", name, h.Sum(nil))); h.Reset() }
+	attempt := func(name string, fn func()) { defer func() { record("panic:%s:%v", name, recover()) }(); fn() }
+	r := rand.New(rand.NewSource(83791))
+	numbers := []int64{0, 1, -1, math.MinInt64, math.MaxInt64, math.MinInt32, math.MaxInt32, 1 << 32, 1<<32 - 1, -1 << 32}
+	for i := 0; i < 128; i++ {
+		numbers = append(numbers, int64(r.Uint64()))
+	}
+	for _, x := range numbers {
+		record("int:%d:%t:%d:%d:%d:%d:%d:%d:%d:%d", x, auxIntToBool(x), auxIntToInt8(x), auxIntToInt16(x), auxIntToInt32(x), auxIntToInt64(x), auxIntToUint8(x), auxIntToUint64(x), valAndOffToAuxInt(auxIntToValAndOff(x)), flagConstantToAuxInt(auxIntToFlagConstant(x)), opToAuxInt(auxIntToOp(x)))
+		record("encode:%d:%d:%d:%d:%d:%d:%d", boolToAuxInt(x != 0), int8ToAuxInt(int8(x)), int16ToAuxInt(int16(x)), int32ToAuxInt(int32(x)), int64ToAuxInt(x), uint8ToAuxInt(uint8(x)), uint64ToAuxInt(uint64(x)))
+		record("logic:%d:%d", logicFlags64(x), logicFlags32(int32(x)))
+		for _, y := range numbers {
+			record("arith:%d:%d:%d:%d", addFlags64(x, y), subFlags64(x, y), addFlags32(int32(x), int32(y)), subFlags32(int32(x), int32(y)))
+		}
+	}
+	flush("integer-and-flags")
+	for x := 0; x < 256; x++ {
+		f := flagConstant(x)
+		record("condition:%d:%s:%t:%t:%t:%t:%t:%t:%t:%t:%t:%t:%t:%t:%t:%t", x, f, f.eq(), f.ne(), f.lt(), f.le(), f.gt(), f.ge(), f.ult(), f.ule(), f.ugt(), f.uge(), f.ltNoov(), f.leNoov(), f.gtNoov(), f.geNoov())
+	}
+	flush("conditions")
+	bits64 := []uint64{0, 1, 1 << 63, 0x7ff0000000000000, 0xfff0000000000000, 0x7ff8000000000000, 0xfff8000000000000, 0x7ff0000020000000, 0x7ff0000000000001, 0x3ff0000000000000, 0x3ff0000000000001, 0x36a0000000000000, 0x3690000000000000, 0x47f0000000000000}
+	for _, b := range bits64 {
+		f := math.Float64frombits(b)
+		record("float64:%016x:%016x:%08x:%t", b, uint64(float64ToAuxInt(auxIntToFloat64(int64(b)))), math.Float32bits(auxIntToFloat32(int64(b))), isExactFloat32(f))
+		attempt(fmt.Sprintf("truncate:%x", b), func() {
+			record("truncated:%08x:%08x", math.Float32bits(truncate64Fto32F(f)), math.Float32bits(auxTo32F(int64(b))))
+		})
+	}
+	for _, b := range []uint32{0, 1, 1 << 31, 0x7f800000, 0xff800000, 0x7fc00000, 0x7fa12345, 0xffcabcde, 0x3f800000, 0x7f7fffff} {
+		f := math.Float32frombits(b)
+		v := float32ToAuxInt(f)
+		record("float32:%08x:%016x:%08x", b, uint64(v), math.Float32bits(auxIntToFloat32(v)))
+	}
+	flush("float-bits")
+	for lsb := int64(0); lsb < 64; lsb++ {
+		for width := int64(1); width <= 64-lsb; width++ {
+			x := armBFAuxInt(lsb, width)
+			back := auxIntToArm64BitField(arm64BitFieldToAuxInt(x))
+			record("bf:%d:%d:%d:%d:%d", lsb, width, x, back.lsb(), back.width())
+		}
+	}
+	for _, p := range [][2]int64{{-1, 1}, {64, 1}, {0, 0}, {63, 2}, {0, 65}} {
+		attempt(fmt.Sprint(p), func() { armBFAuxInt(p[0], p[1]) })
+	}
+	flush("arm-bitfield")
+	for op := OpARM64Equal; op <= OpARM64GreaterEqualU; op++ {
+		for nzcv := uint8(0); nzcv < 16; nzcv++ {
+			p := arm64ConditionalParamsAuxInt(op, nzcv)
+			i := arm64ConditionalParamsToAuxInt(p)
+			back := auxIntToArm64ConditionalParams(i)
+			value, ok := back.ConstValue()
+			record("cond:%d:%d:%d:%d:%d:%d:%t", op, nzcv, i, back.Cond(), back.Nzcv(), value, ok)
+			for immediate := uint8(0); immediate < 32; immediate++ {
+				p = arm64ConditionalParamsAuxIntWithValue(op, nzcv, immediate)
+				i = arm64ConditionalParamsToAuxInt(p)
+				back = auxIntToArm64ConditionalParams(i)
+				value, ok = back.ConstValue()
+				record("imm:%d:%d:%d:%d:%d:%d:%t", op, nzcv, i, back.Cond(), back.Nzcv(), value, ok)
+			}
+		}
+	}
+	attempt("bad-op", func() { arm64ConditionalParamsAuxInt(OpInvalid, 0) })
+	attempt("bad-nzcv", func() { arm64ConditionalParamsAuxInt(OpARM64Equal, 16) })
+	attempt("bad-immediate", func() { arm64ConditionalParamsAuxIntWithValue(OpARM64Equal, 0, 32) })
+	attempt("wide-op", func() { arm64ConditionalParamsToAuxInt(arm64ConditionalParams{cond: Op(1 << 16)}) })
+	flush("arm-conditions")
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("SYNCGO_IR=" + string(data))
+}

@@ -78,6 +78,7 @@
 61. [M3 SSA 派生切片分配器](docs/m3-ssa-derived-allocators.md)：按类型审计原生切片重解释并保留完整分配算法。
 62. [M3 SSA 支配树](docs/m3-ssa-dominators.md)：原生后序遍历、立即支配者、稀疏树和独立可达性验证。
 63. [M3 SSA 调用辅助信息](docs/m3-ssa-aux.md)：原生调用 ABI/寄存器约束、Aux 转换和结果类型实例归属。
+64. [M3 SSA 数值辅助操作](docs/m3-ssa-numeric.md)：原生 AuxInt 编码、浮点位模式、ARM 参数和算术标志位。
 
 ## 当前可运行的工具
 

@@ -1,0 +1,8 @@
+package port
+
+func ssaRewriteAuxUnit() Unit {
+	return Unit{Source: "src/cmd/compile/internal/ssa/rewrite.go",
+		Declarations: []string{"Aux", "stringAux", "stringAux.CanBeAnSSAAux", "arm64BitField.lsb", "arm64BitField.width", "arm64ConditionalParams.Cond", "arm64ConditionalParams.Nzcv", "arm64ConditionalParams.ConstValue", "flagConstant", "flagConstantBuilder", "flagConstantBuilder.encode", "flagConstant.N", "flagConstant.Z", "flagConstant.C", "flagConstant.V", "flagConstant.eq", "flagConstant.ne", "flagConstant.lt", "flagConstant.le", "flagConstant.gt", "flagConstant.ge", "flagConstant.ult", "flagConstant.ule", "flagConstant.ugt", "flagConstant.uge", "flagConstant.ltNoov", "flagConstant.leNoov", "flagConstant.gtNoov", "flagConstant.geNoov", "flagConstant.String"},
+		Functions:    []string{"auxToString", "auxToSym", "auxToType", "auxToCall", "StringToAux", "symToAux", "typeToAux", "callToAux", "truncate64Fto32F", "auxTo32F", "auxIntToBool", "auxIntToInt8", "auxIntToInt16", "auxIntToInt32", "auxIntToInt64", "auxIntToUint8", "auxIntToUint64", "auxIntToFloat32", "auxIntToFloat64", "auxIntToValAndOff", "auxIntToArm64BitField", "auxIntToArm64ConditionalParams", "auxIntToFlagConstant", "auxIntToOp", "boolToAuxInt", "int8ToAuxInt", "int16ToAuxInt", "int32ToAuxInt", "int64ToAuxInt", "uint8ToAuxInt", "uint64ToAuxInt", "float32ToAuxInt", "float64ToAuxInt", "valAndOffToAuxInt", "arm64BitFieldToAuxInt", "arm64ConditionalParamsToAuxInt", "flagConstantToAuxInt", "opToAuxInt", "armBFAuxInt", "arm64ConditionalParamsAuxInt", "arm64ConditionalParamsAuxIntWithValue", "addFlags64", "subFlags64", "addFlags32", "subFlags32", "logicFlags64", "logicFlags32"},
+	}
+}
