@@ -122,8 +122,8 @@ func TestExplicitNativeBuildVariant(t *testing.T) {
 func TestQualifiedNativeContextType(t *testing.T) {
 	const q = "src/cmd/compile/internal/q/q.go"
 	const p = "src/cmd/compile/internal/p/p.go"
-	const source = `package p;import "cmd/compile/internal/q";var counter int;func Add(x *q.Context)int{counter+=x.Value;return counter}`
-	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", q: `package q;type Context struct{Value int}`, p: source})
+	const source = `package p;import "cmd/compile/internal/q";var counter int;func Add(x *q.Context)int{counter+=x.Value;return counter};func Config(x *q.Context)q.Config{counter++;return q.Config{Context:x}}`
+	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", q: `package q;type Context struct{Value int};type Config struct{Context *Context}`, p: source})
 	s, e := OpenSource(context.Background(), repo, pin)
 	if e != nil {
 		t.Fatal(e)
@@ -139,7 +139,7 @@ func TestQualifiedNativeContextType(t *testing.T) {
 		t.Fatal(e)
 	}
 	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
-	writeTestFile(t, dir, "internal/p/check_test.go", `package p;import("testing";"go-backend-ssa/internal/q");func TestContexts(t *testing.T){a,b:=&Context{},&Context{};x:=&q.Context{Value:3};if a.Add(x)!=3||a.Add(x)!=6||b.Add(x)!=3{t.Fatal("context binding")}}`)
+	writeTestFile(t, dir, "internal/p/check_test.go", `package p;import("testing";"go-backend-ssa/internal/q");func TestContexts(t *testing.T){a,b:=&Context{},&Context{};x:=&q.Context{Value:3};if a.Add(x)!=3||a.Add(x)!=6||b.Add(x)!=3{t.Fatal("context binding")};if a.Config(x).Context!=x||a.counter!=7{t.Fatal("external field key lost")}}`)
 	cmd := exec.Command("go", "test", "-race", "./...")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.27.1")

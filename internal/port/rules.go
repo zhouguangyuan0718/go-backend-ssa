@@ -208,6 +208,8 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, dwarfgenMigration()...)
 	plan.Units = append(plan.Units, importerMigration()...)
 	plan.Units = append(plan.Units, noderMigration()...)
+	plan.Units = noderDiagnosticMigration(plan.Units)
+	plan.Units = noderSourceMigration(plan.Units)
 	plan.Units = append(plan.Units, pkginitMigration()...)
 	plan.Units = append(plan.Units, ssagenABIMigration()...)
 	plan.Units = append(plan.Units, deadlocalsMigration()...)

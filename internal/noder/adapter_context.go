@@ -12,6 +12,7 @@ import (
 	"go-backend-ssa/internal/inline/interleaved"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/logopt"
+	"go-backend-ssa/internal/midway"
 	"go-backend-ssa/internal/pgoir"
 	"go-backend-ssa/internal/rangefunc"
 	"go-backend-ssa/internal/reflectdata"
@@ -21,6 +22,11 @@ import (
 	"go-backend-ssa/internal/types2"
 	"go/version"
 	"io"
+	"io/fs"
+	"reflect"
+	"regexp"
+	"strings"
+	"sync"
 
 	"go-backend-ssa/internal/base"
 	"go-backend-ssa/internal/cmd/obj"
@@ -32,6 +38,15 @@ import (
 // Context owns the formerly process-wide inputs used by the selected noder
 // algorithms. The supplied Link and its position table belong to this instance.
 type Context struct {
+	versionErrorRx            *regexp.Regexp
+	sourceStarted, sourceMode bool
+	syntaxMu                  sync.Mutex
+	syntaxHTMLWriters         map[*syntax.FuncDecl]*HTMLWriter
+	syntaxOrderedFuncs        []*syntax.FuncDecl
+	syntaxNodeType            reflect.Type
+	OpenSyntaxHTML            func(string, int, fs.FileMode) (io.WriteCloser, error)
+	SyntaxWorkingDirectory    func() (string, error)
+
 	importHeader                *objabi.Context
 	hostOS                      string
 	dependencyOpen              func(string) (DependencyFile, error)
@@ -156,6 +171,7 @@ func NewContext(checker *types2.Context, tc *typecheck.Context) (*Context, error
 	c := &Context{Base: graph.Base, Checker: checker, Typecheck: tc, Types: u, Ctxt: link, GOARCH: link.Arch.Name, Flag: &graph.Base.Flag, Debug: &graph.Debug, Diagnostics: &graph.Diagnostics}
 	c.ptrSize = u.PointerSize()
 	c.initContext()
+	c.initializeWriterUniverse()
 	tc.HaveInlineBody = c.unifiedHaveInlineBody
 	c.Inline = inline.NewContext(tc, inlheur.NewContext(tc, pgoir.NewContext(tc)), logopt.NewContext())
 	c.Inline.PGO.PostLookupCleanup = c.PostLookupCleanup
@@ -255,7 +271,13 @@ func (c *Context) writeCheckedPackage(pkg *types2.Package, info *types2.Info, fi
 	return data, nil
 }
 func (c *Context) checkedFiles(m posMap, noders []*noder) (*types2.Package, *types2.Info, map[*syntax.FuncLit]bool) {
-	if m.compilation != c || c.checked == nil {
+	if m.compilation != c {
+		panic("foreign source position map")
+	}
+	if c.sourceMode {
+		c.checked, c.info, c.rangeClosures = c.checkFiles(m, noders)
+	}
+	if c.checked == nil {
 		panic("unbound checked package")
 	}
 	return c.checked, c.info, c.rangeClosures
@@ -338,6 +360,9 @@ func (c *Context) ReadLocalPackage(data string) *ir.Package {
 }
 
 func (c *Context) errorExit() {
+	if c.sourceMode && c.Diagnostics.HasErrors() {
+		panic(SourceErrors(c.Diagnostics.Diagnostics()))
+	}
 	for _, d := range c.Diagnostics.Diagnostics() {
 		if d.Severity == diagnostic.Error {
 			panic(fmt.Errorf("noder: %s", d))
@@ -534,4 +559,118 @@ func (c *Context) Import(path string) (pkg *types2.Package, err error) {
 	_, pkg, err = c.readImportFile(path, c.Typecheck.Target, c.Checker, c.importPackages)
 	completed = true
 	return
+}
+
+func (c *Context) openSyntaxHTML(path string, flags int, mode fs.FileMode) (io.WriteCloser, error) {
+	if c.OpenSyntaxHTML == nil {
+		return nil, fmt.Errorf("AST HTML output provider is not configured")
+	}
+	w, e := c.OpenSyntaxHTML(path, flags, mode)
+	if e == nil && w == nil {
+		return nil, fmt.Errorf("AST HTML output provider returned nil writer")
+	}
+	return w, e
+}
+func (c *Context) syntaxWorkingDirectory() (string, error) {
+	if c.SyntaxWorkingDirectory == nil {
+		return "", fmt.Errorf("AST HTML working directory provider is not configured")
+	}
+	return c.SyntaxWorkingDirectory()
+}
+
+// SourceErrors retains a detached diagnostic snapshot from native source
+// checking or unified construction. Internal and provider panics are distinct.
+type SourceErrors []diagnostic.Diagnostic
+
+func (e SourceErrors) Error() string {
+	for _, d := range e {
+		if d.Severity == diagnostic.Error {
+			return "noder: " + d.String()
+		}
+	}
+	return "noder: source compilation failed"
+}
+func (c *Context) syntaxErrors() int {
+	n := 0
+	for _, d := range c.Diagnostics.Diagnostics() {
+		if d.Severity == diagnostic.Error && strings.HasPrefix(d.Message, "syntax error") {
+			n++
+		}
+	}
+	return n
+}
+func (c *Context) exitIfErrors() {
+	if c.Diagnostics.HasErrors() {
+		c.errorExit()
+	}
+}
+func (c *Context) freshChecker() *types2.Context {
+	checker := types2.NewContext()
+	c.Checker, c.importChecker = checker, checker
+	c.typeImports = importer.NewContext(checker)
+	c.importPackages = make(map[string]*types2.Package)
+	c.initializeWriterUniverse()
+	return checker
+}
+func (c *Context) rewriteMidway(pkg *types2.Package, info *types2.Info, files []*syntax.File) bool {
+	m := midway.NewContext(c.Checker, c.GOARCH, c.Types.Experiment, *c.Debug)
+	m.Warn = c.warn
+	return m.RewriteWrapper(pkg, info, files)
+}
+func (c *Context) rewriteRangeFuncs(pkg *types2.Package, info *types2.Info, files []*syntax.File) map[*syntax.FuncLit]bool {
+	r := rangefunc.NewContext(c.Checker)
+	r.Flag, r.Debug, r.TraceWriter = *c.Flag, *c.Debug, c.traceWriter()
+	return r.Rewrite(pkg, info, files)
+}
+
+// CompileParsedPackage runs the full native checkFiles and unified frontend,
+// including SIMD rechecking, range-function rewriting and reader validation.
+// Configure native dependency inputs, runtime, reflection and static-init first.
+// This consumes a fresh compilation once. Each retained ParsedFile must belong
+// to this Context; callers must not concurrently mutate its trees or inputs.
+func (c *Context) CompileParsedPackage(parsed []*ParsedFile) (target *ir.Package, err error) {
+	if c == nil || c.sourceStarted || c.importHeader == nil || c.Checker != c.importChecker || c.importStarted || c.importFailed || c.localPkgReader != nil || c.checked != nil || c.Diagnostics.HasErrors() || len(parsed) == 0 {
+		return nil, fmt.Errorf("source compilation requires a fresh bound compiler and parsed files")
+	}
+	if c.ReflectData == nil || c.ReflectData.Typecheck != c.Typecheck || c.StaticInit == nil || c.StaticInit.Typecheck != c.Typecheck || c.StaticInit.ReflectData != c.ReflectData || len(c.Typecheck.Target.Funcs) != 0 || len(c.Typecheck.Target.Imports) != 0 {
+		return nil, fmt.Errorf("source compilation requires a fresh target and shared reflection/static initialization")
+	}
+	if c.Debug.AstDump != "" && (c.OpenSyntaxHTML == nil || c.SyntaxWorkingDirectory == nil) {
+		return nil, fmt.Errorf("AST diagnostics require output and working directory providers")
+	}
+	noders := make([]*noder, len(parsed))
+	seen := make(map[*noder]bool)
+	for i, f := range parsed {
+		if f == nil || f.native == nil || f.native.compilation != c || f.native.file == nil || seen[f.native] {
+			return nil, fmt.Errorf("source file is nil, duplicated or belongs to another compilation")
+		}
+		seen[f.native] = true
+		noders[i] = f.native
+	}
+	c.sourceStarted, c.sourceMode = true, true
+	defer func() {
+		failure := recover()
+		func() {
+			defer func() {
+				if p := recover(); failure == nil {
+					failure = p
+				}
+			}()
+			c.CloseHTMLWriters()
+		}()
+		c.sourceMode = false
+		c.checked = nil
+		c.info = nil
+		c.rangeClosures = nil
+		if failure != nil {
+			if diagnostics, ok := failure.(SourceErrors); ok {
+				target = nil
+				err = diagnostics
+			} else {
+				panic(failure)
+			}
+		}
+	}()
+	c.unified(posMap{compilation: c}, noders)
+	return c.Typecheck.Target, nil
 }

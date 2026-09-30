@@ -17,7 +17,6 @@ import (
 	"go-backend-ssa/ssagen"
 	"go-backend-ssa/staticdata"
 	"go-backend-ssa/staticinit"
-	"go-backend-ssa/syntax"
 	"go-backend-ssa/target"
 	"go-backend-ssa/typecheck"
 	"go-backend-ssa/types"
@@ -27,21 +26,11 @@ import (
 
 func ExampleNewContext() {
 	checker := types2.NewContext()
-	info := &types2.Info{
-		StoreTypesInSyntax: true,
-		Defs:               map[*syntax.Name]types2.Object{},
-		Uses:               map[*syntax.Name]types2.Object{},
-		Instances:          map[*syntax.Name]types2.Instance{},
-		Selections:         map[*syntax.SelectorExpr]*types2.Selection{},
-		Implicits:          map[syntax.Node]types2.Object{},
-		Scopes:             map[syntax.Node]*types2.Scope{},
-		FileVersions:       map[*syntax.PosBase]string{},
-	}
 	layout, err := target.NewLayout("linux", "amd64")
 	if err != nil {
 		panic(err)
 	}
-	link := &gcbridge.Link{Pathname: "/src", Pkgpath: "example/p", Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8, ByteOrder: binary.LittleEndian}}}
+	link := &gcbridge.Link{TargetOS: "linux", Pathname: "/src", Pkgpath: "example/p", Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8, ByteOrder: binary.LittleEndian}}}
 	universe, err := types.NewUniverseWithPositions(layout, &link.PosTable)
 	if err != nil {
 		panic(err)
@@ -59,22 +48,10 @@ func ExampleNewContext() {
 	if err != nil {
 		panic(err)
 	}
-	writer.GOOS = "linux"
+	writer.BindImports(noder.ObjectConfig{GOOS: "linux", GOARCH: "amd64", GOAMD64: 1, Version: "go1.27.1"}, "linux", func(path string) (noder.DependencyFile, error) {
+		return nil, fmt.Errorf("unexpected dependency %s", path)
+	})
 	parsed, err := writer.ParseFile("id.go", strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)}\n//go:noinline\nfunc Sum()(n int){for x:=range Each{n+=x};return}"))
-	if err != nil {
-		panic(err)
-	}
-	files := []*syntax.File{parsed.Syntax()}
-	config := types2.Config{Context: checker, GoVersion: "go1.27", Sizes: checker.SizesFor("gc", "amd64")}
-	pkg, err := config.Check("example/p", files, info)
-	if err != nil {
-		panic(err)
-	}
-	closures, err := writer.RewriteRangeFuncs(pkg, info, files)
-	if err != nil {
-		panic(err)
-	}
-	stub, err := writer.WriteParsedPackage(pkg, info, []*noder.ParsedFile{parsed}, closures)
 	if err != nil {
 		panic(err)
 	}
@@ -83,7 +60,10 @@ func ExampleNewContext() {
 	rt.Init()
 	writer.ReflectData = reflectdata.NewContext(tc, rt, staticdata.NewContext(graph, ow))
 	writer.StaticInit = staticinit.NewContext(tc, writer.ReflectData)
-	target := writer.ReadLocalPackage(stub)
+	target, err := writer.CompileParsedPackage([]*noder.ParsedFile{parsed})
+	if err != nil {
+		panic(err)
+	}
 	writer.Flag.LowerL = 1
 	writer.Interleaved.DevirtualizeAndInlinePackage(target, nil)
 	writer.MakeWrappers(target)
@@ -102,7 +82,7 @@ func ExampleNewContext() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(len(stub) > 0, pkg.Scope().Lookup("X").Type())
+	fmt.Println(writer.ExportAvailable(), universe.LocalPkg.Lookup("X").Def.(*ir.Name).Type())
 	fmt.Println(target == tc.Target, len(sum.Body) > 0, sum.Pragma&ir.Noinline != 0)
 	// Output:
 	// true int

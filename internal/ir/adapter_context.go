@@ -12,14 +12,16 @@ import (
 	"go/constant"
 	"io"
 	"reflect"
+	"regexp"
 	"strings"
 )
 
 // Context owns native IR state. A context and its graph are used serially;
 // independent contexts share no mutable compiler state.
 type Context struct {
-	Syms symsStruct
-	Pkgs struct{ Go, Itab, Runtime, InternalMaps, Coverage *types.Pkg }
+	safePhaseNameString *regexp.Regexp
+	Syms                symsStruct
+	Pkgs                struct{ Go, Itab, Runtime, InternalMaps, Coverage *types.Pkg }
 
 	Types                                                         *types.Universe
 	Base                                                          *base.LinkContext
@@ -204,4 +206,14 @@ func ContextOf(n Node) *Context {
 		panic("IR node has no compiler context")
 	}
 	return nodeContext(n)
+}
+
+// htmlBaseContext follows the buffer installed by native HTMLWriterBase.Init.
+// The buffer is allocated by this compilation; no process-wide writer registry
+// or synthetic compilation is needed for promoted HTMLWriterBase methods.
+func htmlBaseContext(w *HTMLWriterBase) *Context {
+	if w == nil || w.w == nil || w.w.compilation == nil {
+		panic("HTML writer has no compilation owner")
+	}
+	return w.w.compilation
 }

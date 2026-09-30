@@ -80,7 +80,17 @@ func contextInitializerGroups(files []*ast.File, info *types.Info, units []Unit,
 					return true
 				}
 				var object types.Object
-				switch fn := ast.Unparen(call.Fun).(type) {
+				// A generic instantiation preserves its callee's object identity.
+				// Data indexing still resolves to a variable (or no object) and
+				// is rejected by the function/builtin check below.
+				callee := ast.Unparen(call.Fun)
+				switch indexed := callee.(type) {
+				case *ast.IndexExpr:
+					callee = ast.Unparen(indexed.X)
+				case *ast.IndexListExpr:
+					callee = ast.Unparen(indexed.X)
+				}
+				switch fn := callee.(type) {
 				case *ast.Ident:
 					object = info.Uses[fn]
 				case *ast.SelectorExpr:

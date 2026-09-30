@@ -286,8 +286,16 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	for _, f := range files {
 		// Imported package selectors occupy that package's namespace. A native
 		// types2.Context does not collide with this package's generated Context.
+		// Nor does an external struct field key, such as types2.Config.Context.
 		qualified := map[*ast.Ident]bool{}
 		ast.Inspect(f, func(n ast.Node) bool {
+			if kv, ok := n.(*ast.KeyValueExpr); ok {
+				if id, ok := kv.Key.(*ast.Ident); ok {
+					if field, ok := info.Uses[id].(*types.Var); ok && field.IsField() && field.Pkg() != nil && field.Pkg().Path() != units[0].sourcePackage() {
+						qualified[id] = true
+					}
+				}
+			}
 			sel, ok := n.(*ast.SelectorExpr)
 			if !ok {
 				return true

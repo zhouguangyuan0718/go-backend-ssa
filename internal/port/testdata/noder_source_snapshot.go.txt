@@ -1,0 +1,36 @@
+package noder
+import("bytes";"encoding/json";"encoding/binary";"fmt";"os";"path/filepath";"reflect";"regexp";"sort";"strings";"testing";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_IR";"IMPORT_TYPES";"IMPORT_TYPECHECK";"IMPORT_TYPES2";SOURCE_IMPORTS BODY_RUNTIME IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{"amd64",8,binary.LittleEndian}
+ SETUP
+ SOURCE_BIND
+ ND_DEBUG.SyncFrames=-1;ND_DEBUG.RangeFuncCheck=1;ND_DEBUG.AstDump="~example/p\\.(F|Other)";RD_FLAG.Lang="go1.27";RD_FLAG.Complete=true;RD_FLAG.LowerL=1
+ _=src.XPos{};_=types2.Int;_=syntax.CheckBranches;_=bytes.NewBuffer
+ sources:=[]string{`package p
+import "example/dep"
+func Each(yield func(int)bool){for i:=0;i<4;i++{if !yield(i){return}}}
+type Box[T any]struct{V T}
+func Id[T any](x T)T{return x}
+func F()(n int){for v:=range Each{n+=v};return n+dep.Exported(2)+dep.Generic(3)+Id(Box[int]{V:4}).V}
+var Global=dep.Box[int]{V:7}
+`,"package p\n//go:noinline\nfunc Other(x int)int{return F()+x}\n"}
+ SOURCE_RUN
+ var out []string
+ var objects []string;for sym:=range UP.objReader{objects=append(objects,sym.Pkg.Path+"."+sym.Name)};sort.Strings(objects);out=append(out,fmt.Sprint("objects:",objects))
+ for _,p:=range TC.Target.Imports{out=append(out,fmt.Sprintf("import:%s:%t",p.Path,p.Direct))}
+ for _,p:=range LINK.Imports{out=append(out,fmt.Sprintf("fingerprint:%s:%x",p.Pkg,p.Fingerprint))}
+ for _,fn:=range TC.Target.Funcs{
+ out=append(out,fmt.Sprintf("fn:%v:%v:%d:%d:%s",fn.Sym(),fn.Type(),fn.Pragma,fn.Typecheck(),LINK.PosTable.Pos(fn.Pos())))
+ for _,d:=range fn.Dcl{out=append(out,fmt.Sprintf("local:%v:%v:%d:%t:%t",d.Sym(),d.Type(),d.Class,d.AutoTemp(),d.Curfn==fn))}
+ for _,stmt:=range fn.Body{ir.Visit(stmt,func(n ir.Node){out=append(out,fmt.Sprintf("node:%s:%d:%v:%s:%v",n.Op(),n.Typecheck(),n.Type(),LINK.PosTable.Pos(n.Pos()),n))})}
+ }
+ out=append(out,fmt.Sprintf("pending:%d:%d",len(UP.todoBodies),len(UP.todoDicts)))
+ for _,name:=range []string{"example/dep.Exported","example/dep.Number.M"}{fn,e:=UP.LookupFunc(name);if e!=nil{t.Fatal(e)};out=append(out,fmt.Sprintf("lookup:%s:%v:%t",name,fn.Type(),TC.HaveInlineBody(fn)))}
+ UP.PostLookupCleanup()
+ SOURCE_REPORTS
+ names:=make([]string,0,len(reports));for p:=range reports{names=append(names,p)};sort.Strings(names)
+ ptr:=regexp.MustCompile(`(scope [^\n<>]* )0x[0-9a-f]+`)
+ for _,name:=range names{out=append(out,"html:"+name+":"+ptr.ReplaceAllString(reports[name],"${1}<address>"))}
+ if len(names)!=2{t.Fatalf("expected two reports, have %v",names)}
+ data,e:=json.Marshal(out);if e!=nil{t.Fatal(e)};fmt.Println("SYNCGO_IR="+string(data))
+}

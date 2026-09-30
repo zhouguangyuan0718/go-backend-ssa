@@ -86,3 +86,5 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 完整原生 noder 依赖导入已迁入，见 [依赖导入](m3-native-dependency-imports.md)。后续将原生 `checkFiles`、统一前端和包编译驱动接到现有完整后端与输出。
 
 原生 midway SIMD 分析与源码重写已迁入，见 [midway](m3-native-midway.md)。后续接入原生源码检查、重写后的第二次检查和完整 unified 驱动。
+
+原生 `checkFiles`、midway 后二次检查、rangefunc、AST HTML 诊断和完整 unified 已通过 `CompileParsedPackage` 接通，见 [源码前端](m3-native-source-frontend.md)。下一步将包级前端阶段、完整 Build 驱动和后端输出连接，再执行链接/运行及替换验收。

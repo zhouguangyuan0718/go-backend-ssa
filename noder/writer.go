@@ -7,7 +7,9 @@ import (
 )
 
 // Context binds the source checker and existing IR/typecheck graph to the
-// original noder writer and migrated reader algorithms. One Context is used serially; independent Contexts
+// original source checker, unified writer and reader algorithms.
+// CompileParsedPackage consumes parsed files through the native frontend.
+// One Context is used serially; independent Contexts
 // support concurrent and nested calls without process-wide compiler state.
 // WritePackage consumes checked/prepared ASTs and returns the native package
 // stub bitstream. RegisterPackage and ReadLocalPackage expose the native reader
@@ -32,3 +34,6 @@ type ParseErrors = compiler.ParseErrors
 // DependencyFile and ObjectConfig configure explicit native dependency inputs.
 type DependencyFile = compiler.DependencyFile
 type ObjectConfig = compiler.ObjectConfig
+
+// SourceErrors is a detached snapshot of native frontend diagnostics.
+type SourceErrors = compiler.SourceErrors
