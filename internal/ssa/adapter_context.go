@@ -1,13 +1,20 @@
 package ssa
 
-import "go-backend-ssa/internal/types"
+import (
+	"fmt"
+	"go-backend-ssa/internal/types"
+	"io"
+	"os/exec"
+)
 
 // This adapter binds native SSA type operations to their compilation's universe.
 // It introduces no separate public session or process-global state.
 type Context struct {
 	*opcodeTables
-	Types   *types.Universe
-	ptrSize int
+	Types       *types.Universe
+	ptrSize     int
+	TraceWriter io.Writer
+	Command     func(string, ...string) *exec.Cmd
 }
 
 func typeContextOf(t *types.Type) *Context {
@@ -163,4 +170,37 @@ func auxCallContext(a *AuxCall) *Context {
 		panic("SSA call ABI has no compilation owner")
 	}
 	return &Context{Types: u}
+}
+
+// Diagnostics reuse the type collection's existing compilation owner. A nil
+// writer or disabled graph renderer may return before needing any host input.
+func diagnosticContext(f *Func) *Context {
+	if f != nil && f.Config != nil && f.Config.Types.compilation != nil {
+		return f.Config.Types.compilation
+	}
+	return &Context{}
+}
+func htmlWriterContext(w *HTMLWriter) *Context {
+	if w == nil {
+		return &Context{}
+	}
+	return diagnosticContext(w.Func)
+}
+func (c *Context) traceWriter() io.Writer {
+	if c.TraceWriter != nil {
+		return c.TraceWriter
+	}
+	return io.Discard
+}
+func (c *Context) tracePrintf(format string, args ...any) (int, error) {
+	return fmt.Fprintf(c.traceWriter(), format, args...)
+}
+func (c *Context) tracePrintln(args ...any) (int, error) {
+	return fmt.Fprintln(c.traceWriter(), args...)
+}
+func (c *Context) command(name string, args ...string) *exec.Cmd {
+	if c.Command == nil {
+		panic("SSA graph rendering requires a command provider")
+	}
+	return c.Command(name, args...)
 }

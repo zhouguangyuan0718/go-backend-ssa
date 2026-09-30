@@ -28,18 +28,23 @@ func TestConstantFieldQueries(t *testing.T) {
  func Shadow()string{table:=[]row{{name:"shadow"}};return table[0].name}
  func Collision()int{constantRead_table_name:=9;return constantRead_table_name}
  `
-	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", "src/cmd/compile/internal/p/p.go": source})
+	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", "src/cmd/compile/internal/p/p.go": source, "src/cmd/compile/internal/p/query.go": `package p
+ type Query struct{Index Kind}
+ func(q Query)Name()string{return table[q.Index].name}
+ func CrossFile(f func()Kind) string {return table[f()].name}
+ func CrossClosure(k Kind)func()string{return func()string{return table[k].name}}
+ `})
 	s, err := OpenSource(context.Background(), repo, pin)
 	if err != nil {
 		t.Fatal(err)
 	}
 	unit := Unit{Source: "src/cmd/compile/internal/p/p.go", WholeFile: true, Context: &ContextRule{Type: "Context", Constructor: "initialize", Initialize: true, Adapter: "adapter_context.go", Selective: true, Fields: map[string]string{"table": "table"}}, ConstantFields: []ConstantFieldRule{
-		{Variable: "table", Field: "name", Functions: []string{"Kind.String", "Eval", "Closure", "Nested"}},
+		{Variable: "table", Field: "name", Functions: []string{"Kind.String", "Eval", "Closure", "Nested", "Query.Name", "CrossFile", "CrossClosure"}},
 		{Variable: "table", Field: "code", Functions: []string{"Code", "Nested"}},
 		{Variable: "table", Field: "flag", Functions: []string{"Flag"}},
 		{Variable: "table", Field: "bits", Functions: []string{"Bits"}},
 	}}
-	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{unit}}
+	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{unit, {Source: "src/cmd/compile/internal/p/query.go", WholeFile: true}}}
 	dir := t.TempDir()
 	writeTestFile(t, dir, "internal/p/adapter_context.go", `package p; type contextState struct {table [5]row};type Context struct {*contextState};func newContext()*Context{c:=&Context{contextState:new(contextState)};c.initialize();return c}`)
 	r, err := Render(s, plan, dir)
@@ -59,7 +64,7 @@ func TestConstantFieldQueries(t *testing.T) {
  func TestProjection(t *testing.T){
   var _ fmt.Stringer=Kind(0)
   for i:=0;i<5;i++{if Kind(i).String()!=native.Kind(i).String()||Code(i)!=Number(native.Code(i))||Flag(i)!=native.Flag(i)||Bits(uint64(i))!=native.Bits(uint64(i)){t.Fatal("different scalar value",i)}}
-  calls:=0;if Eval(func()int{calls++;return 2})!=native.Kind(2).String()||calls!=1{t.Fatal("index evaluation changed")}
+  calls:=0;if (Query{Index:2}).Name()!=native.Kind(2).String(){t.Fatal("cross-file receiver")};if CrossFile(func()Kind{calls++;return 4})!="last"||calls!=1||CrossClosure(0)()!=native.Kind(0).String(){t.Fatal("cross-file evaluation")};calls=0;if Eval(func()int{calls++;return 2})!=native.Kind(2).String()||calls!=1{t.Fatal("index evaluation changed")}
   if Nested(1)!=native.Nested(1){t.Fatal("nested projection")};if Closure(4)()!="last"||Shadow()!="shadow"||Collision()!=9{t.Fatal("closure or shadowing changed")}
   for _,i:=range []int{-1,5,1<<30}{if a,b:=panicText(func(){_ = Kind(i).String()}),panicText(func(){_=native.Kind(i).String()});a!=b{t.Fatal("bounds",a,b)}}
   for _,i:=range []uint64{5,1<<63,1<<64-1}{if a,b:=panicText(func(){_ = Bits(i)}),panicText(func(){_=native.Bits(i)});a!=b{t.Fatal("unsigned bounds",a,b)}}
@@ -76,6 +81,18 @@ func TestConstantFieldQueries(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
+	t.Run("cross-file column write", func(t *testing.T) {
+		name := "src/cmd/compile/internal/p/query.go"
+		original, err := s.Read(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.cache[name] = append(append([]byte(nil), original...), []byte(`func WriteOther(){table[0].name="changed"}`)...)
+		defer func() { s.cache[name] = original }()
+		if _, err := Render(s, plan, dir); err == nil || !strings.Contains(err.Error(), "write or unsupported escape") {
+			t.Fatalf("cross-file mutation accepted: %v", err)
+		}
+	})
 	for name, extra := range map[string]string{
 		"column write":            `func Bad(){table[0].name="different"}`,
 		"column increment":        `func Bad(){table[0].code++}`,

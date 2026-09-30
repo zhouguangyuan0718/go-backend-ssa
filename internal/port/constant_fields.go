@@ -107,47 +107,49 @@ func projectConstantFields(fs *token.FileSet, files []*ast.File, info *types.Inf
 				helperName += "_"
 			}
 			reserved[helperName] = true
-			for _, d := range f.Decls {
-				fn, ok := d.(*ast.FuncDecl)
-				if !ok {
-					continue
-				}
-				name := fn.Name.Name
-				if fn.Recv != nil {
-					name = receiverType(fn) + "." + name
-				}
-				if !selected[name] {
-					continue
-				}
-				ast.Inspect(fn.Body, func(n ast.Node) bool {
-					sel, ok := n.(*ast.SelectorExpr)
-					if !ok || info.Selections[sel] == nil || info.Selections[sel].Obj() != field {
-						return true
-					}
-					index, ok := ast.Unparen(sel.X).(*ast.IndexExpr)
+			for _, queryFile := range files {
+				for _, d := range queryFile.Decls {
+					fn, ok := d.(*ast.FuncDecl)
 					if !ok {
+						continue
+					}
+					name := fn.Name.Name
+					if fn.Recv != nil {
+						name = receiverType(fn) + "." + name
+					}
+					if !selected[name] {
+						continue
+					}
+					ast.Inspect(fn.Body, func(n ast.Node) bool {
+						sel, ok := n.(*ast.SelectorExpr)
+						if !ok || info.Selections[sel] == nil || info.Selections[sel].Obj() != field {
+							return true
+						}
+						index, ok := ast.Unparen(sel.X).(*ast.IndexExpr)
+						if !ok {
+							return true
+						}
+						id, ok := ast.Unparen(index.X).(*ast.Ident)
+						if !ok || info.Uses[id] != obj {
+							return true
+						}
+						if replacements[sel] != nil {
+							err = fmt.Errorf("duplicate constant field replacement: %s", name)
+							return false
+						}
+						typ := types.Default(info.TypeOf(index.Index))
+						if indexType == nil {
+							indexType = typ
+						}
+						if !types.Identical(indexType, typ) {
+							err = fmt.Errorf("constant field queries require one index type: %s", rule.Field)
+							return false
+						}
+						replacements[sel] = &ast.CallExpr{Fun: &ast.Ident{Name: helperName, NamePos: sel.Pos()}, Args: []ast.Expr{index.Index}, Lparen: sel.Pos(), Rparen: sel.End()}
+						counts[name]++
 						return true
-					}
-					id, ok := ast.Unparen(index.X).(*ast.Ident)
-					if !ok || info.Uses[id] != obj {
-						return true
-					}
-					if replacements[sel] != nil {
-						err = fmt.Errorf("duplicate constant field replacement: %s", name)
-						return false
-					}
-					typ := types.Default(info.TypeOf(index.Index))
-					if indexType == nil {
-						indexType = typ
-					}
-					if !types.Identical(indexType, typ) {
-						err = fmt.Errorf("constant field queries require one index type: %s", rule.Field)
-						return false
-					}
-					replacements[sel] = &ast.CallExpr{Fun: &ast.Ident{Name: helperName, NamePos: sel.Pos()}, Args: []ast.Expr{index.Index}, Lparen: sel.Pos(), Rparen: sel.End()}
-					counts[name]++
-					return true
-				})
+					})
+				}
 			}
 			if err != nil {
 				return nil, err

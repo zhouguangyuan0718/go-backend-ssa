@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v34"
+const ToolVersion = "syncgo-m3-v35"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -54,6 +54,7 @@ type Unit struct {
 	ReadTables             []string            // Constant array/slice/map lookups localized in their consuming functions.
 	ConstantFields         []ConstantFieldRule // Stateless reads of immutable scalar fields in an instance-owned array.
 	SliceReinterpretations []SliceReinterpretationRule
+	HostResources          []HostResourceRule
 	State                  []StateRule
 	ReceiverState          *ReceiverStateRule
 	Context                *ContextRule
@@ -63,6 +64,14 @@ type Unit struct {
 	Calls                  []CallRule          // Reviewed external functions bound to context methods.
 	Nullable               map[string][]string // Reviewed owned pointers/receivers that accept nil.
 	Checks                 map[string]string   // Selected function/method -> context argument validator.
+}
+
+// HostResourceRule binds a reviewed standard-library resource factory to a
+// compilation method. Only listed members on its nonescaping local result are
+// admitted by the output audit; other host operations remain rejected.
+type HostResourceRule struct {
+	Package, Factory, Method string
+	Members                  []string
 }
 
 // CallRule derives the upstream signature from Source; no replacement package
@@ -271,6 +280,18 @@ func (p Plan) Validate() error {
 		for _, literal := range u.Literals {
 			if u.Context == nil || !safePath(literal.Source) || portPath(literal.Source) == "" || !token.IsIdentifier(literal.Type) || !memberPath(literal.Method) {
 				return fmt.Errorf("invalid literal binding")
+			}
+		}
+		for _, resource := range u.HostResources {
+			if u.Context == nil || u.Context.Adapter == "" || resource.Package != "os/exec" || resource.Factory != "Command" || !token.IsIdentifier(resource.Method) || len(resource.Members) == 0 {
+				return fmt.Errorf("invalid host resource binding")
+			}
+			seen := map[string]bool{}
+			for _, member := range resource.Members {
+				if !token.IsIdentifier(member) || seen[member] {
+					return fmt.Errorf("invalid host resource member %s", member)
+				}
+				seen[member] = true
 			}
 		}
 		for _, call := range u.Calls {

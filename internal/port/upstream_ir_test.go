@@ -38,6 +38,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_dom")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_aux")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_numeric")
+	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_diagnostics")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -106,7 +107,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		position = "u.Pos"
 	}
 
-	if snapshotName == "ssa_types" || snapshotName == "ssa_graph" || snapshotName == "ssa_aux" {
+	if snapshotName == "ssa_types" || snapshotName == "ssa_graph" || snapshotName == "ssa_aux" || snapshotName == "ssa_diagnostics" {
 		setup = strings.Replace(setup, "typecheck.NewContext(ir.NewContext(u,link)).InitUniverse()", "graph:=ir.NewContext(u,link);typecheck.NewContext(graph).InitUniverse();c:=&Context{Types:u}", 1)
 	}
 
@@ -169,6 +170,8 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		setup = strings.Replace(setup, "c,err:=NewContext(types2.NewContext(),tc)", "c,err:=noder.NewContext(types2.NewContext(),tc)", 1)
 	}
 	ported := strings.NewReplacer(
+		"DIAG_METADATA", "c.opcodeTables=new(opcodeTables);c.initialize()", "DIAG_TABLE", "c.opcodeTable", "DIAG_COMMAND", "f.Config.Types.compilation.Command=exec.Command",
+
 		"IMPORT_ABI", "go-backend-ssa/internal/abi", "ABI_SETUP", "ac:=abi.NewContext(graph)", "ABI_NEW", "ac.NewABIConfig",
 		"SSA_OBJ_ROOT", "go-backend-ssa/internal/cmd/obj", "OPCODE_SETUP", "c:=newOpcodeContext()",
 		"IMPORT_WALK", "go-backend-ssa/internal/walk", "WALK_SETUP", "w:=walk.NewContext(c,esc)", "WALK_SET_SOFT", `w.SoftFloat=strings.HasSuffix(mode,"-soft")`, "WALK_RUN", "w.Walk(f)",
@@ -279,6 +282,8 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		nativeSetup = `Ctxt=&obj.Link{}`
 	}
 	native := strings.NewReplacer(
+		"DIAG_METADATA", "", "DIAG_TABLE", "opcodeTable", "DIAG_COMMAND", "",
+
 		"IMPORT_ABI", "cmd/compile/internal/abi", "ABI_SETUP", "", "ABI_NEW", "abi.NewABIConfig",
 		"SSA_OBJ_ROOT", "cmd/internal/obj", "OPCODE_SETUP", "",
 		"IMPORT_WALK", "cmd/compile/internal/walk", "WALK_SETUP", "ssagen.Arch.LinkArch=base.Ctxt.Arch", "WALK_SET_SOFT", `ssagen.Arch.SoftFloat=strings.HasSuffix(mode,"-soft")`, "WALK_RUN", "walk.Walk(f)",

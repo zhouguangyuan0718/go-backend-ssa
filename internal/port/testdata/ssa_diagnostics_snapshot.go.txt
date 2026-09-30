@@ -1,0 +1,233 @@
+package ssa
+
+import (
+	"IMPORT_ABI"
+	IMPORT_BASE
+	"IMPORT_IR"
+	"IMPORT_OBJ"
+	"IMPORT_SRC"
+	"IMPORT_SYS"
+	"IMPORT_TYPECHECK"
+	"IMPORT_TYPES"
+	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+type snapshotDiagnosticFrontend struct {
+	Frontend
+	enabled bool
+	log     bytes.Buffer
+	fatal   string
+}
+
+func (f *snapshotDiagnosticFrontend) Log() bool { return f.enabled }
+func (f *snapshotDiagnosticFrontend) Logf(format string, args ...any) {
+	fmt.Fprintf(&f.log, format, args...)
+}
+func (f *snapshotDiagnosticFrontend) Fatalf(pos src.XPos, format string, args ...any) {
+	f.fatal = fmt.Sprintf("%d:%s", pos.Line(), fmt.Sprintf(format, args...))
+	panic(f.fatal)
+}
+
+type snapshotDiagnosticBuffer struct {
+	bytes.Buffer
+	closed bool
+}
+
+func (b *snapshotDiagnosticBuffer) Close() error { b.closed = true; return nil }
+
+func TestSyncgoNativeSnapshot(t *testing.T) {
+	target := struct {
+		arch  string
+		size  int
+		order binary.ByteOrder
+	}{os.Getenv("SYNCGO_TARGET"), 8, binary.LittleEndian}
+	switch target.arch {
+	case "386":
+		target.size = 4
+	case "mips":
+		target.size = 4
+		target.order = binary.BigEndian
+	case "ppc64":
+		target.order = binary.BigEndian
+	}
+	SETUP
+	ABI_SETUP
+	DIAG_METADATA
+	var out []string
+	record := func(name, text string) { out = append(out, fmt.Sprintf("%s:%x", name, sha256.Sum256([]byte(text)))) }
+	fe := &snapshotDiagnosticFrontend{}
+	cfg := &Config{PtrSize: int64(target.size), RegSize: int64(target.size), Types: *UP.NewTypes(), ctxt: LINK}
+	cache := new(Cache)
+	cache.Reset()
+	f := cfg.NewFunc(fe, cache)
+	f.Name = "format<&>"
+	f.Type = TY.NewSignature(nil, nil, nil)
+	f.ABISelf = ABI_NEW(0, 0, 0, 1)
+	f.pass = &pass{name: "diagnostic phase"}
+	entry, left, right, join, dead := f.NewBlock(BlockIf), f.NewBlock(BlockPlain), f.NewBlock(BlockPlain), f.NewBlock(BlockRet), f.NewBlock(BlockPlain)
+	f.Entry = entry
+	pos := LINK.PosTable.XPos(src.MakePos(src.NewFileBase("diagnostic.go", "diagnostic.go"), 17, 2)).WithIsStmt()
+	for _, b := range f.Blocks {
+		b.Pos = pos
+	}
+	entry.AddEdgeTo(left)
+	entry.AddEdgeTo(right)
+	left.AddEdgeTo(join)
+	right.AddEdgeTo(join)
+	dead.AddEdgeTo(join)
+	a := entry.NewValue0I(pos, OpConst64, cfg.Types.Int64, 19)
+	b := entry.NewValue0I(pos.WithNotStmt(), OpConst64, cfg.Types.Int64, -7)
+	cond := entry.NewValue0I(pos, OpConstBool, cfg.Types.Bool, 1)
+	entry.SetControl(cond)
+	lv := left.NewValue2(pos, OpAdd64, cfg.Types.Int64, a, b)
+	rv := right.NewValue2(pos, OpSub64, cfg.Types.Int64, a, b)
+	dv := dead.NewValue0I(pos, OpConst64, cfg.Types.Int64, 99)
+	phi := join.NewValue3(pos, OpPhi, cfg.Types.Int64, lv, rv, dv)
+	join.SetControl(phi)
+	left.NewValue0A(pos, OpStaticCall, TY.TypeMem, &AuxCall{Fn: &obj.LSym{Name: "callee"}})
+	right.NewValue1(pos, OpNilCheck, TY.TypeMem, a)
+	x := left.NewValue0(pos, OpCopy, cfg.Types.Int64)
+	y := left.NewValue1(pos, OpCopy, cfg.Types.Int64, x)
+	x.AddArg(y)
+	name := GRAPH.NewNameAt(pos, TY.LocalPkg.Lookup("local"), cfg.Types.Int64)
+	name.Class = ir.PAUTO
+	name.SetFrameOffset(12)
+	slot := &LocalSlot{N: name, Type: cfg.Types.Int64}
+	f.Names = []*LocalSlot{slot}
+	f.NamedValues[*slot] = []*Value{a, a}
+	dump := func(label string) {
+		reachable, live := findlive(f)
+		out = append(out, fmt.Sprintf("live:%s:%v:%v", label, reachable, live))
+		f.Cache.freeBoolSlice(live)
+		record(label+"-text", f.String())
+		record(label+"-html", f.HTML("", nil))
+		out = append(out, fmt.Sprintf("hash:%s:%x:%s", label, hashFunc(f), f.rewriteHash()))
+	}
+	dump("initial")
+	f.scheduled = true
+	dump("scheduled")
+	f.scheduled = false
+	entry.Kind = BlockFirst
+	dump("first")
+	entry.Kind = BlockIf
+	f.RegAlloc = make([]Location, f.NumValues())
+	f.RegAlloc[a.ID] = &Register{name: "R<&>"}
+	f.tempRegs = map[ID]*Register{a.ID: {name: "TMP"}}
+	dump("allocated")
+	f.RegAlloc = nil
+	f.tempRegs = nil
+	// Render one opcode of every Aux kind, using raw values to cover formatting,
+	// not as a claim that these standalone instructions pass the SSA verifier.
+	seen := map[auxType]bool{}
+	for op := Op(0); op <= OpternUint64x8; op++ {
+		kind := DIAG_TABLE[op].auxType
+		if seen[kind] {
+			continue
+		}
+		seen[kind] = true
+		v := entry.NewValue0I(pos, op, cfg.Types.Int64, -3)
+		switch kind {
+		case auxNone:
+			v.AuxInt = 0
+		case auxBool:
+			v.AuxInt = 1
+		case auxFloat32, auxFloat64:
+			v.AuxInt = float64ToAuxInt(1.25)
+		case auxString:
+			v.Aux = StringToAux("quote\"<&>")
+		case auxSym, auxSymOff, auxSymValAndOff:
+			v.Aux = &obj.LSym{Name: "symbol"}
+		case auxTyp, auxTypSize:
+			v.Aux = cfg.Types.Int64
+		case auxCall, auxCallOff:
+			v.Aux = &AuxCall{Fn: &obj.LSym{Name: "callee"}}
+		case auxNameOffsetInt8:
+			v.Aux = &AuxNameOffset{Name: name, Offset: 3}
+		case auxARM64BitField:
+			v.AuxInt = arm64BitFieldToAuxInt(armBFAuxInt(3, 9))
+		case auxARM64ConditionalParams:
+			v.AuxInt = arm64ConditionalParamsToAuxInt(arm64ConditionalParamsAuxIntWithValue(OpARM64Equal, 5, 7))
+		case auxS390XCCMask, auxS390XRotateParams:
+			v.Aux = StringToAux("opaque")
+		}
+		out = append(out, fmt.Sprintf("aux:%d:%s:%s:%s", kind, v.auxString(), v.LongString(), v.LongHTML()))
+	}
+	detached := f.newValueNoBlock(OpConst8, cfg.Types.Int8, pos)
+	detached.AuxInt = -1
+	out = append(out, "detached:"+detached.LongString(), "nil:"+(*Value)(nil).LongString())
+	for _, op := range []Op{OpConst8, OpConst16, OpConst32, OpConst64} {
+		v := entry.NewValue0I(pos, op, cfg.Types.Int64, -1)
+		out = append(out, fmt.Sprintf("unsigned:%s:%x", op, v.AuxUnsigned()))
+	}
+	// Do not print the raw-formatting probes as a graph: several deliberately
+	// have no valid signature or argument list.
+	entry.Values = entry.Values[:3]
+	var writer snapshotDiagnosticBuffer
+	w := &HTMLWriter{w: &writer, Func: f, path: "diagnostic.html"}
+	w.start()
+	w.WriteSources("source", []*FuncLines{{Filename: "source.go", StartLineno: 2, Lines: []string{"\t", "x < y && z"}}})
+	w.WriteAST("AST", bytes.NewBufferString("buildssa F\nfile.go:12:3: x < y\n\n"))
+	w.WritePhase("initial", "initial")
+	w.WritePhase("same", "same")
+	a.AuxInt++
+	w.WritePhase("changed", "changed")
+	w.flushPhases()
+	record("phases", writer.String())
+	out = append(out, fmt.Sprintf("pending:%d:%d", len(w.pendingPhases), len(w.pendingTitles)))
+	// Native Func.Fatalf emits text and pending HTML before forwarding to fe.
+	f.HTMLWriter = w
+	fe.enabled = true
+	func() {
+		defer func() { out = append(out, fmt.Sprint("fatal:", recover())) }()
+		f.Entry.Fatalf("failure %d", 9)
+	}()
+	record("fatal-log", fe.log.String())
+	record("fatal-html", writer.String())
+	saved := writer.String()
+	func() { defer func() { out = append(out, fmt.Sprint("value-fatal:", recover())) }(); a.AuxInt8() }()
+	out = append(out, fmt.Sprintf("value-direct:%t", saved == writer.String()))
+	w.Close()
+	record("closed", writer.String())
+	out = append(out, fmt.Sprintf("closed:%t", writer.closed))
+	// A deterministic renderer executable exercises the original DOT/process/SVG
+	// pipeline. Its output contract is intentionally independent of Graphviz.
+	dir := t.TempDir()
+	helper := filepath.Join(dir, "renderer")
+	dotInput := filepath.Join(dir, "input.dot")
+	script := "#!/bin/sh\ncat > '" + strings.ReplaceAll(dotInput, "'", "'\\''") + "'\nprintf '<svg xmlns=\"http://www.w3.org/2000/svg\"><g/></svg>'\n"
+	if err := os.WriteFile(helper, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	DIAG_COMMAND
+	_ = exec.Command
+	dot := &dotWriter{path: helper, phases: map[string]bool{"diagnostic phase": true}}
+	f.laidout = true
+	entry.Likely = BranchUnlikely
+	var svg bytes.Buffer
+	dot.writeFuncSVG(&svg, "ignored", f)
+	dot.writeFuncSVG(&svg, "diagnostic phase", f)
+	raw, err := os.ReadFile(dotInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record("dot", string(raw))
+	record("svg", svg.String())
+	out = append(out, fmt.Sprintf("broken:%t", dot.broken))
+	var absent *HTMLWriter
+	absent.Close()
+	absent.WritePhase("ignored", "ignored")
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("SYNCGO_IR=" + string(data))
+}

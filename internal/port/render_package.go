@@ -185,7 +185,11 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := auditOutput(outpkg, output, outinfo, sliceOperations); err != nil {
+	resourceOperations, err := reviewedHostResources(output, info, outinfo, outpkg, units)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := auditOutput(outpkg, output, outinfo, sliceOperations, resourceOperations); err != nil {
 		return nil, nil, err
 	}
 	for _, u := range units {
