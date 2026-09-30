@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v47"
+const ToolVersion = "syncgo-m3-v48"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -79,11 +79,12 @@ type HostResourceRule struct {
 }
 
 // HostCallRule binds reviewed compiler diagnostics to an explicit instance
-// service. Create returns io.WriteCloser instead of exposing the host file.
-// Getenv only accepts the reviewed literal key; metrics remain local data.
+// service. File factories return only the reviewed stream interface.
+// Environment and executable lookup calls accept reviewed literal keys only.
 type HostCallRule struct {
 	Package, Function, Method string
 	StringArgument            string
+	StringArguments           []string // Alternative literal keys; mutually exclusive with StringArgument.
 }
 
 // CallRule derives the upstream signature from Source; no replacement package
@@ -325,9 +326,18 @@ func (p Plan) Validate() error {
 		seenHostCalls := map[string]bool{}
 		for _, call := range u.HostCalls {
 			key := call.Package + "." + call.Function
-			allowed := key == "os.Create" || key == "os.Getenv" || key == "runtime.ReadMemStats" || key == "time.Now"
-			if !allowed || u.Context == nil || u.Context.Adapter == "" || !token.IsIdentifier(call.Method) || call.Method == "_" || seenHostCalls[key] || (key == "os.Getenv") != (call.StringArgument != "") {
+			allowed := key == "os.Create" || key == "os.Open" || key == "os.OpenFile" || key == "os.Getwd" || key == "os.ExpandEnv" || key == "os.MkdirAll" || key == "os/exec.LookPath" || key == "os.Getenv" || key == "runtime.ReadMemStats" || key == "time.Now"
+			keys := call.stringArguments()
+			needsKeys := key == "os.Getenv" || key == "os/exec.LookPath"
+			if !allowed || u.Context == nil || u.Context.Adapter == "" || !token.IsIdentifier(call.Method) || call.Method == "_" || seenHostCalls[key] || needsKeys != (len(keys) != 0) || (call.StringArgument != "" && len(call.StringArguments) != 0) {
 				return fmt.Errorf("invalid host call binding: %s", key)
+			}
+			seenKeys := map[string]bool{}
+			for _, value := range keys {
+				if value == "" || seenKeys[value] {
+					return fmt.Errorf("invalid host call argument: %s", key)
+				}
+				seenKeys[value] = true
 			}
 			seenHostCalls[key] = true
 		}

@@ -13,6 +13,7 @@ import (
 	"go-backend-ssa/internal/reflectdata"
 	"go-backend-ssa/internal/types"
 	"io"
+	"io/fs"
 	"os/exec"
 	"runtime"
 	"time"
@@ -26,6 +27,9 @@ type Context struct {
 	ReadMemStats      func(*runtime.MemStats)
 	DumpDirectory     string
 	CreateDump        func(string) (io.WriteCloser, error)
+	OpenHTML          func(string, int, fs.FileMode) (io.WriteCloser, error)
+	WorkingDirectory  func() (string, error)
+	LookPath          func(string) (string, error)
 	checkRandSeed     int
 	IntrinsicsDebug   int
 	IntrinsicsDisable bool
@@ -424,4 +428,26 @@ func (c *Context) createDump(name string) (io.WriteCloser, error) {
 		panic("SSA dumping requires an output provider")
 	}
 	return c.CreateDump(name)
+}
+
+func (c *Context) openHTML(path string, flags int, mode fs.FileMode) (io.WriteCloser, error) {
+	if c.OpenHTML == nil {
+		panic("SSA HTML output requires an output provider")
+	}
+	return c.OpenHTML(path, flags, mode)
+}
+func (c *Context) workingDirectory() (string, error) {
+	if c.WorkingDirectory == nil {
+		panic("SSA HTML output requires a working directory provider")
+	}
+	return c.WorkingDirectory()
+}
+func (c *Context) lookPath(name string) (string, error) {
+	if name != "dot" {
+		panic("unsupported SSA executable input")
+	}
+	if c.LookPath == nil {
+		panic("SSA graph output requires an executable lookup provider")
+	}
+	return c.LookPath(name)
 }

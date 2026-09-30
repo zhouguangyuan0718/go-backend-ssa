@@ -6,7 +6,28 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
+	"strings"
 )
+
+func (r HostCallRule) stringArguments() []string {
+	if r.StringArgument != "" {
+		return []string{r.StringArgument}
+	}
+	return r.StringArguments
+}
+
+// Imports in the pinned-source and generated-package checks have independent
+// type identities. Compare canonical names after resolving parameter aliases.
+func hostCallSignature(sig *types.Signature) string {
+	tuple := func(in *types.Tuple) *types.Tuple {
+		vars := make([]*types.Var, in.Len())
+		for i := range vars {
+			vars[i] = types.NewVar(token.NoPos, nil, "", types.Unalias(in.At(i).Type()))
+		}
+		return types.NewTuple(vars...)
+	}
+	return types.TypeString(types.NewSignatureType(nil, nil, nil, tuple(sig.Params()), tuple(sig.Results()), sig.Variadic()), nil)
+}
 
 func hostCallFunction(object types.Object, rule HostCallRule) bool {
 	fn, ok := object.(*types.Func)
@@ -39,29 +60,38 @@ func reviewedHostCalls(files []*ast.File, before, after *types.Info, pkg *types.
 			}
 			native := original.Type().(*types.Signature)
 			actual := method.Type().(*types.Signature)
-			want := types.TypeString(unnamedSignature(native), nil)
-			if rule.Package == "os" && rule.Function == "Create" {
-				// The sole signature adaptation deliberately removes File capabilities.
-				// The compiler keeps its native (writer,error) flow; its factory can now
-				// supply a memory stream or a host file without exposing os.File methods.
-				if want != "func(string) (*os.File, error)" {
-					return nil, fmt.Errorf("native create signature changed: %s", want)
+			want := hostCallSignature(native)
+			if rule.Package == "os" && (rule.Function == "Create" || rule.Function == "Open" || rule.Function == "OpenFile") {
+				// Narrow only the native file result; every parameter and the error
+				// result keep their original type. No host File methods escape.
+				iface := "WriteCloser"
+				if rule.Function == "Open" {
+					iface = "ReadCloser"
 				}
-				want = "func(string) (io.WriteCloser, error)"
-				if actual.Results().Len() != 2 {
-					return nil, fmt.Errorf("host call create requires two results")
+				if native.Results().Len() != 2 || actual.Results().Len() != 2 || !strings.HasSuffix(want, "(*os.File, error)") {
+					return nil, fmt.Errorf("host file factory signature changed: %s", want)
 				}
 				result := actual.Results().At(0).Type()
 				named, ok := result.(*types.Named)
-				if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != "io" || named.Obj().Name() != "WriteCloser" || !types.AssignableTo(native.Results().At(0).Type(), result) {
-					return nil, fmt.Errorf("host call create requires the native writer interface")
+				if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != "io" || named.Obj().Name() != iface || !types.AssignableTo(native.Results().At(0).Type(), result) {
+					return nil, fmt.Errorf("host file factory requires io.%s", iface)
 				}
+				// Type aliases such as os.FileMode and fs.FileMode are identical.
+				expected := types.NewSignatureType(nil, nil, nil, native.Params(), types.NewTuple(types.NewVar(token.NoPos, nil, "", result), native.Results().At(1)), native.Variadic())
+				if hostCallSignature(actual) != hostCallSignature(expected) {
+					return nil, fmt.Errorf("host file factory signature mismatch: %s", rule.Method)
+				}
+				want = hostCallSignature(actual)
 			}
-			if got := types.TypeString(unnamedSignature(actual), nil); got != want {
+			if got := hostCallSignature(actual); got != want {
 				return nil, fmt.Errorf("host call adapter signature mismatch: %s: got %s, want %s", rule.Method, got, want)
 			}
-			if rule.StringArgument != "" {
+			if keys := rule.stringArguments(); len(keys) != 0 {
 				found := 0
+				counts := map[string]int{}
+				for _, key := range keys {
+					counts[key] = 0
+				}
 				for _, file := range files {
 					ast.Inspect(file, func(node ast.Node) bool {
 						call, ok := node.(*ast.CallExpr)
@@ -78,8 +108,12 @@ func reviewedHostCalls(files []*ast.File, before, after *types.Info, pkg *types.
 						}
 						if len(call.Args) == 1 {
 							value := after.Types[call.Args[0]].Value
-							if value != nil && value.Kind() == constant.String && constant.StringVal(value) == rule.StringArgument {
-								found++
+							if value != nil && value.Kind() == constant.String {
+								key := constant.StringVal(value)
+								if _, ok := counts[key]; ok {
+									found++
+									counts[key]++
+								}
 							}
 						}
 						return true
@@ -91,8 +125,45 @@ func reviewedHostCalls(files []*ast.File, before, after *types.Info, pkg *types.
 						uses++
 					}
 				}
+				for _, count := range counts {
+					if count == 0 {
+						return nil, fmt.Errorf("host call reviewed string argument is unused: %s", rule.Method)
+					}
+				}
 				if found == 0 || uses != found {
 					return nil, fmt.Errorf("host call requires the reviewed string argument: %s", rule.Method)
+				}
+			}
+			if rule.Package == "os" && rule.Function == "OpenFile" {
+				// Only immutable native open flags used in this factory's flags
+				// argument pass the host audit. No other os use is authorized.
+				for _, file := range files {
+					ast.Inspect(file, func(node ast.Node) bool {
+						call, ok := node.(*ast.CallExpr)
+						if !ok || len(call.Args) != 3 {
+							return true
+						}
+						sel, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
+						if !ok {
+							return true
+						}
+						selection := after.Selections[sel]
+						if selection == nil || selection.Kind() != types.MethodVal || selection.Obj() != method {
+							return true
+						}
+						ast.Inspect(call.Args[1], func(n ast.Node) bool {
+							id, ok := n.(*ast.Ident)
+							if !ok {
+								return true
+							}
+							obj, ok := after.Uses[id].(*types.Const)
+							if ok && obj.Pkg() != nil && obj.Pkg().Path() == "os" && (obj.Name() == "O_WRONLY" || obj.Name() == "O_CREATE" || obj.Name() == "O_TRUNC") {
+								reviewed[id] = true
+							}
+							return true
+						})
+						return true
+					})
 				}
 			}
 			metrics = metrics || rule.Package == "runtime" && rule.Function == "ReadMemStats"

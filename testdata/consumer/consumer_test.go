@@ -1,6 +1,7 @@
 package consumer
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"go-backend-ssa/abi"
@@ -37,6 +38,8 @@ import (
 	"go-backend-ssa/types2"
 	"go-backend-ssa/walk"
 	"go/constant"
+	"io"
+	"io/fs"
 	"strings"
 	"testing"
 	"time"
@@ -995,7 +998,30 @@ func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
 	if size, ptrsize, alignment := backend.AllocFrame(compiled); size != 0 || ptrsize != 0 || alignment != 8 {
 		t.Fatalf("public native frame layout: %d/%d/%d", size, ptrsize, alignment)
 	}
+	var report publicReportBuffer
+	c.OpenHTML = func(path string, flags int, mode fs.FileMode) (io.WriteCloser, error) {
+		if path != "/reports/compiled.html" || mode != 0644 {
+			t.Fatal(path, mode)
+		}
+		return &report, nil
+	}
+	writer := ssa.NewHTMLWriter("/reports/compiled.html", compiled, "")
+	writer.WriteSources("sources", []*ssa.FuncLines{{Filename: "input.go", StartLineno: 1, Lines: []string{"package p"}}})
+	writer.Close()
+	if !report.closed || !strings.HasPrefix(report.String(), "<html>") || !strings.Contains(report.String(), "package p") || !strings.HasSuffix(report.String(), "</html>") {
+		t.Fatal("public native report")
+	}
+	backend.DumpFunction = "compiled+"
+	backend.InitEnv()
+	backend.DumpInline(compiledIR)
 }
+
+type publicReportBuffer struct {
+	bytes.Buffer
+	closed bool
+}
+
+func (b *publicReportBuffer) Close() error { b.closed = true; return nil }
 
 // Parameter slots retain their Name and offset under the native Frontend contract.
 type publicSplitFrontend struct {

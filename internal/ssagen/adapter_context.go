@@ -19,17 +19,24 @@ import (
 // type and runtime declarations have been initialized. Phase operations within
 // one graph are serialized; separate contexts can compile independently.
 type Context struct {
-	Liveness         *liveness.Context
-	ptrSize, regSize int
-	maxWidth         int64
-	SSA              *ssa.Context
-	Arch             ArchInfo
-	ssaConfig        *ssa.Config
-	ssaCaches        []ssa.Cache
-	BoundsCheckFunc  [ssa.BoundsKindCount]*obj.LSym
-	softFloatOps     map[ssa.Op]sfRtCallDef
-	deferType        *types.Type
-	Typecheck        *typecheck.Context
+	// DumpFunction and DumpDirectory supply native GOSSAFUNC and GOSSADIR inputs.
+	DumpFunction, DumpDirectory string
+	OpenSource                  func(string) (io.ReadCloser, error)
+	ExpandSourcePath            func(string) string
+	ssaDump, ssaDir, ssaDumpCFG string
+	ssaDumpStdout               bool
+	ssaDumpInlined              []*ir.Func
+	Liveness                    *liveness.Context
+	ptrSize, regSize            int
+	maxWidth                    int64
+	SSA                         *ssa.Context
+	Arch                        ArchInfo
+	ssaConfig                   *ssa.Config
+	ssaCaches                   []ssa.Cache
+	BoundsCheckFunc             [ssa.BoundsKindCount]*obj.LSym
+	softFloatOps                map[ssa.Op]sfRtCallDef
+	deferType                   *types.Type
+	Typecheck                   *typecheck.Context
 	// ReadFile supplies symabis input. There is no implicit filesystem fallback.
 	ReadFile func(string) ([]byte, error)
 }
@@ -162,5 +169,33 @@ func (c *Context) checkFrame(f *ssa.Func) {
 				checkName(n)
 			}
 		}
+	}
+}
+
+func (c *Context) dumpEnvironment(key string) string {
+	switch key {
+	case "GOSSAFUNC":
+		return c.DumpFunction
+	case "GOSSADIR":
+		return c.DumpDirectory
+	}
+	panic("unsupported ssagen environment input")
+}
+func (c *Context) openSource(path string) (io.ReadCloser, error) {
+	if c.OpenSource == nil {
+		panic("SSA source display requires an input provider")
+	}
+	return c.OpenSource(path)
+}
+func (c *Context) expandSourcePath(path string) string {
+	if c.ExpandSourcePath == nil {
+		panic("SSA source display requires a path expansion provider")
+	}
+	return c.ExpandSourcePath(path)
+}
+
+func (c *Context) checkDumpInline(fn *ir.Func) {
+	if fn == nil || !c.Typecheck.IR.OwnsNode(fn) {
+		panic("SSA inline source belongs to another compilation")
 	}
 }

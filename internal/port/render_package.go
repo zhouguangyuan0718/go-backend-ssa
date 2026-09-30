@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 func renderPackage(s *Source, units []Unit, imports map[string]string, root string, before, after *packageImporter) (map[string][]byte, []Provenance, error) {
@@ -146,7 +147,7 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			prov.Declarations = append(prov.Declarations, "fixed-sizeof:"+rule.Function+":"+rule.Type)
 		}
 		for _, rule := range u.HostCalls {
-			prov.Declarations = append(prov.Declarations, "host-call:"+rule.Package+"."+rule.Function+":"+rule.Method+":"+rule.StringArgument)
+			prov.Declarations = append(prov.Declarations, "host-call:"+rule.Package+"."+rule.Function+":"+rule.Method+":"+strings.Join(rule.stringArguments(), ","))
 		}
 		for _, name := range u.AdapterMethods {
 			prov.Declarations = append(prov.Declarations, "adapter-method:"+name)

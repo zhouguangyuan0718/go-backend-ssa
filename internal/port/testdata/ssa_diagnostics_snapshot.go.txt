@@ -14,6 +14,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+"io"
+"io/fs"
+"sort"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -222,6 +225,28 @@ func TestSyncgoNativeSnapshot(t *testing.T) {
 	record("dot", string(raw))
 	record("svg", svg.String())
 	out = append(out, fmt.Sprintf("broken:%t", dot.broken))
+
+ // Exercise the native constructor and phase-mask parser against real temporary
+ // resources. The port supplies those same host functions explicitly.
+ DIAG_HOST
+ _ = io.Discard; _ = fs.FileMode(0)
+ if err := os.WriteFile(filepath.Join(dir,"dot"),[]byte("#!/bin/sh\nexit 0\n"),0700); err != nil {t.Fatal(err)}
+ t.Setenv("PATH",dir)
+ for _,mask:=range []string{"","*","early_phielim","early_phielim-late_opt","early_phielim,lower","lower-early_phielim","bad-phase-range","unknown"} {
+  d:=UP.newDotWriter(mask);var phases []string
+  if d!=nil {for name:=range d.phases{phases=append(phases,name)};sort.Strings(phases)}
+  out=append(out,fmt.Sprintf("mask:%s:%t:%v",mask,d!=nil,phases))
+ }
+ // No CFG rendering is requested; report bytes include the original HTML shell,
+ // source escaping and close suffix, without machine-specific paths.
+ report:=filepath.Join(dir,"native-report.html")
+ reportWriter:=NewHTMLWriter(report,f,"")
+ reportWriter.WriteSources("sources",[]*FuncLines{{Filename:"report-source.go",StartLineno:2,Lines:[]string{"a < b && c",""}}})
+ reportWriter.Close()
+ reportBytes,err:=os.ReadFile(report);if err!=nil{t.Fatal(err)};record("constructor-report",string(reportBytes))
+ // Lookup errors retain the native nil-writer result.
+ if err:=os.Remove(filepath.Join(dir,"dot"));err!=nil{t.Fatal(err)}
+ out=append(out,fmt.Sprintf("lookup-failure:%t",UP.newDotWriter("lower")==nil))
 	var absent *HTMLWriter
 	absent.Close()
 	absent.WritePhase("ignored", "ignored")

@@ -1,0 +1,53 @@
+package ssagen
+import (
+ IMPORT_BASE
+ "IMPORT_IR"
+ "IMPORT_OBJ"
+ "IMPORT_SRC"
+ "IMPORT_SYS"
+ "IMPORT_TYPECHECK"
+ "IMPORT_TYPES"
+ "FE_SSA_IMPORT"
+ FE_IMPORT
+ "crypto/sha256"
+ "encoding/binary"
+ "encoding/json"
+ "fmt"
+ "io"
+ "io/fs"
+ "os"
+ "path/filepath"
+ "strings"
+ "testing"
+)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ mode:=os.Getenv("SYNCGO_TARGET")
+ target:=struct{arch string;size int;order binary.ByteOrder}{mode,8,binary.LittleEndian}
+ switch mode{case "386","mips":target.size=4};switch mode{case "mips","ppc64":target.order=binary.BigEndian}
+ SETUP
+ SOURCE_HOST
+ _=io.Discard;_=fs.FileMode(0)
+ FE_FLAG.LowerC=1;FE_FEATURES.GOAMD64=1;FE_FEATURES.GOPPC64=8;FE_FEATURES.GORISCV64=20;UP.InitConfig()
+ var out []string;add:=func(f string,a ...any){out=append(out,fmt.Sprintf(f,a...))}
+ for _,input:=range []string{"","f","f+","f:lower","f:early_phielim-lower+","f:a:b"}{
+  UP.ssaDump="";UP.ssaDir="";UP.ssaDumpCFG="";UP.ssaDumpStdout=false
+  SOURCE_INPUTS
+  UP.InitEnv();add("environment:%q:%q:%q:%q:%t",input,UP.ssaDump,UP.ssaDir,UP.ssaDumpCFG,UP.ssaDumpStdout)
+ }
+ dir:=t.TempDir();t.Setenv("SYNCGO_SOURCE_ROOT",dir)
+ for file,contents:=range map[string]string{"primary.go":"package p\nfunc f() {\n\tprintln(\"<&>\")\n}\n", "a.go":"one\ntwo\nthree\n", "z.go":"last\n", "long.go":strings.Repeat("x",70000)}{if err:=os.WriteFile(filepath.Join(dir,file),[]byte(contents),0600);err!=nil{t.Fatal(err)}}
+ for _,tt:=range []struct{file string;start,end uint}{{"primary.go",2,4},{"primary.go",0,1},{"primary.go",10,12},{"primary.go",4,2},{"a.go",2,9},{"long.go",1,2},{"missing.go",1,2}}{
+  file:="$SYNCGO_SOURCE_ROOT/"+tt.file;lines,err:=UP.readFuncLines(file,tt.start,tt.end)
+  if err!=nil{add("read:%s:%d:%d:error:%t",tt.file,tt.start,tt.end,os.IsNotExist(err));continue};add("read:%s:%d:%v",lines.Filename,lines.StartLineno,lines.Lines)
+ }
+ makefn:=func(name,file string,start,end uint)*ir.Func{p:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase(file,file),start,1));e:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase(file,file),end,1));fn:=GRAPH.NewFunc(p,e,TY.LocalPkg.Lookup(name),TY.NewSignature(nil,nil,nil));fn.DeclareParams(true);return fn}
+ fn:=makefn("f","$SYNCGO_SOURCE_ROOT/primary.go",2,4)
+ UP.ssaDump="f";UP.ssaDumpInlined=nil
+ UP.DumpInline(fn);UP.DumpInline(makefn("other","unused.go",1,1));add("inlined:%d:%t",len(UP.ssaDumpInlined),UP.ssaDumpInlined[0]==fn)
+ // Source order is target first, then inlined files sorted by name and line.
+ UP.ssaDumpInlined=[]*ir.Func{makefn("z","$SYNCGO_SOURCE_ROOT/z.go",1,1),makefn("a2","$SYNCGO_SOURCE_ROOT/a.go",2,3),makefn("a1","$SYNCGO_SOURCE_ROOT/a.go",1,1),makefn("missing","$SYNCGO_SOURCE_ROOT/missing.go",1,2)}
+ fe:=FE_NEW;cache:=new(ssa.Cache);cache.Reset();f:=UP.ssaConfig.NewFunc(fe,cache);f.Name="f";f.Type=fn.Type();f.ABISelf=UP.ssaConfig.ABI1;f.Entry=f.NewBlock(ssa.BlockRet)
+ report:=filepath.Join(dir,"report.html");writer:=ssa.NewHTMLWriter(report,f,"");UP.dumpSourcesColumn(writer,fn);writer.Close();data,err:=os.ReadFile(report);if err!=nil{t.Fatal(err)};add("source-report:%x",sha256.Sum256(data))
+ missingTarget:=makefn("missingTarget","$SYNCGO_SOURCE_ROOT/missing.go",1,2);report=filepath.Join(dir,"missing-target.html");writer=ssa.NewHTMLWriter(report,f,"");UP.dumpSourcesColumn(writer,missingTarget);writer.Close();data,err=os.ReadFile(report);if err!=nil{t.Fatal(err)};add("missing-target-report:%x",sha256.Sum256(data))
+ data,err=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Printf("SYNCGO_IR=%s\n",data)
+}

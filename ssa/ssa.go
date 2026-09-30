@@ -66,3 +66,12 @@ func NewContext(a *abi.Context, rd *reflectdata.Context, log *logopt.Context) *C
 // Compile runs the complete native SSA pipeline on f. Configure the owning
 // Context's clock and any enabled metric or dump providers before calling it.
 func Compile(f *Func) { compiler.Compile(f) }
+
+// HTMLWriter and FuncLines retain the native SSA report representation.
+type HTMLWriter = compiler.HTMLWriter
+type FuncLines = compiler.FuncLines
+
+// NewHTMLWriter uses f's Context providers to create a native report.
+func NewHTMLWriter(path string, f *Func, cfgMask string) *HTMLWriter {
+	return compiler.NewHTMLWriter(path, f, cfgMask)
+}
