@@ -10,6 +10,7 @@ import (
 	"go-backend-ssa/compare"
 	"go-backend-ssa/deadlocals"
 	"go-backend-ssa/diagnostic"
+	"go-backend-ssa/dwarfgen"
 	"go-backend-ssa/escape"
 	"go-backend-ssa/gcbridge"
 	"go-backend-ssa/inline"
@@ -435,6 +436,7 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	backend.GOARM64.Version = "v8.0"
 	amd64.NewContext(backend)
 	backend.InitConfig()
+	dwarfgen.NewContext(backend, backend.SSA.ReflectData)
 	backend.InitTables()
 	lowering := walk.NewContext(writer, analysis)
 	seen := map[*ir.Func]bool{}
@@ -482,6 +484,10 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 		}
 		pp := writer.ReflectData.Runtime.Writer.NewProgs(fn, 0)
 		backend.GenSSA(compiled, pp)
+		pp.Flush()
+		if len(fn.LSym.P) == 0 || fn.LSym.Func().Pcln.Pcsp == nil {
+			t.Fatal("full native flush did not emit machine code and PCLN")
+		}
 		if pp.Text == nil || pp.Text.Link == nil || (fn.Type().NumRecvs()+fn.Type().NumParams() != 0 && fn.LSym.Func().ArgInfo == nil) {
 			t.Fatal("public native instruction emission", fn)
 		}

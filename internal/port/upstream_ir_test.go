@@ -58,6 +58,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_build")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_emit")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_assemble")
+	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_flush")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -83,8 +84,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if len(snapshots) > 0 {
 		snapshotName = snapshots[0]
 	}
+	isFlushSSA := snapshotName == "ssagen_flush"
 	isAssembleSSA := snapshotName == "ssagen_assemble"
-	isEmitSSA := snapshotName == "ssagen_emit" || isAssembleSSA
+	isEmitSSA := snapshotName == "ssagen_emit" || isAssembleSSA || isFlushSSA
 	isBuildSSA := snapshotName == "ssagen_build" || isEmitSSA
 	observerFile := "ssagen_build_observer.go.txt"
 	if isEmitSSA {
@@ -92,7 +94,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	var template []byte
 	var err error
-	if isAssembleSSA {
+	if isAssembleSSA || isFlushSSA {
 		template, err = os.ReadFile(filepath.Join(root, "internal/port/testdata/ssagen_emit_snapshot.go.txt"))
 	} else if snapshotName == "ssa_objects" {
 		template, err = ssaObjectsSnapshot(s)
@@ -267,6 +269,12 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		ported = strings.Replace(ported, "backend.InitConfig();", "amd64.NewContext(backend);backend.InitConfig();", 1)
 		ported = strings.NewReplacer("EMIT_IMPORT", `"go-backend-ssa/internal/amd64";`, "EMIT_RUN", "ssagen.SyncgoEmitSnapshot(backend,compiled)").Replace(ported)
 	}
+	if isFlushSSA {
+		ported = replaceFlushFixture(t, ported, `"go-backend-ssa/internal/amd64";`, `"go-backend-ssa/internal/amd64";"go-backend-ssa/internal/dwarfgen";`)
+		ported = replaceFlushFixture(t, ported, "backend.InitConfig();", "backend.InitConfig();dwarfgen.NewContext(backend,c.ReflectData);")
+		ported = replaceFlushFixture(t, ported, "c.Flag.Dwarf=true;", "c.Flag.Dwarf=true;c.Flag.GenDwarfInl=2;link.DwFixups=obj.NewDwarfFixupTable(link);")
+		ported = replaceFlushFixture(t, ported, "b,err:=json.Marshal(out)", `link.DwFixups.Finalize(link.Pkgpath,false);out=append(out,ssagen.SyncgoFlushFinalSnapshot(link)...);out=append(out,fmt.Sprintf("abbrev:%x",link.DWARF.GetAbbrev()));b,err:=json.Marshal(out)`)
+	}
 	if isBuildSSA {
 		observer, err := os.ReadFile(filepath.Join(root, "internal/port/testdata", observerFile))
 		if err != nil {
@@ -276,7 +284,11 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		if isEmitSSA {
 			code = strings.NewReplacer("EMIT_IMPORT", `"go-backend-ssa/internal/cmd/obj";`, "EMIT_PROGS", "c.SSA.ReflectData.Runtime.Writer.NewProgs", "EMIT_GEN", "c.GenSSA", "EMIT_CONTEXT", "c,", "EMIT_ONLY", "c").Replace(code)
 		}
-		code = assemblySnapshotObserver(code, isAssembleSSA)
+		if isFlushSSA {
+			code = flushSnapshotObserver(code) + flushFinalObserver()
+		} else {
+			code = assemblySnapshotObserver(code, isAssembleSSA)
+		}
 		writeTestFile(t, dir, "internal/ssagen/export_snapshot_test.go", code)
 	}
 	writeTestFile(t, dir, "internal/"+pkgName+"/adapter_snapshot_test.go", ported)
@@ -444,7 +456,11 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		if isEmitSSA {
 			code = strings.NewReplacer("EMIT_IMPORT", `"cmd/internal/obj";"cmd/compile/internal/objw";`, "EMIT_PROGS", "objw.NewProgs", "EMIT_GEN", "genssa", "EMIT_CONTEXT", "", "EMIT_ONLY", "").Replace(code)
 		}
-		code = assemblySnapshotObserver(code, isAssembleSSA)
+		if isFlushSSA {
+			code = flushSnapshotObserver(code) + flushFinalObserver()
+		} else {
+			code = assemblySnapshotObserver(code, isAssembleSSA)
+		}
 		writeTestFile(t, dir, observer, code)
 		overlay[filepath.Join(goroot, "src/cmd/compile/internal/ssagen/syncgo_build_observer_test.go")] = filepath.Join(dir, observer)
 		native = strings.ReplaceAll(native, ";Arch.", ";ssagen.Arch.")
@@ -457,6 +473,16 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if isEmitSSA {
 		native = strings.Replace(native, "ssagen.InitConfig();", "amd64.Init(&ssagen.Arch);base.Ctxt.Arch=ssagen.Arch.LinkArch;ssagen.InitConfig();", 1)
 		native = strings.NewReplacer("EMIT_IMPORT", `"cmd/compile/internal/amd64";`, "EMIT_RUN", "ssagen.SyncgoEmitSnapshot(compiled)").Replace(native)
+	}
+	if isFlushSSA {
+		native = replaceFlushFixture(t, native, `"cmd/compile/internal/amd64";`, `"cmd/compile/internal/amd64";"cmd/compile/internal/dwarfgen";"cmd/internal/dwarf";`)
+		native = replaceFlushFixture(t, native, "base.Flag.Dwarf=true", "base.Flag.Dwarf=true;base.Flag.GenDwarfInl=2;base.Ctxt.DwFixups=obj.NewDwarfFixupTable(base.Ctxt)")
+		native = replaceFlushFixture(t, native, "base.Ctxt.Arch=ssagen.Arch.LinkArch;", "base.Ctxt.Arch=ssagen.Arch.LinkArch;base.Ctxt.Arch.Init(base.Ctxt);base.Ctxt.DebugInfo=dwarfgen.Info;base.Ctxt.GenAbstractFunc=dwarfgen.AbstractFunc;")
+		native = replaceFlushFixture(t, native, "b,err:=json.Marshal(out)", `base.Ctxt.DwFixups.Finalize(base.Ctxt.Pkgpath,false);out=append(out,ssagen.SyncgoFlushFinalSnapshot(base.Ctxt)...);out=append(out,fmt.Sprintf("abbrev:%x",dwarf.GetAbbrev()));b,err:=json.Marshal(out)`)
+		code := flushSymbolsObserver()
+		writeTestFile(t, dir, "reference/flush_symbols.go", code)
+		overlay[filepath.Join(goroot, "src/cmd/internal/obj/syncgo_flush_symbols.go")] = filepath.Join(dir, "reference/flush_symbols.go")
+		writeTestFile(t, dir, "internal/cmd/obj/adapter_flush_symbols.go", code)
 	}
 	if isAssembleSSA {
 		native = strings.Replace(native, "base.Ctxt.Arch=ssagen.Arch.LinkArch;", "base.Ctxt.Arch=ssagen.Arch.LinkArch;base.Ctxt.Arch.Init(base.Ctxt);", 1)

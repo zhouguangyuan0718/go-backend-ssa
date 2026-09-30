@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v51"
+const ToolVersion = "syncgo-m3-v52"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -359,7 +359,7 @@ func (p Plan) Validate() error {
 		seenHostCalls := map[string]bool{}
 		for _, call := range u.HostCalls {
 			key := call.Package + "." + call.Function
-			allowed := key == "os.Create" || key == "os.Open" || key == "os.OpenFile" || key == "os.Getwd" || key == "os.ExpandEnv" || key == "os.MkdirAll" || key == "os/exec.LookPath" || key == "os.Getenv" || key == "runtime.ReadMemStats" || key == "time.Now"
+			allowed := key == "flag.Lookup" || key == "os.Create" || key == "os.Open" || key == "os.OpenFile" || key == "os.Getwd" || key == "os.ExpandEnv" || key == "os.MkdirAll" || key == "os/exec.LookPath" || key == "os.Getenv" || key == "runtime.ReadMemStats" || key == "time.Now"
 			keys := call.stringArguments()
 			needsKeys := key == "os.Getenv" || key == "os/exec.LookPath"
 			if !allowed || u.Context == nil || u.Context.Adapter == "" || !token.IsIdentifier(call.Method) || call.Method == "_" || seenHostCalls[key] || needsKeys != (len(keys) != 0) || (call.StringArgument != "" && len(call.StringArguments) != 0) {

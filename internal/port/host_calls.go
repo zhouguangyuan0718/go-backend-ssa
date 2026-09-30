@@ -37,6 +37,7 @@ func hostCallFunction(object types.Object, rule HostCallRule) bool {
 func reviewedHostCalls(files []*ast.File, before, after *types.Info, pkg *types.Package, units []Unit) (map[ast.Node]bool, error) {
 	reviewed := map[ast.Node]bool{}
 	metrics := false
+	flags := false
 	for _, unit := range units {
 		for _, rule := range unit.HostCalls {
 			var original *types.Func
@@ -166,7 +167,46 @@ func reviewedHostCalls(files []*ast.File, before, after *types.Info, pkg *types.
 					})
 				}
 			}
+			flags = flags || rule.Package == "flag" && rule.Function == "Lookup"
 			metrics = metrics || rule.Package == "runtime" && rule.Function == "ReadMemStats"
+		}
+	}
+
+	if flags {
+		// An explicit FlagSet lookup returns passive flag descriptions. Keep only
+		// their value/name/default and read-only Getter operations; process parsing,
+		// global registration and Value.Set remain unclassified.
+		for id, object := range after.Uses {
+			if object == nil || object.Pkg() == nil || object.Pkg().Path() != "flag" {
+				continue
+			}
+			if _, ok := object.(*types.TypeName); ok && (object.Name() == "Flag" || object.Name() == "Getter") {
+				reviewed[id] = true
+			}
+		}
+		for selector, selection := range after.Selections {
+			object := selection.Obj()
+			if object.Pkg() == nil || object.Pkg().Path() != "flag" {
+				continue
+			}
+			recv := selection.Recv()
+			if p, ok := recv.(*types.Pointer); ok {
+				recv = p.Elem()
+			}
+			named, ok := recv.(*types.Named)
+			if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != "flag" {
+				continue
+			}
+			switch named.Obj().Name() {
+			case "Flag":
+				if selection.Kind() == types.FieldVal && (object.Name() == "Value" || object.Name() == "Name" || object.Name() == "DefValue") {
+					reviewed[selector.Sel] = true
+				}
+			case "Getter", "Value":
+				if (selection.Kind() == types.MethodVal || selection.Kind() == types.MethodExpr) && (object.Name() == "String" || object.Name() == "Get") {
+					reviewed[selector.Sel] = true
+				}
+			}
 		}
 	}
 	if !metrics {

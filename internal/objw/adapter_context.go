@@ -56,3 +56,17 @@ func (c *Context) warn(format string, args ...any) {
 func (c *Context) OwnsProgs(pp *Progs) bool {
 	return c != nil && pp != nil && pp.compilation == c && pp.CurFunc != nil && pp.Text != nil && pp.Text.Ctxt == c.Link
 }
+
+func flushContext(pp *Progs) *Context {
+	if pp == nil || pp.compilation == nil || !pp.compilation.OwnsProgs(pp) {
+		panic("flush requires an active instruction buffer")
+	}
+	c := pp.compilation
+	if ir.ContextOf(pp.CurFunc) != c.IR || pp.Text.From.Sym != pp.CurFunc.LSym {
+		panic("flush function owner mismatch")
+	}
+	if c.Link.DWARF == nil || c.Link.DebugInfo == nil {
+		panic("instruction flush requires compiler DWARF callbacks")
+	}
+	return c
+}
