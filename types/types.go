@@ -21,6 +21,13 @@ type Map = compiler.Map
 type Field = compiler.Field
 type Struct = compiler.Struct
 type AlgKind = compiler.AlgKind
+type Cmp = compiler.Cmp
+
+const (
+	CMPlt = compiler.CMPlt
+	CMPeq = compiler.CMPeq
+	CMPgt = compiler.CMPgt
+)
 
 const (
 	Int8          = compiler.TINT8

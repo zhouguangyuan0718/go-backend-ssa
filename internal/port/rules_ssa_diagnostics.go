@@ -6,15 +6,10 @@ func ssaDiagnosticMigration(units []Unit) []Unit {
 	for i := range units {
 		u := &units[i]
 		switch u.Source {
-		case root + "value.go":
-			u.Declarations = append(u.Declarations, auxQueries...)
-			u.Declarations = append(u.Declarations, "Value.AuxUnsigned", "Value.LongString", "Value.Fatalf")
-		case root + "block.go":
-			u.Declarations = append(u.Declarations, "Block.LongString", "Block.Fatalf")
 		case root + "func.go":
 			u.Declarations = append(u.Declarations, "Func.Fatalf")
 		case root + "opGen.go":
-			u.ConstantFields = append(u.ConstantFields, ConstantFieldRule{Variable: "opcodeTable", Field: "auxType", Functions: auxQueries}, ConstantFieldRule{Variable: "opcodeTable", Field: "nilCheck", Functions: []string{"liveValues"}})
+			u.ConstantFields = append(u.ConstantFields, ConstantFieldRule{Variable: "opcodeTable", Field: "auxType", Functions: auxQueries}, ConstantFieldRule{Variable: "opcodeTable", Field: "nilCheck", Functions: []string{"liveValues", "Value.removeable"}}, ConstantFieldRule{Variable: "opcodeTable", Field: "addrSinkArg0", Functions: []string{"Value.AddrSinkArg"}}, ConstantFieldRule{Variable: "opcodeTable", Field: "addrSinkArg1", Functions: []string{"Value.AddrSinkArg"}})
 			for j := range u.ConstantFields {
 				if u.ConstantFields[j].Field == "call" || u.ConstantFields[j].Field == "hasSideEffects" {
 					u.ConstantFields[j].Functions = append(u.ConstantFields[j].Functions, "liveValues")

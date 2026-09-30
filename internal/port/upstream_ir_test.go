@@ -39,6 +39,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_aux")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_numeric")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_diagnostics")
+	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_mutations")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -107,7 +108,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		position = "u.Pos"
 	}
 
-	if snapshotName == "ssa_types" || snapshotName == "ssa_graph" || snapshotName == "ssa_aux" || snapshotName == "ssa_diagnostics" {
+	if snapshotName == "ssa_types" || snapshotName == "ssa_graph" || snapshotName == "ssa_aux" || snapshotName == "ssa_diagnostics" || snapshotName == "ssa_mutations" {
 		setup = strings.Replace(setup, "typecheck.NewContext(ir.NewContext(u,link)).InitUniverse()", "graph:=ir.NewContext(u,link);typecheck.NewContext(graph).InitUniverse();c:=&Context{Types:u}", 1)
 	}
 

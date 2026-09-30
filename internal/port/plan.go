@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v35"
+const ToolVersion = "syncgo-m3-v36"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -43,7 +43,9 @@ type Unit struct {
 	// unit's handwritten adapter, with exactly the original receiver/signature.
 	AdapterMethods []string
 
+	StatelessFunctions     []string // Keep reviewed state-free functions at package scope.
 	ContextFrom            map[string]ContextSource
+	ContextAfterGuards     map[string]int // Preserve reviewed pure early returns before owner binding.
 	Source                 string
 	Functions              []string
 	Declarations           []string // Types, complete constant groups, and Receiver.Method names.
@@ -297,6 +299,24 @@ func (p Plan) Validate() error {
 		for _, call := range u.Calls {
 			if u.Context == nil || !safePath(call.Source) || portPath(call.Source) == "" || !token.IsIdentifier(call.Function) || !memberPath(call.Method) {
 				return fmt.Errorf("invalid external call binding")
+			}
+		}
+		for _, name := range u.StatelessFunctions {
+			selected := u.WholeFile
+			for _, function := range u.Functions {
+				selected = selected || name == function
+			}
+			if u.Context == nil || !selected || !token.IsIdentifier(name) {
+				return fmt.Errorf("invalid stateless function: %s", name)
+			}
+		}
+		for name, count := range u.ContextAfterGuards {
+			selected := u.WholeFile
+			for _, declaration := range append(append([]string(nil), u.Functions...), u.Declarations...) {
+				selected = selected || name == declaration
+			}
+			if u.Context == nil || !selected || count <= 0 {
+				return fmt.Errorf("invalid context guard prefix: %s", name)
 			}
 		}
 		for name, params := range u.Nullable {

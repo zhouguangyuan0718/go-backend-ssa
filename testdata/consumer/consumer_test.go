@@ -824,6 +824,11 @@ func TestNativeCanSSAFromPublicModule(t *testing.T) {
 	graph := ir.NewContext(u, link)
 	typecheck.NewContext(graph).InitUniverse()
 	native := ssa.NewTypes(u)
+	var comparison types.Cmp = native.Int.Compare(native.Int)
+	if comparison != types.CMPeq || native.Int.Compare(nil) != types.CMPgt || (*types.Type)(nil).Compare(native.Int) != types.CMPlt || u.ByteType.Compare(u.Types[types.Uint8]) != types.CMPeq {
+		t.Fatal("public native SSA type ordering")
+	}
+
 	if native.Int != u.Types[types.Int] || native.BytePtrPtr.Elem() != native.BytePtr {
 		t.Fatal("public SSA types lost canonical identity")
 	}

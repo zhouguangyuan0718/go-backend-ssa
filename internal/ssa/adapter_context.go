@@ -204,3 +204,20 @@ func (c *Context) command(name string, args ...string) *exec.Cmd {
 	}
 	return c.Command(name, args...)
 }
+
+// Values normally retain their graph's type collection; detached initialized
+// values can still identify their type universe directly.
+func valueContext(v *Value) *Context {
+	if v != nil && v.Block != nil && v.Block.Func != nil && v.Block.Func.Config != nil {
+		if c := v.Block.Func.Config.Types.compilation; c != nil {
+			if v.Type != nil && v.Type.Universe() != c.Types {
+				panic("SSA value belongs to another type universe")
+			}
+			return c
+		}
+	}
+	if v == nil {
+		panic("SSA value has no type owner")
+	}
+	return typeContextOf(v.Type)
+}

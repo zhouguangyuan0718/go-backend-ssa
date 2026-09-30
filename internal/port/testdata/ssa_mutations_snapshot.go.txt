@@ -1,0 +1,332 @@
+package ssa
+
+import (
+	"IMPORT_ABI"
+	IMPORT_BASE
+	"IMPORT_IR"
+	"IMPORT_OBJ"
+	"IMPORT_SRC"
+	"IMPORT_SYS"
+	"IMPORT_TYPECHECK"
+	"IMPORT_TYPES"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"math"
+	"os"
+	"testing"
+)
+
+type snapshotMutationFrontend struct {
+	Frontend
+	warnings []string
+}
+
+func (f *snapshotMutationFrontend) Log() bool { return false }
+func (f *snapshotMutationFrontend) Fatalf(pos src.XPos, format string, args ...any) {
+	panic(fmt.Sprintf("%d:%s", pos.Line(), fmt.Sprintf(format, args...)))
+}
+func (f *snapshotMutationFrontend) Warnl(pos src.XPos, format string, args ...any) {
+	f.warnings = append(f.warnings, fmt.Sprintf("%d:%s", pos.Line(), fmt.Sprintf(format, args...)))
+}
+
+func TestSyncgoNativeSnapshot(t *testing.T) {
+	target := struct {
+		arch  string
+		size  int
+		order binary.ByteOrder
+	}{os.Getenv("SYNCGO_TARGET"), 8, binary.LittleEndian}
+	switch target.arch {
+	case "386":
+		target.size = 4
+	case "mips":
+		target.size = 4
+		target.order = binary.BigEndian
+	case "ppc64":
+		target.order = binary.BigEndian
+	}
+	SETUP
+	ABI_SETUP
+	var out []string
+	add := func(label string, args ...any) { out = append(out, label+":"+fmt.Sprint(args...)) }
+	trapped := func(label string, fn func()) {
+		func() {
+			defer func() {
+				v := recover()
+				if v == nil {
+					t.Fatalf("%s did not fail", label)
+				}
+				add(label, v)
+			}()
+			fn()
+		}()
+	}
+	pos := LINK.PosTable.XPos(src.MakePos(src.NewFileBase("mutations.go", "mutations.go"), 17, 2)).WithIsStmt()
+	later := LINK.PosTable.XPos(src.MakePos(src.NewFileBase("later.go", "later.go"), 27, 2)).WithNotStmt()
+	cfg := &Config{PtrSize: int64(target.size), RegSize: int64(target.size), Types: *UP.NewTypes(), ctxt: LINK}
+	fresh := func() (*Func, *snapshotMutationFrontend) {
+		fe := &snapshotMutationFrontend{}
+		cache := new(Cache)
+		cache.Reset()
+		f := cfg.NewFunc(fe, cache)
+		f.Name = "mutations"
+		f.Type = TY.NewSignature(nil, nil, nil)
+		f.ABISelf = ABI_NEW(0, 0, 0, 1)
+		f.pass = &pass{name: "mutation phase", debug: 1}
+		f.Entry = f.NewBlock(BlockRet)
+		f.Entry.Pos = pos
+		return f, fe
+	}
+	dump := func(label string, f *Func) {
+		for _, b := range f.Blocks {
+			add(label+"-block", b.ID, " ", b.Kind, " ", b.Likely, " ", b.Preds, " ", b.Succs, " ", b.ControlValues())
+			for _, v := range b.Values {
+				add(label+"-value", v.ID, " ", v.Op, " ", v.Type, " ", v.AuxInt, " ", v.Aux, " ", v.Uses, " ", v.Args, " ", v.InCache, " ", v.Pos.Line(), " ", v.Pos.IsStmt())
+			}
+		}
+	}
+	check := func(f *Func) {
+		uses := map[*Value]int32{}
+		for _, b := range f.Blocks {
+			for i, e := range b.Succs {
+				back := e.b.Preds[e.i]
+				if back.b != b || back.i != i {
+					t.Fatal("reverse edge")
+				}
+			}
+			for _, v := range b.ControlValues() {
+				uses[v]++
+			}
+			for _, v := range b.Values {
+				for _, a := range v.Args {
+					uses[a]++
+				}
+			}
+		}
+		for _, b := range f.Blocks {
+			for _, v := range b.Values {
+				if uses[v] != v.Uses {
+					t.Fatalf("%s uses=%d want=%d", v, v.Uses, uses[v])
+				}
+			}
+		}
+	}
+	// Native type comparison matrix, including alias and nil guards.
+	field := func(name string, typ *types.Type, tag string, embedded uint8) *types.Field {
+		f := TY.NewField(pos, TY.LocalPkg.Lookup(name), typ)
+		f.Note = tag
+		f.Embedded = embedded
+		return f
+	}
+	named := func(pkg *types.Pkg, name string, under *types.Type) *types.Type {
+		n := GRAPH.NewDeclNameAt(pos, ir.OTYPE, pkg.Lookup(name))
+		typ := TY.NewNamed(n)
+		n.SetType(typ)
+		n.SetTypecheck(1)
+		typ.SetUnderlying(under)
+		return typ
+	}
+	it, st := cfg.Types.Int, cfg.Types.String
+	pkg2 := TY.NewPkg("example/q", "p")
+	sig := TY.NewSignature(nil, []*types.Field{field("x", it, "", 0)}, []*types.Field{field("r", st, "", 0)})
+	recv := field("recv", TY.NewPtr(it), "", 0)
+	list := []*types.Type{nil, it, cfg.Types.UInt8, TY.ByteType, TY.RuneType, cfg.Types.Int32, TY.TypeMem, TY.TypeFlags, TY.TypeVoid, TY.TypeInt128, TY.TypeVec128, TY.TypeVec256, TY.TypeMask, TY.NewPtr(it), TY.NewSlice(it), TY.NewArray(it, 0), TY.NewArray(it, 3), TY.NewArray(it, 3), TY.NewArray(st, 3), TY.NewMap(it, st), TY.NewMap(st, it), TY.NewChan(it, types.Crecv), TY.NewChan(it, types.Csend), TY.NewChan(it, types.Cboth), TY.NewInterface(nil), TY.AnyType, TY.NewTuple(it, TY.TypeMem), TY.NewTuple(st, TY.TypeMem), TY.NewResults([]*types.Type{it, TY.TypeMem}), TY.NewResults([]*types.Type{st, TY.TypeMem}), TY.NewResults([]*types.Type{TY.TypeMem}), TY.NewStruct(nil), TY.NewStruct([]*types.Field{field("A", it, "", 0)}), TY.NewStruct([]*types.Field{field("A", it, "tag", 0)}), TY.NewStruct([]*types.Field{field("A", it, "", 1)}), TY.NewStruct([]*types.Field{field("B", it, "", 0)}), sig, TY.NewSignature(recv, []*types.Field{field("y", it, "", 0)}, []*types.Field{field("z", st, "", 0)}), TY.NewSignature(nil, nil, nil), named(TY.LocalPkg, "Named", it), named(TY.LocalPkg, "Other", it), named(pkg2, "Named", it)}
+	method := func(name string, typ *types.Type) *types.Field {
+		return TY.NewField(pos, TY.LocalPkg.Lookup(name), typ)
+	}
+	for _, methods := range [][]*types.Field{{method("M", sig)}, {method("N", sig)}, {method("M", TY.NewSignature(nil, nil, nil))}, {method("M", sig), method("N", sig)}} {
+		iface := TY.NewInterface(methods)
+		TY.CalcSize(iface)
+		list = append(list, iface)
+	}
+	variadic := field("args", TY.NewSlice(it), "", 0)
+	variadic.SetIsDDD(true)
+	list = append(list, TY.NewSignature(nil, []*types.Field{variadic}, nil), TY.NewSignature(nil, []*types.Field{field("args", TY.NewSlice(it), "", 0)}, nil))
+	for i, a := range list {
+		var row []int
+		for _, b := range list {
+			row = append(row, int(a.Compare(b)))
+		}
+		add(fmt.Sprintf("compare-%d", i), row)
+	}
+	// Every constant constructor, collisions with special cache keys, NaN payloads and signed zero.
+	f, fe := fresh()
+	constructors := []func() *Value{func() *Value { return f.ConstBool(cfg.Types.Bool, false) }, func() *Value { return f.ConstBool(cfg.Types.Bool, true) }, func() *Value { return f.ConstInt8(cfg.Types.Int8, -128) }, func() *Value { return f.ConstInt16(cfg.Types.Int16, -32768) }, func() *Value { return f.ConstInt32(cfg.Types.Int32, -2147483648) }, func() *Value { return f.ConstInt64(cfg.Types.Int64, math.MinInt64) }, func() *Value { return f.ConstFloat32(cfg.Types.Float32, 1.0/3) }, func() *Value { return f.ConstFloat64(cfg.Types.Float64, 1.0/3) }, func() *Value { return f.ConstSlice(TY.NewSlice(it)) }, func() *Value { return f.ConstInterface(TY.NewInterface(nil)) }, func() *Value { return f.ConstNil(TY.NewPtr(it)) }, func() *Value { return f.ConstEmptyString(st) }}
+	for _, magic := range []int64{constSliceMagic, constInterfaceMagic, constNilMagic, constEmptyStringMagic} {
+		f.ConstInt64(cfg.Types.Int64, magic)
+	}
+	for i, makeValue := range constructors {
+		v := makeValue()
+		add("intern", i, " ", v == makeValue(), " ", v.InCache)
+		v.reset(OpUnknown)
+		next := makeValue()
+		add("reset", i, " ", v == next, " ", v.InCache, " ", next.InCache)
+	}
+	for _, bits := range []uint64{0, 1 << 63, 0x7ff0000000000000, 0xfff0000000000000, 0x7ff8000000000001, 0x7ff8000000000002} {
+		x := math.Float64frombits(bits)
+		v := f.ConstFloat64(cfg.Types.Float64, x)
+		w := f.ConstFloat32(cfg.Types.Float32, x)
+		add("float", bits, " ", v.AuxInt, " ", w.AuxInt, " ", v == f.ConstFloat64(cfg.Types.Float64, x))
+	}
+	p1, p2 := TY.NewPtr(TY.NewArray(it, 3)), TY.NewPtr(TY.NewArray(it, 3))
+	add("structural-intern", p1 == p2, " ", f.ConstNil(p1) == f.ConstNil(p2))
+	sp, sb := f.spSb()
+	sp2, sb2 := f.spSb()
+	off := f.ConstOffPtrSP(TY.NewPtr(it), 24, sp)
+	add("sp-sb", sp == sp2, " ", sb == sb2, " ", off == f.ConstOffPtrSP(TY.NewPtr(it), 24, sp), " ", sp.Uses)
+	f.LogStat("COUNT", 3, "word")
+	f.pass = nil
+	f.LogStat("COUNT", 4)
+	add("stats", fe.warnings)
+	f.pass = &pass{name: "mutation phase"}
+	dump("constants", f)
+	check(f)
+	bad := f.Entry.NewValue0I(pos, OpConst64, cfg.Types.Int64, 12345)
+	bad.InCache = true
+	trapped("cache-missing", func() { f.unCache(bad) })
+	bad.InCache = false
+	add("uncache-miss", f.unCacheLine(bad, 12345))
+	f.unCache(bad)
+	// Clone metadata and exact statement-position behavior, including failure after allocation.
+	f, _ = fresh()
+	a, b := f.ConstInt64(cfg.Types.Int64, 2), f.ConstInt64(cfg.Types.Int64, 3)
+	v := f.Entry.NewValue2(pos, OpAdd64, a.Type, a, b)
+	dst := f.NewBlock(BlockPlain)
+	x := v.copyInto(dst)
+	v.copyIntoWithXPos(dst, pos.WithNotStmt())
+	v.copyIntoWithXPos(dst, later)
+	x.copyOf(a)
+	x.copyOf(x)
+	x.reset(OpUnknown)
+	dump("copies", f)
+	check(f)
+	dst.Values = dst.Values[1:]
+	id := x.ID
+	f.freeValue(x)
+	trapped("double-free-value", func() { f.freeValue(x) })
+	reused := dst.NewValue0(pos, OpUnknown, a.Type)
+	add("reuse-value", reused == x, " ", reused.ID == id, " ", reused.Uses, " ", reused.Aux == nil)
+	isolated := f.NewBlock(BlockPlain)
+	bid := isolated.ID
+	f.Blocks = f.Blocks[:len(f.Blocks)-1]
+	f.freeBlock(isolated)
+	trapped("double-free-block", func() { f.freeBlock(isolated) })
+	nb := f.NewBlock(BlockIf)
+	add("reuse-block", nb == isolated, " ", nb.ID == bid, " ", nb.Func == f)
+	trapped("free-used", func() { f.freeValue(a) })
+	trapped("free-args", func() { f.freeValue(v) })
+	localSP, _ := f.spSb()
+	memory := f.Entry.NewValue0(pos, OpInitMem, TY.TypeMem)
+	load := f.Entry.NewValue2(pos, OpLoad, a.Type, localSP, memory)
+	trapped("copy-memory", func() { load.copyInto(dst) })
+	trapped("copy-memory-pos", func() { load.copyIntoWithXPos(dst, pos) })
+	add("copy-memory-after", len(dst.Values), " ", memory.Uses)
+	one := f.ConstInt64(a.Type, 17)
+	two := f.Entry.NewValue2(pos.WithNotStmt(), OpAdd64, a.Type, one, one)
+	add("invalidate", two.invalidateRecursively(), " ", one.Op, " ", one.InCache, " ", one.Uses)
+	check(f)
+	dump("mutation", f)
+	// Parallel predecessor removal, phi simplification, names, controls, empty values and cycles.
+	f, fe = fresh()
+	e := f.Entry
+	e.Reset(BlockIf)
+	l, r, j := f.NewBlock(BlockPlain), f.NewBlock(BlockPlain), f.NewBlock(BlockRet)
+	e.AddEdgeTo(l)
+	e.AddEdgeTo(r)
+	l.AddEdgeTo(j)
+	r.AddEdgeTo(j)
+	a, b = f.ConstInt64(cfg.Types.Int64, 5), f.ConstInt64(cfg.Types.Int64, 9)
+	phi := j.NewValue2(pos, OpPhi, a.Type, a, b)
+	j.SetControl(phi)
+	e.Likely = BranchLikely
+	e.swapSuccessors()
+	r.removeSucc(0)
+	j.removePred(1)
+	j.removePhiArg(phi, 1)
+	cp := j.NewValue1(pos, OpCopy, a.Type, phi)
+	sum := j.NewValue2(pos, OpAdd64, a.Type, cp, cp)
+	j.SetControl(cp)
+	empty := j.NewValue1(pos, OpCopy, TY.NewArray(a.Type, 0), cp)
+	_ = empty
+	_ = sum
+	slot := &LocalSlot{Type: a.Type}
+	f.Names = []*LocalSlot{slot}
+	f.NamedValues[*slot] = []*Value{cp}
+	copyelim(f)
+	add("named", f.NamedValues[*slot])
+	add("phi-warnings", fe.warnings)
+	check(f)
+	dump("copyelim", f)
+	self := j.NewValue0(pos, OpPhi, a.Type)
+	self.AddArg(self)
+	add("self-phi", phielimValue(self))
+	x = j.NewValue0(pos, OpCopy, a.Type)
+	y := j.NewValue1(pos, OpCopy, a.Type, x)
+	x.AddArg(y)
+	add("cycle", copySource(x))
+	check(f)
+	dump("cycle", f)
+	// Register readers and native failure diagnostics (these are location probes, not allocated machine code).
+	f, _ = fresh()
+	a = f.ConstInt64(cfg.Types.Int64, 11)
+	f.RegAlloc = make([]Location, f.NumValues())
+	reg0, reg1 := &Register{objNum: 17, name: "R17"}, &Register{objNum: 29, name: "R29"}
+	f.RegAlloc[a.ID] = reg0
+	f.tempRegs = map[ID]*Register{a.ID: reg1}
+	add("reg", a.Reg(), " ", a.ResultReg(), " ", a.RegName(), " ", a.RegTmp())
+	f.RegAlloc[a.ID] = LocPair{reg0, reg1}
+	add("pair", a.Reg0(), " ", a.Reg1(), " ", a.ResultReg())
+	name := GRAPH.NewNameAt(pos, TY.LocalPkg.Lookup("slot"), a.Type)
+	name.Class = ir.PAUTO
+	f.RegAlloc[a.ID] = LocalSlot{N: name, Type: a.Type, Off: 24}
+	n, offN := AutoVar(a)
+	add("auto-slot", n == name, " ", offN)
+	f.RegAlloc[a.ID] = reg0
+	a.Aux = &AuxNameOffset{Name: name, Offset: 48}
+	n, offN = AutoVar(a)
+	add("auto-reg", n == name, " ", offN)
+	a.Aux = nil
+	f.RegAlloc[a.ID] = LocalSlot{N: name, Type: cfg.Types.Int8}
+	trapped("auto-small", func() { AutoVar(a) })
+	f.RegAlloc[a.ID] = nil
+	trapped("nil-reg", func() { a.Reg() })
+	trapped("nil-result", func() { a.ResultReg() })
+	trapped("nil-name", func() { a.RegName() })
+	delete(f.tempRegs, a.ID)
+	trapped("nil-tmp", func() { a.RegTmp() })
+	f.RegAlloc[a.ID] = LocPair{}
+	trapped("nil-reg0", func() { a.Reg0() })
+	trapped("nil-reg1", func() { a.Reg1() })
+	trapped("nil-result0", func() { a.ResultReg() })
+	// Memory pseudo-types include tuple/results; LackingPos uses exact TypeMem identity.
+	f, _ = fresh()
+	for _, typ := range []*types.Type{cfg.Types.Int, TY.TypeMem, TY.NewTuple(it, TY.TypeMem), TY.NewResults([]*types.Type{it, TY.TypeMem})} {
+		m := f.Entry.NewValue0(pos, OpUnknown, typ)
+		use := f.Entry.NewValue1(pos, OpCopy, typ, m)
+		add("memory", typ, " ", use.MemoryArg() == m, " ", use.LackingPos(), " ", use.removeable())
+	}
+	for _, op := range []Op{OpVarDef, OpVarLive, OpPhi, OpFwdRef, OpCopy, OpNilCheck, OpStaticCall, OpAdd64, OpStore, OpLoad} {
+		v := f.Entry.NewValue0(pos, op, it)
+		add("queries", op, " ", v.LackingPos(), " ", v.removeable(), " ", v.AddrSinkArg(0), " ", v.AddrSinkArg(1), " ", v.AddrSinkArg(2))
+		if op == OpPhi {
+			trapped("phi-memory", func() { v.MemoryArg() })
+		}
+	}
+	void := f.Entry.NewValue0(pos, OpInlMark, TY.TypeVoid)
+	add("void-remove", void.removeable())
+	add("generic-nil", (*Value)(nil).isGenericIntConst())
+	for _, op := range []Op{OpConst8, OpConst16, OpConst32, OpConst64, OpConstBool, OpConst64F, OpAdd64} {
+		add("generic", op, " ", (&Value{Op: op}).isGenericIntConst())
+	}
+	blank := f.NewBlock(BlockPlain)
+	add("blank-pos", blank.LackingPos())
+	blank.NewValue0(src.XPos{}, OpCopy, TY.TypeMem)
+	add("mem-pos", blank.LackingPos())
+	blank.NewValue0(src.XPos{}, OpCopy, it)
+	add("int-pos", blank.LackingPos())
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("SYNCGO_IR=" + string(data))
+}

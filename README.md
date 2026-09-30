@@ -80,6 +80,7 @@
 63. [M3 SSA 调用辅助信息](docs/m3-ssa-aux.md)：原生调用 ABI/寄存器约束、Aux 转换和结果类型实例归属。
 64. [M3 SSA 数值辅助操作](docs/m3-ssa-numeric.md)：原生 AuxInt 编码、浮点位模式、ARM 参数和算术标志位。
 65. [M3 SSA 原生诊断](docs/m3-ssa-diagnostics.md)：存活性、文本/HTML、崩溃输出及实例绑定的 DOT/SVG 管线。
+66. [M3 SSA 值改写](docs/m3-ssa-mutations.md)：完整 Value/Block、常量缓存、类型比较与原生 Copy/Phi 消除。
 
 ## 当前可运行的工具
 

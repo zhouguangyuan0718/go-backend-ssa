@@ -96,9 +96,11 @@ func Migration() Plan {
 				Calls: []CallRule{{Source: "src/cmd/compile/internal/base/print.go", Function: "Fatalf", Method: "fatalf"}, {Source: "src/cmd/compile/internal/base/print.go", Function: "Assertf", Method: "assertf"}},
 			},
 			{Source: "src/cmd/compile/internal/types/type.go",
-				Functions: []string{"IsReflexive", "IsDirectIface", "TypeSym", "TypeSymLookup", "TypeSymName", "IsInterfaceMethod", "ComplexForFloat", "ReceiverBaseType", "RuntimeSymName", "ReflectSymName", "IsNoInstrumentPkg", "IsNoRacePkg", "IsRuntimePkg", "IsMethodApplicable", "SubstAny", "substFields", "FloatForComplex", "newType", "NewTuple", "newSSA", "newSIMD", "newResults", "NewResults", "NewPtr", "NewSlice", "NewArray", "NewMap", "NewChan", "NewField", "NewStruct", "NewSignature", "fieldsHasShape", "CompareFields", "NewChanArgs", "NewFuncArgs", "NewInterface", "FakeRecv", "FakeRecvType", "NewNamed"},
+				ContextAfterGuards: map[string]int{"Type.cmp": 3},
+				StatelessFunctions: []string{"cmpForNe"},
+				Functions:          []string{"cmpForNe", "IsReflexive", "IsDirectIface", "TypeSym", "TypeSymLookup", "TypeSymName", "IsInterfaceMethod", "ComplexForFloat", "ReceiverBaseType", "RuntimeSymName", "ReflectSymName", "IsNoInstrumentPkg", "IsNoRacePkg", "IsRuntimePkg", "IsMethodApplicable", "SubstAny", "substFields", "FloatForComplex", "newType", "NewTuple", "newSSA", "newSIMD", "newResults", "NewResults", "NewPtr", "NewSlice", "NewArray", "NewMap", "NewChan", "NewField", "NewStruct", "NewSignature", "fieldsHasShape", "CompareFields", "NewChanArgs", "NewFuncArgs", "NewInterface", "FakeRecv", "FakeRecvType", "NewNamed"},
 				Declarations: []string{
-					"Object", "Kind", "Txxx", "ChanDir", "Crecv", "Type", "typeNotInHeap",
+					"Cmp", "CMPlt", "Type.Compare", "Type.cmp", "Sym.cmpsym", "Object", "Kind", "Txxx", "ChanDir", "Crecv", "Type", "typeNotInHeap",
 					"Map", "Forward", "Func", "Struct", "Interface", "Ptr", "ChanArgs", "FuncArgs", "Chan", "Tuple", "Results", "Array", "Slice", "Field", "fields", "fieldIsDDD",
 					"Type.SoleComponent", "Type.ToUnsigned", "Type.IsPtrElem", "Type.IsFullyInstantiated", "Type.SetIsFullyInstantiated", "Type.IsUintptr", "Type.copy", "Type.forwardType", "Type.SetUnderlying", "Type.Obj", "Type.IsUnsafePtr", "Field.End", "Type.Pos", "Type.Registers", "Type.Deferwidth", "Type.SetDeferwidth", "Type.Recur", "Type.SetRecur",
 					"Type.ChanArgs", "Type.FuncArgs", "Type.Methods", "Type.AllMethods", "Type.SetMethods", "Type.SetAllMethods", "Type.SetInterface", "Type.IsInterface", "Type.IsEmptyInterface", "Type.Size", "Type.Alignment", "Type.ArgWidth", "Type.HasPointers",

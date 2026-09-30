@@ -22,6 +22,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	states := map[types.Object]string{}
 	functions := map[types.Object]string{}
 	selective := map[types.Object]bool{}
+	stateless := map[types.Object]bool{}
 	external := map[types.Object]string{}
 	var owners []*OwnerRule
 	for i, u := range units {
@@ -86,6 +87,20 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		for _, d := range files[i].Decls {
 			if fn, ok := d.(*ast.FuncDecl); ok {
 				selective[info.Defs[fn.Name]] = c.Selective
+			}
+		}
+		for _, name := range u.StatelessFunctions {
+			found := false
+			for _, decl := range files[i].Decls {
+				if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == name {
+					object := info.Defs[fn.Name]
+					selective[object] = true
+					stateless[object] = true
+					found = true
+				}
+			}
+			if !found {
+				return fmt.Errorf("stateless function not selected: %s", name)
 			}
 		}
 		renamed := map[string]bool{}
@@ -167,6 +182,9 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		}
 		needed := statefulFunctions(files, info, candidates, states, contextExternal, owners, units, literals)
 		for obj := range functions {
+			if stateless[obj] && needed[obj] != "" {
+				return fmt.Errorf("stateless function uses compilation state: %s", obj.Name())
+			}
 			if selective[obj] && needed[obj] == "" {
 				if functions[obj] != obj.Name() {
 					return fmt.Errorf("renamed function does not need context: %s", obj.Name())
@@ -422,7 +440,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				decls = append(decls, d)
 				continue
 			}
-			if units[i].Context.Selective && fn.Recv == nil && fn.Name.Name != "init" && functions[info.Defs[fn.Name]] == "" && derived[info.Defs[fn.Name]].Resolver == "" {
+			if selective[info.Defs[fn.Name]] && fn.Recv == nil && fn.Name.Name != "init" && functions[info.Defs[fn.Name]] == "" && derived[info.Defs[fn.Name]].Resolver == "" {
 				decls = append(decls, d)
 				continue
 			}
@@ -538,6 +556,15 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				}
 				fn.Recv = &ast.FieldList{List: []*ast.Field{{Names: []*ast.Ident{ast.NewIdent(recv)}, Type: &ast.StarExpr{X: ast.NewIdent(context.Type)}}}}
 			}
+			prefix := 0
+			if count := units[i].ContextAfterGuards[key]; count != 0 {
+				if err := checkContextGuardPrefix(fn, info, count); err != nil {
+					return err
+				}
+				prefix = count
+			} else if leadingNilReturn(fn, info) {
+				prefix = 1
+			}
 			if err := rewrite(fn.Body, ctx); err != nil {
 				return err
 			}
@@ -569,10 +596,6 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			}
 			// Preserve an upstream early nil-receiver return before consulting
 			// an owner. In particular Type.IsUntyped(nil) must remain false.
-			prefix := 0
-			if leadingNilReturn(fn, info) {
-				prefix = 1
-			}
 			body := append([]ast.Stmt(nil), fn.Body.List[:prefix]...)
 			body = append(body, guard...)
 			body = append(body, checks...)
