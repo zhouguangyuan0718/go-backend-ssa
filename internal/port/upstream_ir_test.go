@@ -29,6 +29,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "slice")
 	testUpstreamNativeGraph(t, s, r, root, "compare")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_value")
+	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_types")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -86,9 +87,13 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
 	setup := `link:=&obj.Link{};u:=types.NewUniverseWithPositions(8,8,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");c:=NewContext(u,link)`
 	position := "c.Types.Pos"
-	if snapshotName == "ssa_value" {
+	if pkgName == "ssa" {
 		setup = `link:=&obj.Link{Arch:&obj.LinkArch{Arch:&sys.Arch{Name:target.arch,PtrSize:target.size,RegSize:target.size,ByteOrder:target.order}}};u:=types.NewUniverseWithPositions(target.size,target.size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");typecheck.NewContext(ir.NewContext(u,link)).InitUniverse()`
 		position = "u.Pos"
+	}
+
+	if snapshotName == "ssa_types" {
+		setup = strings.Replace(setup, "typecheck.NewContext(ir.NewContext(u,link)).InitUniverse()", "graph:=ir.NewContext(u,link);typecheck.NewContext(graph).InitUniverse();c:=&typeContext{Types:u}", 1)
 	}
 
 	if pkgName == "abi" {
@@ -193,7 +198,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	goroot := strings.TrimSpace(string(run("env", "GOROOT")))
 	overlay := map[string]string{}
 	packages := []string{"cmd/compile/internal/ir", "cmd/compile/internal/types", "cmd/compile/internal/base", "cmd/internal/obj", "cmd/compile/internal/typecheck", "cmd/compile/internal/noder", "cmd/compile/internal/dwarfgen", "cmd/compile/internal/objw", "cmd/compile/internal/bitvec", "cmd/internal/objabi", "internal/bisect", "internal/abi", "cmd/compile/internal/rttype", "cmd/compile/internal/reflectdata", "cmd/compile/internal/typebits", "cmd/compile/internal/staticdata", "cmd/internal/hash", "cmd/compile/internal/compare", "cmd/compile/internal/staticinit", "cmd/compile/internal/pgoir", "cmd/internal/pgo", "cmd/compile/internal/inline/inlheur", "cmd/compile/internal/inline", "cmd/compile/internal/logopt", "cmd/compile/internal/devirtualize", "cmd/compile/internal/inline/interleaved", "cmd/compile/internal/loopvar", "cmd/compile/internal/pkginit", "cmd/compile/internal/ssagen", "cmd/compile/internal/deadlocals", "cmd/compile/internal/escape", "cmd/compile/internal/slice"}
-	if snapshotName == "ssa_value" {
+	if pkgName == "ssa" {
 		packages = append(packages, "cmd/compile/internal/ssa")
 	}
 	if snapshotName == "walk_target" || snapshotName == "walk" {
@@ -223,7 +228,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if pkgName == "objw" {
 		nativeSetup = `base.Ctxt=&obj.Link{Arch:&obj.LinkArch{Arch:&sys.Arch{Name:target.arch,PtrSize:target.size,RegSize:target.size,ByteOrder:target.order}}};types.PtrSize=target.size;types.RegSize=target.size;buildcfg.GOOS=target.os;buildcfg.GOARCH=target.arch;obj.SetFIPSDebugHash("")`
 	}
-	if pkgName == "rttype" || pkgName == "reflectdata" || pkgName == "staticdata" || pkgName == "abi" || snapshotName == "staticinit_zero" || snapshotName == "ssa_value" || snapshotName == "walk_target" {
+	if pkgName == "rttype" || pkgName == "reflectdata" || pkgName == "staticdata" || pkgName == "abi" || snapshotName == "staticinit_zero" || pkgName == "ssa" || snapshotName == "walk_target" {
 		nativeSetup = `base.Ctxt=&obj.Link{Arch:&obj.LinkArch{Arch:&sys.Arch{Name:target.arch,PtrSize:target.size,RegSize:target.size,ByteOrder:target.order}}};types.PtrSize=target.size;types.RegSize=target.size;types.MaxWidth=1<<50;types.BuiltinPkg=types.NewPkg("go.builtin","");types.LocalPkg=types.NewPkg("example/p","p");types.UnsafePkg=types.NewPkg("unsafe","unsafe");typecheck.InitUniverse()`
 	}
 	if pkgName == "reflectdata" {
@@ -347,7 +352,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	// rejects overlays. Run that exact binary with a private test module cache;
 	// it needs no external modules and never writes to the installed toolchain.
 	targets := []string{""}
-	if pkgName == "rttype" || pkgName == "reflectdata" || pkgName == "staticdata" || pkgName == "abi" || snapshotName == "staticinit_zero" || snapshotName == "ssa_value" || snapshotName == "walk_target" || snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || snapshotName == "walk" {
+	if pkgName == "rttype" || pkgName == "reflectdata" || pkgName == "staticdata" || pkgName == "abi" || snapshotName == "staticinit_zero" || pkgName == "ssa" || snapshotName == "walk_target" || snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || snapshotName == "walk" {
 		targets = []string{"386", "amd64", "mips", "ppc64"}
 	}
 	if snapshotName == "reflectdata_descriptors" {

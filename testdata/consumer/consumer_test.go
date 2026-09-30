@@ -822,6 +822,22 @@ func TestNativeCanSSAFromPublicModule(t *testing.T) {
 		t.Fatal(err)
 	}
 	typecheck.NewContext(ir.NewContext(u, link)).InitUniverse()
+	native := ssa.NewTypes(u)
+	if native.Int != u.Types[types.Int] || native.BytePtrPtr.Elem() != native.BytePtr {
+		t.Fatal("public SSA types lost canonical identity")
+	}
+	copy := *native
+	copy.Int = nil
+	copy.SetTypPtrs()
+	if copy.Int != native.Int {
+		t.Fatal("copied public SSA types lost their universe")
+	}
+	slot := ssa.LocalSlot{Type: native.Int, Off: 8}
+	var location ssa.Location = slot
+	if (ssa.LocPair{location, nil}).String() != "<"+slot.String()+",nil>" {
+		t.Fatal("public native SSA locations")
+	}
+
 	i := u.Types[types.Int]
 	if !ssa.CanSSA(u.NewSlice(i)) || ssa.CanSSA(u.NewArray(i, 2)) || ssa.MaxStruct != 4 {
 		t.Fatal("public native SSA representation predicate")

@@ -1,0 +1,33 @@
+package ssa
+import("fmt";"encoding/json";"encoding/binary";"os";"reflect";"testing";"IMPORT_TYPES";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_SRC";"IMPORT_IR";IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ var _ ir.Node
+ var out []string
+ a,b:=UP.NewTypes(),UP.NewTypes()
+ fields:=reflect.ValueOf(a).Elem();other:=reflect.ValueOf(b).Elem()
+ for j:=0;j<fields.NumField();j++ {
+  if !fields.Field(j).CanInterface(){continue}
+  typ:=fields.Field(j).Interface().(*types.Type)
+  TY.CalcSize(typ)
+  in,outRegs:=typ.Registers()
+  out=append(out,fmt.Sprintf("type:%s:%v:%d:%d:%d:%d:identity=%t",fields.Type().Field(j).Name,typ,typ.Size(),typ.Alignment(),in,outRegs,typ==other.Field(j).Interface().(*types.Type)))
+ }
+ saved:=*a
+ a.Int=nil;a.BytePtr=nil;a.Vec512=nil;a.SetTypPtrs()
+ copied:=*a;copied.Int=nil;copied.SetTypPtrs()
+ out=append(out,fmt.Sprintf("restore:%t:%t",*a==saved,copied==saved))
+ name:=GRAPH.NewNameAt(src.XPos{},TY.LocalPkg.Lookup("slot"),a.String);name.Class=ir.PAUTO
+ parent:=LocalSlot{N:name,Type:a.String}
+ child:=LocalSlot{N:name,Type:a.Int,Off:int64(target.size),SplitOf:&parent,SplitOffset:int64(target.size)}
+ reg:=Register{num:3,objNum:11,name:"R3"}
+ out=append(out,fmt.Sprintf("slot:%s:%s:parent=%t:offset=%d",parent,child,child.SplitOf==&parent,child.SplitOffset),fmt.Sprintf("register:%s:%d",&reg,reg.ObjNum()))
+ out=append(out,LocPair{nil,nil}.String(),LocPair{&reg,child}.String(),LocResults{&reg,parent,child}.String(),LocResults{}.String())
+ spill:=Spill{Type:a.Int,Offset:24,Reg:reg.ObjNum()};out=append(out,fmt.Sprintf("spill:%v:%d:%d",spill.Type,spill.Offset,spill.Reg))
+ first,second:=idAlloc{},idAlloc{}
+ out=append(out,fmt.Sprintf("id:%d:%d:%d:%d:%d",first.get(),first.get(),first.num(),second.get(),second.num()))
+ first.last=1<<31-2
+ func(){defer func(){out=append(out,fmt.Sprint("overflow:",recover()))}();first.get()}()
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(data))
+}
