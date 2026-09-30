@@ -15,7 +15,7 @@ import (
 func contextParameterMethods(files []*ast.File, info *types.Info, units []Unit) (map[types.Object]bool, error) {
 	methods := map[types.Object]bool{}
 	for i, u := range units {
-		for _, name := range u.ContextParams {
+		for _, name := range append(append([]string{}, u.ContextParams...), u.ContextParamExports...) {
 			receiver, method, _ := strings.Cut(name, ".")
 			found := false
 			for _, d := range files[i].Decls {

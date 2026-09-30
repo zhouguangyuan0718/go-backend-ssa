@@ -289,7 +289,7 @@ func checkStateAdapters(units []Unit, before *packageImporter, out *types.Packag
 }
 
 // Infer a host variable's type from a direct call's declared single result
-// or an untyped boolean comparison expression.
+// a named composite literal, or an untyped boolean comparison expression.
 // Its environment-reading initializer and arguments never enter the output.
 func externalValueType(file *ast.File, spec *ast.ValueSpec, importer *packageImporter) (ast.Expr, error) {
 	if len(spec.Values) != 1 {
@@ -297,6 +297,14 @@ func externalValueType(file *ast.File, spec *ast.ValueSpec, importer *packageImp
 	}
 	if comparisonBoolean(spec.Values[0]) {
 		return ast.NewIdent("bool"), nil
+	}
+	if literal, ok := spec.Values[0].(*ast.CompositeLit); ok {
+		switch literal.Type.(type) {
+		case *ast.Ident, *ast.SelectorExpr:
+			return literal.Type, nil
+		default:
+			return nil, fmt.Errorf("external composite initializer requires a named type")
+		}
 	}
 	call, ok := spec.Values[0].(*ast.CallExpr)
 	if !ok {

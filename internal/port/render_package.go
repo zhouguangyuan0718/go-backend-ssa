@@ -163,6 +163,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			prov.Rule = "package-state-to-context-methods-v2"
 			prov.Declarations = append(prov.Declarations, sortedKeys(c.Fields)...)
 			prov.Declarations = append(prov.Declarations, u.ContextParams...)
+			for _, name := range u.ContextParamExports {
+				prov.Declarations = append(prov.Declarations, "exported-context-parameter:"+name)
+			}
 			if c.DeferInit {
 				prov.Declarations = append(prov.Declarations, "deferred-unselected-init")
 			}

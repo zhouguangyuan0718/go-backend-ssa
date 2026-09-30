@@ -2,8 +2,12 @@ package liveness
 
 import (
 	"fmt"
+	"go-backend-ssa/diagnostic"
+	"go-backend-ssa/internal/abi"
 	"go-backend-ssa/internal/cmd/src"
+	errorspkg "go-backend-ssa/internal/go/types/errors"
 	"go-backend-ssa/internal/ir"
+	"go-backend-ssa/internal/objw"
 	"go-backend-ssa/internal/ssa"
 	"io"
 )
@@ -62,4 +66,43 @@ func (c *Context) bindIntervalBuilders(values []IntervalsBuilder) []IntervalsBui
 		values[:cap(values)][i].compilation = c
 	}
 	return values
+}
+
+func (c *Context) tracePrint(args ...any) (int, error) { return fmt.Fprint(c.traceWriter(), args...) }
+func (c *Context) tracePrintln(args ...any) (int, error) {
+	return fmt.Fprintln(c.traceWriter(), args...)
+}
+func (c *Context) assertCondition(ok bool) {
+	if !ok {
+		c.fatalf("assertion failed")
+	}
+}
+func (c *Context) warnfAt(p src.XPos, f string, a ...any) {
+	c.SSA.IR.Diagnostics.Add(diagnostic.Warning, "", c.SSA.IR.Base.Ctxt.OutermostPos(p), fmt.Sprintf(f, a...))
+}
+
+func (c *Context) errorfAt(p src.XPos, code errorspkg.Code, f string, a ...any) {
+	c.SSA.IR.Diagnostics.Add(diagnostic.Error, code.String(), c.SSA.IR.Base.Ctxt.PosTable.Pos(p), fmt.Sprintf(f, a...))
+}
+
+func (c *Context) checkArgLiveness(fn *ir.Func, f *ssa.Func, pp *objw.Progs) {
+	c.checkMerge(fn, f)
+	if c.SSA.ReflectData == nil || !c.SSA.ReflectData.Runtime.Writer.OwnsProgs(pp) || pp.CurFunc != fn {
+		panic("liveness requires an owned instruction buffer")
+	}
+}
+func (c *Context) checkCompute(fn *ir.Func, f *ssa.Func, stkptrsize int64, pp *objw.Progs, retLiveness bool) {
+	c.checkArgLiveness(fn, f, pp)
+}
+func (c *Context) checkFuncMap(fn *ir.Func, info *abi.ABIParamResultInfo) {
+	if c == nil || c.SSA == nil || fn == nil || !c.SSA.IR.OwnsNode(fn) || info == nil || info.Config().Universe() != c.SSA.Types {
+		panic("function stack map belongs to another compilation")
+	}
+	for _, list := range [][]abi.ABIParamAssignment{info.InParams(), info.OutParams()} {
+		for _, a := range list {
+			if a.Type == nil || a.Type.Universe() != c.SSA.Types || a.Name != nil && !c.SSA.IR.OwnsNode(a.Name) {
+				panic("function stack-map argument belongs to another compilation")
+			}
+		}
+	}
 }

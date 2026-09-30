@@ -10,6 +10,11 @@ import (
 )
 
 type Context = compiler.Context
+type Progs = compiler.Progs
+type StackMapIndex = compiler.StackMapIndex
+
+const StackMapDontCare = compiler.StackMapDontCare
+
 type BitVec = bitvec.BitVec
 
 const (

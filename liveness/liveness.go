@@ -1,4 +1,4 @@
-// Package liveness exposes native local-merging services for one compilation.
+// Package liveness exposes native stack maps, argument liveness and local merging.
 package liveness
 
 import (
@@ -7,6 +7,8 @@ import (
 )
 
 type Context = compiler.Context
+type Map = compiler.Map
+type Liveness = compiler.Liveness
 type MergeLocalsState = compiler.MergeLocalsState
 
 func NewContext(s *ssa.Context) *Context { return compiler.NewContext(s) }

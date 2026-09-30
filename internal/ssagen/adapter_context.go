@@ -12,6 +12,7 @@ import (
 	errorspkg "go-backend-ssa/internal/go/types/errors"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/liveness"
+	"go-backend-ssa/internal/objw"
 	"go-backend-ssa/internal/ssa"
 	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
@@ -24,6 +25,7 @@ import (
 // type and runtime declarations have been initialized. Phase operations within
 // one graph are serialized; separate contexts can compile independently.
 type Context struct {
+	nowritebarrierrecCheck               *nowritebarrierrecChecker
 	pkgSpecials                          *objabi.Context
 	mallocGC                             *runtimegc.Context
 	capVar                               *ir.Name
@@ -314,3 +316,22 @@ func (c *Context) tracePrint(args ...any) (int, error) { return fmt.Fprint(c.tra
 func (c *Context) tracePrintln(args ...any) (int, error) {
 	return fmt.Fprintln(c.traceWriter(), args...)
 }
+
+func (c *Context) checkGenSSA(f *ssa.Func, pp *objw.Progs) {
+	c.checkBackend()
+	if f == nil || f.Config != c.ssaConfig || f.RegAlloc == nil || f.Frontend() == nil || pp == nil || pp.CurFunc != f.Frontend().Func() || c.Liveness == nil || c.Liveness.SSA != c.SSA {
+		panic("instruction emission requires a compiled function from this backend")
+	}
+	fe, ok := f.Frontend().(*ssafn)
+	if !ok || fe.compilation != c || fe.stkalign == 0 || !c.SSA.ReflectData.Runtime.Writer.OwnsProgs(pp) {
+		panic("instruction emission function or buffer belongs to another compilation")
+	}
+	if c.Arch.LinkArch != c.Typecheck.IR.Base.Ctxt.Arch || c.Arch.SSAMarkMoves == nil || c.Arch.SSAGenValue == nil || c.Arch.SSAGenBlock == nil || c.Arch.Ginsnop == nil || c.Arch.ZeroRange == nil || c.Arch.SpillArgReg == nil || c.Arch.LoadRegResult == nil {
+		panic("instruction emission requires initialized architecture handlers")
+	}
+}
+
+// GenSSA emits native instructions and GC, argument, frame and variable-location
+// metadata into pp. Consume or assemble the instructions before freeing pp or
+// reusing its worker cache. This operation does not assemble machine-code bytes.
+func (c *Context) GenSSA(f *ssa.Func, pp *objw.Progs) { c.genssa(f, pp) }

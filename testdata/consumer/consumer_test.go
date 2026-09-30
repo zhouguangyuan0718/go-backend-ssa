@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"go-backend-ssa/abi"
+	"go-backend-ssa/amd64"
 	"go-backend-ssa/bitvec"
 	"go-backend-ssa/compare"
 	"go-backend-ssa/deadlocals"
@@ -217,6 +218,9 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	}
 	layout, _ := target.NewLayout("linux", "amd64")
 	link := &gcbridge.Link{Pathname: "/src", Pkgpath: "example/p", Arch: &gcbridge.LinkArch{Arch: gcbridge.NewArchitectures().ArchAMD64}}
+	if err := link.Headtype.Set("linux"); err != nil {
+		t.Fatal(err)
+	}
 	universe, err := types.NewUniverseWithPositions(layout, &link.PosTable)
 	if err != nil {
 		t.Fatal(err)
@@ -429,6 +433,7 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	backend.GOMIPS = "hardfloat"
 	backend.GOMIPS64 = "hardfloat"
 	backend.GOARM64.Version = "v8.0"
+	amd64.NewContext(backend)
 	backend.InitConfig()
 	backend.InitTables()
 	lowering := walk.NewContext(writer, analysis)
@@ -475,6 +480,17 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 				}
 			}
 		}
+		pp := writer.ReflectData.Runtime.Writer.NewProgs(fn, 0)
+		backend.GenSSA(compiled, pp)
+		if pp.Text == nil || pp.Text.Link == nil || (fn.Type().NumRecvs()+fn.Type().NumParams() != 0 && fn.LSym.Func().ArgInfo == nil) {
+			t.Fatal("public native instruction emission", fn)
+		}
+		for p := pp.Text; p != nil; p = p.Link {
+			if p.InstructionString() == "" {
+				t.Fatal("instruction formatting", fn)
+			}
+		}
+		pp.Free()
 		graph.CurFunc = nil
 	}
 

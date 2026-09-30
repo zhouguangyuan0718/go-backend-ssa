@@ -22,6 +22,7 @@ import (
 // This adapter binds native SSA type operations to their compilation's universe.
 // It introduces no separate public session or process-global state.
 type Context struct {
+	BlockStart, BlockEnd, FuncEnd *Value
 	// Host services are explicit; no process environment or filesystem fallback.
 	Now               func() time.Time
 	ReadMemStats      func(*runtime.MemStats)
@@ -450,4 +451,27 @@ func (c *Context) lookPath(name string) (string, error) {
 		panic("SSA graph output requires an executable lookup provider")
 	}
 	return c.LookPath(name)
+}
+
+// BindFuncDebug retains the owner of a native debug result while preserving its
+// fields. It also supports the native zero-valued result before SSA construction.
+func (c *Context) BindFuncDebug(v FuncDebug) FuncDebug {
+	if v.compilation != nil && v.compilation != c {
+		panic("debug result belongs to another compilation")
+	}
+	v.compilation = c
+	return v
+}
+
+// BoundsKind.Code needs only the stateless native fatal diagnostic.
+func boundsKindContext(BoundsKind) *Context { return &Context{} }
+
+func (c *Context) checkFuncDebug(ctxt *obj.Link, f *Func, level int, offset func(LocalSlot) int32, result *FuncDebug) {
+	if ctxt != c.IR.Base.Ctxt || result == nil || result.compilation != nil && result.compilation != c {
+		panic("debug result or link belongs to another compilation")
+	}
+	result.compilation = c
+}
+func (c *Context) checkFuncDebugNoOptimized(ctxt *obj.Link, f *Func, logging bool, offset func(LocalSlot) int32, result *FuncDebug) {
+	c.checkFuncDebug(ctxt, f, 0, offset, result)
 }

@@ -2,9 +2,9 @@
 
 将 Go 1.27 官方编译器从源码解析到 SSA 的实现移植为可嵌入进程的 Go 库，供其他编译器后端直接消费。
 
-库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。每次调用拥有独立编译状态，返回结果在后续调用期间仍有效。
+库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。目标是每次编译拥有独立状态，并让统一 Build 的返回结果跨后续调用保活。当前低层 SSA 和指令接口使用原生 worker 缓存，须在同一 worker 复用前消费结果。
 
-当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口，并提供已检查 AST 到原生 Unified IR stub 的 writer，以及实例独立的原生 IR 图构造接口与 typecheck universe 初始化；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及本地 stub 到读取阶段原生包 IR、原生整包去虚化/内联的入口和上游 CalcSize、InitTypes、类型等价与比较算法；前置优化、escape、slice 和完整 walk 已迁入，源码到 SSA 与统一编译驱动仍待完成。
+当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化；M3 已接通源码解析、types2 类型检查、Unified IR writer/reader、前端分析和 walk、完整 IR 到 SSA，以及 AMD64 原生指令生成。统一源码 Build API、机器码汇编、目标文件输出和上游工具链替换尚未完成。** 当前各阶段通过显式 Context 接入；源码测试夹具已串联这些阶段，不能据此视为完整编译器驱动。详细验收范围见下列阶段记录。
 
 - 语言范围：Go 1.27；其他语言版本尚不支持。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
@@ -94,6 +94,7 @@
 77. [M3 原生栈帧分配](docs/m3-ssagen-frames.md)：局部变量活跃区间与合并、帧布局、栈偏移及实例隔离。
 78. [M3 SSA 源码诊断](docs/m3-ssa-sources.md)：原生 HTML 构造、CFG 阶段选择、源码列及显式宿主输入。
 79. [M3 完整 IR 到 SSA](docs/m3-ssagen-build.md)：原生构图、两套 Phi 算法、intrinsics/SIMD、完整 SSA 优化和帧元数据。
+80. [M3 原生 AMD64 指令生成](docs/m3-ssagen-emission.md)：genssa、GC/参数活跃性、变量位置列表、普通和 SIMD 指令及实例格式化表。
 
 ## 当前可运行的工具
 
@@ -162,4 +163,4 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 
 类型布局入口示例见 [独立消费者测试](testdata/consumer/consumer_test.go)。先创建 Universe，再调用原生 `u.InitTypes(defTypeName)`；回调为传入的 Sym/Type 提供宿主的 `types.Object`。随后可直接调用 `Type.Size/Alignment/Registers/HasPointers` 与 `u.CalcSize/PtrDataSize/AlgType/Identical`。当前不提供假 `ir.Name`；宿主绑定契约及失败处理见 M2 文档。
 
-源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；之后可调用 Interleaved 完成整包优化，再调用 MakeWrappers 生成原生方法包装函数，随后逐函数调用 loopvar.ForCapture 处理循环变量捕获，再调用 pkginit.MakeTask 生成原生初始化任务，随后调用 ssagen 的 SymABIs.GenABIWrappers，并依次执行 deadlocals、escape、slice 和 walk；完整 unified 尾部、实验性 midway 和 compiler directives 尚未接入。完成目标、SSA、liveness 配置及 InitConfig/InitTables 后，可对完成 walk 的函数调用 ssagen.BuildSSA，得到原生优化、寄存器分配和帧布局后的 SSA，见 [完整 IR 到 SSA](docs/m3-ssagen-build.md)。统一源码 Build 驱动、机器码输出及上游工具链替换仍待完成。
+源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；之后可调用 Interleaved 完成整包优化，再调用 MakeWrappers 生成原生方法包装函数，随后逐函数调用 loopvar.ForCapture 处理循环变量捕获，再调用 pkginit.MakeTask 生成原生初始化任务，随后调用 ssagen 的 SymABIs.GenABIWrappers，并依次执行 deadlocals、escape、slice 和 walk；完整 unified 尾部、实验性 midway 和 compiler directives 尚未接入。完成目标、SSA、liveness 配置及 InitConfig/InitTables 后，可对完成 walk 的函数调用 ssagen.BuildSSA，得到原生优化、寄存器分配和帧布局后的 SSA，见 [完整 IR 到 SSA](docs/m3-ssagen-build.md)。AMD64 可在 InitConfig 前通过 amd64.NewContext 安装目标处理函数，然后用 objw.NewProgs 和 ssagen.GenSSA 输出原生指令链及 GC/调试元数据，见 [原生 AMD64 指令生成](docs/m3-ssagen-emission.md)。统一源码 Build 驱动、机器码输出及上游工具链替换仍待完成。

@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v49"
+const ToolVersion = "syncgo-m3-v50"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -63,6 +63,7 @@ type Unit struct {
 	ReceiverState          *ReceiverStateRule
 	Context                *ContextRule
 	ContextMethods         map[string]string   // Free function -> method name when the native Context already uses that name.
+	ContextParamExports    []string            // Explicit signature adaptations for public value methods without an owner.
 	ContextParams          []string            // Reviewed receiver methods that take an explicit context parameter.
 	Literals               []LiteralRule       // Reviewed external struct values bound to an instance.
 	Calls                  []CallRule          // Reviewed external functions bound to context methods.
@@ -298,6 +299,13 @@ func (p Plan) Validate() error {
 			receiver, method, ok := strings.Cut(name, ".")
 			if u.Context == nil || !ok || !token.IsIdentifier(receiver) || (method != "*" && (!token.IsIdentifier(method) || token.IsExported(method) && token.IsExported(receiver))) || parameterMethods[name] {
 				return fmt.Errorf("invalid context parameter method: %s", name)
+			}
+			parameterMethods[name] = true
+		}
+		for _, name := range u.ContextParamExports {
+			receiver, method, ok := strings.Cut(name, ".")
+			if u.Context == nil || !ok || !token.IsIdentifier(receiver) || !token.IsExported(receiver) || !token.IsIdentifier(method) || !token.IsExported(method) || parameterMethods[name] {
+				return fmt.Errorf("invalid exported context parameter method: %s", name)
 			}
 			parameterMethods[name] = true
 		}

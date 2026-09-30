@@ -133,6 +133,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	if context == nil {
 		return nil
 	}
+	replaceConstantContextLengths(files, info, states)
 	groups, err := contextInitializerGroups(files, info, units, states)
 	if err != nil {
 		return err
@@ -953,4 +954,32 @@ func leadingNilReturn(fn *ast.FuncDecl, info *types.Info) bool {
 	}
 	nilObject := types.Universe.Lookup("nil")
 	return info.Uses[a] == receiver && info.Uses[b] == nilObject || info.Uses[b] == receiver && info.Uses[a] == nilObject
+}
+
+// Fixed-array len/cap expressions remain constants when their table is moved
+// into a Context. Preserve the checked value before resolving runtime state.
+func replaceConstantContextLengths(files []*ast.File, info *types.Info, states map[types.Object]string) {
+	for _, f := range files {
+		replacements := map[ast.Node]ast.Expr{}
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok || len(call.Args) != 1 {
+				return true
+			}
+			id, ok := call.Args[0].(*ast.Ident)
+			if !ok || states[info.Uses[id]] == "" {
+				return true
+			}
+			fn, ok := call.Fun.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			builtin, ok := info.Uses[fn].(*types.Builtin)
+			if ok && (builtin.Name() == "len" || builtin.Name() == "cap") && info.Types[call].Value != nil {
+				replacements[call] = &ast.BasicLit{Kind: token.INT, Value: info.Types[call].Value.ExactString(), ValuePos: call.Pos()}
+			}
+			return true
+		})
+		rewriteExprs(f, replacements)
+	}
 }

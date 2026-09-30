@@ -8,8 +8,17 @@ import (
 // dataState holds host inputs absent from the original Link. TargetOS must be
 // supplied before writing symbols; the architecture remains Link.Arch.
 type dataState struct {
-	TargetOS    string
-	TraceWriter io.Writer
+	textAttrStrings [19]struct {
+		bit Attribute
+		s   string
+	}
+	opSuffixSpace []opSuffixSet
+	regSpace      []regSet
+	regListSpace  []regListSet
+	spcSpace      []spcSet
+	aSpace        []opSet
+	TargetOS      string
+	TraceWriter   io.Writer
 }
 
 func dataLink(link *Link) *Link {
@@ -30,3 +39,12 @@ func (link *Link) traceWriter() io.Writer {
 	}
 	return io.Discard
 }
+
+func progLink(p *Prog) *Link {
+	if p == nil || p.Ctxt == nil {
+		return &Link{}
+	}
+	return p.Ctxt
+}
+
+func attributeLink(Attribute) *Link { c := &Link{}; c.initializeData(); return c }
