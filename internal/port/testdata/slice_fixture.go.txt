@@ -1,0 +1,39 @@
+package noder
+import("encoding/binary";"os";"strings";"testing";"go-backend-ssa/internal/cmd/obj";"go-backend-ssa/internal/cmd/sys";"go-backend-ssa/internal/ir";"go-backend-ssa/internal/typecheck";"go-backend-ssa/internal/types";"go-backend-ssa/internal/types2";"go-backend-ssa/internal/syntax")
+func TestSyncgoBodyFixture(t *testing.T){
+ arch:=strings.SplitN(os.Getenv("SYNCGO_TARGET"),"-",2)[0];size:=8;var order binary.ByteOrder=binary.LittleEndian;frames:=0;if strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-nosync"){frames=-1};switch arch{case "386":size=4;case "mips":size=4;order=binary.BigEndian;case "ppc64":order=binary.BigEndian}
+ link:=&obj.Link{Pathname:"/src",Arch:&obj.LinkArch{Arch:&sys.Arch{Name:arch,PtrSize:size,RegSize:size,ByteOrder:order}}};u:=types.NewUniverseWithPositions(size,size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");g:=ir.NewContext(u,link);tc:=typecheck.NewContext(g);tc.InitUniverse();g.Base.Flag.Lang="go1.27";g.Base.Flag.Complete=true;g.Debug.SyncFrames=frames;g.Debug.RangeFuncCheck=1
+ c,err:=NewContext(types2.NewContext(),tc);if err!=nil{t.Fatal(err)}
+ source:=`package p
+var Global []int
+func Grow(n int)[]int{var s []int;for i:=0;i<n;i++{s=append(s,i)};return s}
+func Capacity(n int)([]int,int){var s []int;for i:=0;i<n;i++{s=append(s,i)};c:=cap(s);return s,c}
+func Named(n int)(s []int){for i:=0;i<n;i++{s=append(s,i)};return}
+func Assign(n int,p *[]int){var s []int;for i:=0;i<n;i++{s=append(s,i)};*p=s}
+func Range(n int)int{var s []int;for i:=0;i<n;i++{s=append(s,i)};sum:=0;for _,v:=range s{sum+=v};return sum}
+func Aliased(n int)([]int,[]int){var s,alias []int;for i:=0;i<n;i++{s=append(s,i);alias=s};return s,alias}
+func Few(n int)[]int{var s []int;s=append(s,n);return s}
+func Local(n int)int{var s []int;for i:=0;i<n;i++{s=append(s,i)};return len(s)}
+func Read(s []int)int{return len(s)}
+func Retain(s []int){Global=s}
+func ReturnAlias(s []int)[]int{return s}
+func CallRead(n int)[]int{var s []int;for i:=0;i<n;i++{s=append(s,i)};Read(s);return s}
+func CallRetain(n int)[]int{var s []int;for i:=0;i<n;i++{s=append(s,i)};Retain(s);return s}
+func CallReturn(n int)[]int{var s []int;for i:=0;i<n;i++{s=append(s,i)};ReturnAlias(s);return s}
+func Indirect(n int,f func([]int))[]int{var s []int;for i:=0;i<n;i++{s=append(s,i)};f(s);return s}
+func Address(n int)([]int,*int){var s []int;for i:=0;i<n;i++{s=append(s,i)};p:=&s[0];return s,p}
+func Multiple(n int,b bool)[]int{var s []int;for i:=0;i<n;i++{s=append(s,i)};if b{return s};return s}
+func Large(n int)[][65]byte{var s [][65]byte;for i:=0;i<n;i++{s=append(s,[65]byte{})};return s}
+func Zero(n int)[]struct{}{var s []struct{};for i:=0;i<n;i++{s=append(s,struct{}{})};return s}
+type Slice []int
+func(s Slice)Len()int{return len(s)}
+func Method(n int)Slice{var s Slice;for i:=0;i<n;i++{s=append(s,i)};s.Len();return s}
+func Generic[T any](n int,v T)[]T{var s []T;for i:=0;i<n;i++{s=append(s,v)};return s}
+func Instance(n int)[]int{return Generic(n,1)}
+`
+ file,err:=syntax.Parse(syntax.NewFileBase("input.go"),strings.NewReader(source),nil,nil,syntax.CheckBranches);if err!=nil{t.Fatal(err)}
+ info:=&types2.Info{StoreTypesInSyntax:true,Defs:map[*syntax.Name]types2.Object{},Uses:map[*syntax.Name]types2.Object{},Selections:map[*syntax.SelectorExpr]*types2.Selection{},Implicits:map[syntax.Node]types2.Object{},Scopes:map[syntax.Node]*types2.Scope{},Instances:map[*syntax.Name]types2.Instance{},FileVersions:map[*syntax.PosBase]string{}}
+ conf:=types2.Config{Context:c.Checker,GoVersion:"go1.27",Sizes:c.Checker.SizesFor("gc",arch)};files:=[]*syntax.File{file};pkg,err:=conf.Check("example/p",files,info);if err!=nil{t.Fatal(err)}
+ closures,err:=c.RewriteRangeFuncs(pkg,info,files);if err!=nil{t.Fatal(err)};data,err:=c.WritePackage(pkg,info,files,closures);if err!=nil{t.Fatal(err)}
+ if err:=os.WriteFile(BODY_INPUT_PATH,[]byte(data),0600);err!=nil{t.Fatal(err)}
+}

@@ -13,6 +13,7 @@ import (
 	"go-backend-ssa/pkginit"
 	"go-backend-ssa/reflectdata"
 	"go-backend-ssa/rttype"
+	"go-backend-ssa/slice"
 	"go-backend-ssa/ssagen"
 	"go-backend-ssa/staticdata"
 	"go-backend-ssa/staticinit"
@@ -92,7 +93,10 @@ func ExampleNewContext() {
 	pkginit.NewContext(writer).MakeTask()
 	ssagen.NewContext(tc).NewSymABIs().GenABIWrappers()
 	deadlocals.NewContext(graph).Funcs(target.Funcs)
-	escape.NewContext(tc, writer.Inline.Log).Funcs(target.Funcs)
+	analysis := escape.NewContext(tc, writer.Inline.Log)
+	analysis.Funcs(target.Funcs)
+	graph.Debug.VariableMakeThreshold = 64
+	slice.NewContext(analysis, writer.ReflectData).Funcs(target.Funcs)
 	sum, err := writer.LookupFunc("example/p.Sum")
 	if err != nil {
 		panic(err)

@@ -21,6 +21,7 @@ import (
 	"go-backend-ssa/position"
 	"go-backend-ssa/reflectdata"
 	"go-backend-ssa/rttype"
+	"go-backend-ssa/slice"
 	"go-backend-ssa/ssagen"
 	"go-backend-ssa/staticdata"
 	"go-backend-ssa/staticinit"
@@ -187,7 +188,7 @@ func TestNativeSyntaxFromPublicModule(t *testing.T) {
 }
 
 func TestNativeCheckerFromPublicModule(t *testing.T) {
-	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return};func UseId(x int)int{return Id(x)};func Twice(x int)int{return Id(Id(x))};type Number int;func(n Number)M(x int)int{return int(n)+x};func Method(n Number)func(int)int{return n.M};func Captures(xs []int)(out []*int){for _,v:=range xs{out=append(out,&v)};return};func Dead(p int){p=1};func RetPtr()*int{x:=7;return &x}"), nil, nil, syntax.CheckBranches)
+	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return};func UseId(x int)int{return Id(x)};func Twice(x int)int{return Id(Id(x))};type Number int;func(n Number)M(x int)int{return int(n)+x};func Method(n Number)func(int)int{return n.M};func Captures(xs []int)(out []*int){for _,v:=range xs{out=append(out,&v)};return};func Dead(p int){p=1};func RetPtr()*int{x:=7;return &x};func Grow(n int)[]int{var s []int;for i:=0;i<n;i++{s=append(s,i)};return s}"), nil, nil, syntax.CheckBranches)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,6 +366,24 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	}
 	if heapLocal == nil || heapLocal.Esc() != ir.EscHeap || heapLocal.Opt != nil {
 		t.Fatal("public escape classification failed")
+	}
+	graph.Debug.VariableMakeThreshold = 64
+	slice.NewContext(analysis, writer.ReflectData).Funcs(result.Funcs)
+	grow, err := writer.LookupFunc("example/p.Grow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	moves := 0
+	ir.Visit(grow, func(n ir.Node) {
+		if m, ok := n.(*ir.MoveToHeapExpr); ok {
+			moves++
+			if m.RType == nil || m.PreserveCapacity || !graph.OwnsNode(m) {
+				t.Fatal("public slice move metadata")
+			}
+		}
+	})
+	if moves != 1 {
+		t.Fatal("public slice optimization failed", moves)
 	}
 }
 

@@ -47,3 +47,5 @@ Go 1.27.1 定向原生差分的十组配置已通过：386、amd64、mips、ppc6
 完整 `go test -race ./...` 通过，internal/port 用时 54.882s，日志为 `_work/m3-escape-unit-final.log`。完整双版本差分与升级测试通过（测试 844.72s，包 846.431s），日志为 `_work/m3-escape-source.log`；两版的十组 escape 配置均通过。同一套选择/实例规则完成 Go 1.27.0 → 1.27.1 升级，两个生成 Go 文件变化，上游工作树保持不变。generate/check 均验证 268 个文件；额外逐文件比较确认 256 个既有生成 Go 文件除工具版本头外完全相同。
 
 下一阶段接入原生 slice，之后是 walk 和 SSA 构造；当前尚无 Go 源码到 SSA 的 Build API，也未实现替换上游编译器。
+
+后续进展：原生 slice 已接入，见 [M3 slice](m3-slice.md)。以上记录保留本批提交时的验证边界。
