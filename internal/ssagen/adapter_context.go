@@ -30,6 +30,7 @@ import (
 type Context struct {
 	Inline                               *inline.Context
 	constructionCapture                  *constructionState
+	nativeResume                         *ssa.CompilationContinuation
 	globalMapInitLsyms                   map[*obj.LSym]struct{}
 	largeStackFramesMu                   sync.Mutex
 	largeStackFrames                     []largeStack
@@ -371,6 +372,9 @@ type constructionState struct {
 	function     *ssa.Func
 	openDefers   OpenDeferLayout
 	continuation func() *ssa.Func
+	early        func() *ssa.CompilationContinuation
+	stages       *ssa.CompilationContinuation
+	earlyStarted bool
 	started      bool
 	complete     bool
 }
@@ -390,18 +394,55 @@ func (h *Construction) ContinueNative() *ssa.Func {
 		panic("uninitialized SSA construction")
 	}
 	c := h.state
-	if c.owner == nil || c.function == nil || c.continuation == nil || c.started || c.owner.constructionCapture != nil || c.function.Config != c.owner.ssaConfig || c.owner.Typecheck.IR.Base.Ctxt.ObjectNumbered() {
+	if c.owner == nil || c.function == nil || c.continuation == nil || c.started || c.owner.constructionCapture != nil || c.owner.nativeResume != nil || c.function.Config != c.owner.ssaConfig || c.owner.Typecheck.IR.Base.Ctxt.ObjectNumbered() {
 		panic("SSA continuation is unavailable or its compiler state changed")
 	}
 	c.started = true
 	continuation := c.continuation
 	c.continuation = nil
+	c.owner.nativeResume = c.stages
+	defer func() { c.owner.nativeResume = nil }()
 	f := continuation()
+	if c.owner.nativeResume != nil {
+		panic("native SSA continuation was not consumed")
+	}
 	if f != c.function {
 		panic("SSA continuation changed the function identity")
 	}
 	c.complete = true
 	return f
+}
+
+// EarlyOptimize runs the original early SSA passes once, preserving a native
+// continuation after early fuse. The same ownership and configuration contract
+// as ContinueNative applies. Any failed optimization consumes this construction.
+func (h *Construction) EarlyOptimize() *ssa.Func {
+	if h == nil || h.state == nil {
+		panic("uninitialized SSA construction")
+	}
+	c := h.state
+	if c.earlyStarted || c.started || c.early == nil || c.owner.constructionCapture != nil || c.owner.nativeResume != nil || c.function.Config != c.owner.ssaConfig || c.owner.Typecheck.IR.Base.Ctxt.ObjectNumbered() {
+		panic("early SSA optimization is unavailable or its compiler state changed")
+	}
+	c.earlyStarted = true
+	c.started = true
+	optimize := c.early
+	c.early = nil
+	c.stages = optimize()
+	c.started = false
+	return c.function
+}
+
+// This is the original buildssa call site, bound to the retained phase suffix
+// only while ContinueNative is active. Ordinary workers use the complete native
+// pipeline and do not write continuation state.
+func (c *Context) compileConstructedSSA(f *ssa.Func) {
+	if resume := c.nativeResume; resume != nil {
+		c.nativeResume = nil
+		resume.Continue(f)
+		return
+	}
+	ssa.Compile(f)
 }
 
 // NativeCompleted reports successful completion of the original native tail.
@@ -450,6 +491,12 @@ func (c *Context) finishSSAConstruction(s *state, continuation func() *ssa.Func)
 	// Restore exactly that saved scope during the delayed native suffix, without
 	// rerunning construction or introducing another source-position update.
 	lines := append([]src.XPos(nil), s.line...)
+	capture.early = func() *ssa.CompilationContinuation {
+		previous := s.line
+		s.line = lines
+		defer func() { s.line = previous }()
+		return c.SSA.CompileEarly(s.f)
+	}
 	capture.continuation = func() *ssa.Func {
 		previous := s.line
 		s.line = lines

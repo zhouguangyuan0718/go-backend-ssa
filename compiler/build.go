@@ -19,7 +19,10 @@ import (
 
 type Stage string
 
-const Built Stage = "built"
+const (
+	Built          Stage = "built"
+	EarlyOptimized Stage = "early-optimized"
+)
 
 type Metadata struct {
 	UpstreamVersion, UpstreamCommit, Language string
@@ -56,7 +59,7 @@ type Initialization struct {
 	MapInitializers []MapInitializer
 }
 
-// Package owns a complete source compilation at the Built boundary. Graphs,
+// Package owns a complete source compilation at the selected SSA boundary. Graphs,
 // types, symbols and positions retain their shared identities; later builds do
 // not reset their storage. Operations on the same package require serialization.
 // Machine code, frame offsets, liveness and runtime stack metadata are backend
@@ -79,7 +82,7 @@ type Package struct {
 }
 
 // Build runs the source frontend and native declaration fixed point, stopping
-// every function after Phi insertion. The current stage is Built; scheduling is
+// every function after Phi insertion (Built) or early fuse (EarlyOptimized). Scheduling is
 // serial regardless of Options.Workers. Imports use Request's explicit native
 // archive adapter or immutable versioned artifacts. The result includes its own
 // import artifact with complete native type and function-body export data.
@@ -95,7 +98,7 @@ func Build(ctx context.Context, req Request) (*Package, error) {
 func builtPackage(req Request, language string, c *internalgc.Context, held []*ssagen.Construction, diagnostics []diagnostic.Diagnostic) *Package {
 	n := c.Package.Noder
 	u, link := c.Writer.Types, c.Writer.Link
-	p := &Package{Name: u.LocalPkg.Name, ImportPath: req.ImportPath, Metadata: Metadata{UpstreamVersion: Version, UpstreamCommit: UpstreamCommit, Language: language, Target: req.Target, Experiments: u.Experiment.String(), Stage: Built}, Declarations: n.Typecheck.Target, Types: u, Positions: &link.PosTable, Inlining: &link.InlTree, Diagnostics: diagnostics, OpenDefers: make(map[*ssa.Func]ssagen.OpenDeferLayout)}
+	p := &Package{Name: u.LocalPkg.Name, ImportPath: req.ImportPath, Metadata: Metadata{UpstreamVersion: Version, UpstreamCommit: UpstreamCommit, Language: language, Target: req.Target, Experiments: u.Experiment.String(), Stage: selectedStage(req)}, Declarations: n.Typecheck.Target, Types: u, Positions: &link.PosTable, Inlining: &link.InlTree, Diagnostics: diagnostics, OpenDefers: make(map[*ssa.Func]ssagen.OpenDeferLayout)}
 	for _, h := range held {
 		f := h.Func()
 		if f.RegAlloc != nil || h.NativeCompleted() {
@@ -175,9 +178,16 @@ func compareString(a, b string) int {
 }
 func compareNameABI(a, b *ssa.Func) int { return compareString(a.NameABI(), b.NameABI()) }
 
+func selectedStage(req Request) Stage {
+	if req.Options.Stage == "" {
+		return Built
+	}
+	return req.Options.Stage
+}
+
 func validateStage(req Request, building bool) error {
 	if building {
-		if req.Options.Stage != "" && req.Options.Stage != Built {
+		if req.Options.Stage != "" && req.Options.Stage != Built && req.Options.Stage != EarlyOptimized {
 			return fmt.Errorf("unsupported SSA build stage %q", req.Options.Stage)
 		}
 		if req.Options.AssemblyHeader {

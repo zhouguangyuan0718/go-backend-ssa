@@ -154,7 +154,7 @@ func TestBuildErrorsHaveNoResult(t *testing.T) {
 	for name, req := range map[string]compiler.Request{
 		"source":   request("p", "package p;func F()int{return missing}"),
 		"target":   {ImportPath: "p", Files: []compiler.SourceFile{{Name: "p.go", Data: []byte("package p")}}},
-		"stage":    func() compiler.Request { r := request("p", "package p"); r.Options.Stage = "early-optimized"; return r }(),
+		"stage":    func() compiler.Request { r := request("p", "package p"); r.Options.Stage = "lowered"; return r }(),
 		"assembly": func() compiler.Request { r := request("p", "package p"); r.Options.AssemblyHeader = true; return r }(),
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -294,5 +294,62 @@ func TestSourceBuildProfileInputs(t *testing.T) {
 	req.PGOProfile = &compiler.ProfileInput{Name: "bad.pprof", Data: []byte("not a profile")}
 	if p, err := compiler.Build(context.Background(), req); p != nil || err == nil {
 		t.Fatal("bad profile accepted")
+	}
+}
+
+func TestSourceEarlyOptimizedPackage(t *testing.T) {
+	for _, noopt := range []bool{false, true} {
+		t.Run(fmt.Sprint(noopt), func(t *testing.T) {
+			t.Parallel()
+			req := request("example/early", `package early
+func Add[T ~int](a,b T)T{return a+b}
+var M=map[string]int{"x":3}
+func F(n int)int{s:=n*0;for i:=range n{s+=i};return Add(s,1)}
+func Defer(p *int){defer func(){*p+=3}()}
+`)
+			req.Options.DisableOptimization = noopt
+			built, err := compiler.Build(context.Background(), req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := builtText(built)
+			req.Options.Stage = compiler.EarlyOptimized
+			p, err := compiler.Build(context.Background(), req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p.Metadata.Stage != compiler.EarlyOptimized || len(p.Functions) != len(built.Functions) || (!noopt && len(p.OpenDefers) == 0) {
+				t.Fatal("early package metadata")
+			}
+			if !bytes.Equal(p.Artifact.UnifiedIR(), built.Artifact.UnifiedIR()) {
+				t.Fatal("SSA optimization changed frontend export")
+			}
+			if _, err := compiler.DecodeArtifact(p.Artifact.Bytes()); err != nil {
+				t.Fatal(err)
+			}
+			if before != builtText(built) {
+				t.Fatal("later build changed retained graph")
+			}
+			changed := false
+			for i, f := range p.Functions {
+				if f.RegAlloc != nil || len(f.RegArgs) != 0 || len(f.Frontend().Func().LSym.P) != 0 {
+					t.Fatal("early build ran native tail")
+				}
+				changed = changed || f.String() != built.Functions[i].String()
+			}
+			if !changed {
+				t.Fatal("early optimization did not run")
+			}
+			consumer := request("example/consumer", `package consumer; import "example/early";func G()int{return early.Add(4,5)}`)
+			consumer.Artifacts = map[string]*compiler.Artifact{"example/early": p.Artifact}
+			if _, err := compiler.Build(context.Background(), consumer); err != nil {
+				t.Fatal("early artifact import into Built", err)
+			}
+			consumer.Options.Stage = compiler.EarlyOptimized
+			consumer.Artifacts["example/early"] = built.Artifact
+			if _, err := compiler.Build(context.Background(), consumer); err != nil {
+				t.Fatal("Built artifact import into EarlyOptimized", err)
+			}
+		})
 	}
 }

@@ -46,7 +46,7 @@ func TestArtifactEnvelopeValidation(t *testing.T) {
 		"pin":                   func(i *ArtifactInfo) { i.Metadata.UpstreamCommit = "other" },
 		"language":              func(i *ArtifactInfo) { i.Metadata.Language = "go1.28" },
 		"target":                func(i *ArtifactInfo) { i.Metadata.Target.GOARCH = "arm64" },
-		"stage":                 func(i *ArtifactInfo) { i.Metadata.Stage = "early-optimized" },
+		"stage":                 func(i *ArtifactInfo) { i.Metadata.Stage = "lowered" },
 		"experiments":           func(i *ArtifactInfo) { i.Metadata.Experiments = "unknown" },
 		"package path identity": func(i *ArtifactInfo) { i.ImportPath = "different" },
 		"package name identity": func(i *ArtifactInfo) { i.PackageName = "different" },

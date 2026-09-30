@@ -1,6 +1,6 @@
 # M3：源码到 Built SSA
 
-`compiler.Build(ctx, req)` 接受与原生 `compiler.Compile` 相同的显式源码、目标、依赖归档、嵌入文件和 PGO 输入，返回 `*compiler.Package`。`Options.Stage` 的空值或 `compiler.Built` 选择 Phi 插入完成、SSA Compile 之前的分界；其余阶段返回错误。当前完整入口支持 Linux/amd64、GOAMD64 v1–v4。
+`compiler.Build(ctx, req)` 接受与原生 `compiler.Compile` 相同的显式源码、目标、依赖归档、嵌入文件和 PGO 输入，返回 `*compiler.Package`。`Options.Stage` 的空值或 `compiler.Built` 选择 Phi 插入完成、SSA Compile 之前的分界；后续新增 `compiler.EarlyOptimized`，见 [M5 阶段](m5-early-optimized.md)，其余阶段返回错误。当前完整入口支持 Linux/amd64、GOAMD64 v1–v4。
 
 ## 原生流程与生命周期
 
@@ -36,4 +36,4 @@ GC、safepoint、栈、寄存器、运行时集成和最终对象输出由消费
 - 全量 `go test -race -timeout 30m ./...` 通过，`syncgo check` 验证 474 个生成文件一致。
 - 最终源码完整 dist bootstrap 通过（401.34 秒），682 个不同包经本库编译；各阶段的完整 14072 字节测试归档与官方一致。强制重编得到的编译器与 toolchain3 的全部 35519640 字节一致，最终工具链程序运行结果与官方一致。此项限定 Linux/amd64、CGO_ENABLED=0、官方 Go 1.27.1 bootstrap SDK。
 
-严格版本化 import artifact 的生产/消费已在[后续 M4 阶段](m4-import-artifact.md)完成。当前尚未包含 EarlyOptimized、第二目标及完整 cgo/race 驱动。这些仍按路线继续验收。
+严格版本化 import artifact 的生产/消费已在[后续 M4 阶段](m4-import-artifact.md)完成。EarlyOptimized 已在 [M5](m5-early-optimized.md) 接通；当前尚未包含第二目标及完整 cgo/race 驱动。这些仍按路线继续验收。

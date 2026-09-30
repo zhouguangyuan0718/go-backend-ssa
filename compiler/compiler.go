@@ -371,7 +371,11 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		return nil, err
 	}
 	if built != nil {
-		held, e := finalizer.BuildDeclarations(syms, profile, ctx.Err)
+		buildDeclarations := finalizer.BuildDeclarations
+		if req.Options.Stage == EarlyOptimized {
+			buildDeclarations = finalizer.BuildEarlyDeclarations
+		}
+		held, e := buildDeclarations(syms, profile, ctx.Err)
 		if e != nil {
 			return nil, e
 		}

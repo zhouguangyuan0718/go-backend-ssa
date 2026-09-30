@@ -71,4 +71,51 @@ func TestConstructionLifecycle(t *testing.T) {
 		c.ssaConfig = config
 		held.ContinueNative()
 	})
+	t.Run("failed-early-consumed", func(t *testing.T) {
+		c := buildContext("amd64")
+		held := c.ConstructSSA(makeFunction(c, "earlyFailure"), false)
+		copied := *held
+		calls := 0
+		held.state.early = func() *ssa.CompilationContinuation { calls++; panic("early failure") }
+		mustPanic(t, func() { held.EarlyOptimize() })
+		mustPanic(t, func() { copied.EarlyOptimize() })
+		mustPanic(t, func() { copied.ContinueNative() })
+		if calls != 1 || held.NativeCompleted() || c.nativeResume != nil {
+			t.Fatal("failed early stage reusable")
+		}
+		c.ConstructSSA(makeFunction(c, "afterEarlyFailure"), false).ContinueNative()
+	})
+	t.Run("early-config-and-copy", func(t *testing.T) {
+		c := buildContext("amd64")
+		held := c.ConstructSSA(makeFunction(c, "earlyCopied"), false)
+		config := c.ssaConfig
+		c.ssaConfig = buildContext("amd64").ssaConfig
+		mustPanic(t, func() { held.EarlyOptimize() })
+		if held.state.started || held.state.earlyStarted {
+			t.Fatal("rejection consumed fresh graph")
+		}
+		c.ssaConfig = config
+		copied := *held
+		copied.EarlyOptimize()
+		mustPanic(t, func() { held.EarlyOptimize() })
+		held.ContinueNative()
+		if !copied.NativeCompleted() {
+			t.Fatal("copied early handle lost completion")
+		}
+		mustPanic(t, func() { copied.ContinueNative() })
+	})
+	t.Run("failed-resumed-tail-consumed", func(t *testing.T) {
+		c := buildContext("amd64")
+		held := c.ConstructSSA(makeFunction(c, "resumedFailure"), false)
+		held.EarlyOptimize()
+		calls := 0
+		held.state.continuation = func() *ssa.Func { calls++; c.compileConstructedSSA(held.Func()); panic("frame failure") }
+		mustPanic(t, func() { held.ContinueNative() })
+		mustPanic(t, func() { held.ContinueNative() })
+		if calls != 1 || held.NativeCompleted() || c.nativeResume != nil {
+			t.Fatal("failed resumed tail reusable")
+		}
+		c.ConstructSSA(makeFunction(c, "afterResumedFailure"), false).ContinueNative()
+	})
+
 }

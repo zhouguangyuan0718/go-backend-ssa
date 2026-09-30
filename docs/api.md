@@ -1,8 +1,8 @@
 # 公共 API 与后端契约
 
-已实现源码级 `compiler.Build(ctx, Request)`，返回 Built 阶段的 `compiler.Package`，见[源码到 Built SSA](m3-source-build.md)。它复用 `compiler.Compile` 的显式输入，只运行构图前的原生流程，独立保留每张图及包元数据；当前支持 Linux/amd64，依赖通过 `Request.Artifacts` 传入严格版本化 artifact，或通过 `Request.Imports` 使用显式原生归档适配器。
+已实现源码级 `compiler.Build(ctx, Request)`，返回 Built 或 EarlyOptimized 阶段的 `compiler.Package`，见[源码到 Built SSA](m3-source-build.md)。它复用 `compiler.Compile` 的显式输入，按选择的阶段运行原生流程，独立保留每张图及包元数据；当前支持 Linux/amd64，依赖通过 `Request.Artifacts` 传入严格版本化 artifact，或通过 `Request.Imports` 使用显式原生归档适配器。
 
-下文是完整目标契约；其中 EarlyOptimized 和完整能力集仍属拟议设计；artifact 的实际契约见[阶段记录](m4-import-artifact.md)。当前实际声明以 `compiler/build.go` 与 `compiler/compiler.go` 为准。原生归档输出继续使用 `compiler.Compile`；低层 `ssagen.Context.ConstructSSA` 另提供一次性原生 continuation，见[SSA 构建分界](m3-ssa-construction.md)。
+下文是完整目标契约；其中完整能力集仍按回归逐项验收；EarlyOptimized 的实际边界见[阶段记录](m5-early-optimized.md)；artifact 的实际契约见[阶段记录](m4-import-artifact.md)。当前实际声明以 `compiler/build.go` 与 `compiler/compiler.go` 为准。原生归档输出继续使用 `compiler.Compile`；低层 `ssagen.Context.ConstructSSA` 另提供一次性原生 continuation，见[SSA 构建分界](m3-ssa-construction.md)。
 
 ## 入口
 

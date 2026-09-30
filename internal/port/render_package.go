@@ -93,6 +93,10 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	if err != nil {
 		return nil, nil, err
 	}
+	ranges, err := prepareRangeContinuations(original, info, units)
+	if err != nil {
+		return nil, nil, err
+	}
 	if err := removeAdapterMethods(original, units); err != nil {
 		return nil, nil, err
 	}
@@ -124,6 +128,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		return nil, nil, err
 	}
 	if err := applyFunctionContinuations(fs, continuations); err != nil {
+		return nil, nil, err
+	}
+	if err := applyRangeContinuations(ranges); err != nil {
 		return nil, nil, err
 	}
 	if err := rewriteHostFields(original, info, units); err != nil {
@@ -239,6 +246,10 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		if u.WholeFile {
 			prov.Rule = "whole-file-and-zero-values-v1"
 			prov.Declarations = append(append([]string{"*"}, u.ZeroValues...), u.ReadTables...)
+		}
+		for _, name := range sortedKeys(u.RangeContinuations) {
+			r := u.RangeContinuations[name]
+			prov.Declarations = append(prov.Declarations, "range-continuation:"+name+":"+r.Range+":"+r.Method+":"+r.Argument)
 		}
 		for _, name := range sortedKeys(u.FunctionContinuations) {
 			rule := u.FunctionContinuations[name]

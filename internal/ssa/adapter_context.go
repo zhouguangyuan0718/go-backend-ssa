@@ -22,6 +22,7 @@ import (
 // This adapter binds native SSA type operations to their compilation's universe.
 // It introduces no separate public session or process-global state.
 type Context struct {
+	stageCapture                  *compilationState
 	BlockStart, BlockEnd, FuncEnd *Value
 	// Host services are explicit; no process environment or filesystem fallback.
 	Now               func() time.Time
@@ -474,4 +475,100 @@ func (c *Context) checkFuncDebug(ctxt *obj.Link, f *Func, level int, offset func
 }
 func (c *Context) checkFuncDebugNoOptimized(ctxt *obj.Link, f *Func, logging bool, offset func(LocalSlot) int32, result *FuncDebug) {
 	c.checkFuncDebug(ctxt, f, 0, offset, result)
+}
+
+// CompilationContinuation retains the native phase-loop captures, including the
+// randomized checker's stream. Operations on its Context must be serialized;
+// configuration and frontend IR must stay unchanged until continuation finishes.
+// Shared private state makes copied handles consume the same operation once.
+type CompilationContinuation struct{ state *compilationState }
+type compilationState struct {
+	owner    *Context
+	function *Func
+	config   *Config
+	resume   func()
+	started  bool
+	complete bool
+}
+
+// CompileEarly applies the native phase table through early fuse, stopping
+// immediately before expand calls. It does not lower calls or allocate registers.
+func (c *Context) CompileEarly(f *Func) *CompilationContinuation {
+	if f == nil || f.Config == nil || diagnosticContext(f) != c || c.stageCapture != nil || f.RegAlloc != nil || f.pass != nil {
+		panic("early SSA compilation requires a fresh owned graph")
+	}
+	earlyStageBoundary(c.passes)
+	capture := &compilationState{owner: c, function: f, config: f.Config}
+	c.stageCapture = capture
+	defer func() { c.stageCapture = nil }()
+	Compile(f)
+	if capture.resume == nil {
+		panic("native early SSA boundary was not reached")
+	}
+	return &CompilationContinuation{state: capture}
+}
+
+func earlyStageBoundary(passes [59]pass) int {
+	early, expand := -1, -1
+	for i, p := range passes {
+		switch p.name {
+		case "early fuse":
+			if early >= 0 {
+				panic("duplicate early SSA boundary")
+			}
+			early = i
+		case "expand calls":
+			if expand >= 0 {
+				panic("duplicate call expansion boundary")
+			}
+			expand = i
+		}
+	}
+	if early < 0 || expand != early+1 {
+		panic("native early SSA boundary changed")
+	}
+	return expand
+}
+
+// The selector receives the native array by value at the original range
+// expression, after initial checks/dumps. This preserves snapshot timing even
+// when a host diagnostic callback adjusts options during that initial work.
+// Resumption uses that retained snapshot and the same native lexical captures.
+func (c *Context) runCompileStages(f *Func, run func(func([59]pass) []pass, bool)) {
+	capture := c.stageCapture
+	if capture == nil {
+		run(func(passes [59]pass) []pass { return passes[:] }, true)
+		return
+	}
+	if capture.owner != c || capture.function != f || capture.resume != nil {
+		panic("invalid early SSA capture")
+	}
+	var snapshot [59]pass
+	boundary := -1
+	run(func(passes [59]pass) []pass {
+		snapshot = passes
+		boundary = earlyStageBoundary(passes)
+		return snapshot[:boundary]
+	}, true)
+	if boundary < 0 {
+		panic("native early SSA range was not reached")
+	}
+	capture.resume = func() { run(func(_ [59]pass) []pass { return snapshot[boundary:] }, false) }
+}
+
+// Continue runs the remaining original passes once on the same graph. Failure
+// consumes the handle too; partially modified graphs must never be retried.
+func (h *CompilationContinuation) Continue(f *Func) {
+	if h == nil || h.state == nil {
+		panic("uninitialized SSA phase continuation")
+	}
+	s := h.state
+	if s.started || s.resume == nil || s.function != f || f.Config != s.config || diagnosticContext(f) != s.owner || s.owner.stageCapture != nil || f.RegAlloc != nil {
+		panic("SSA phase continuation is unavailable or its compiler state changed")
+	}
+	s.started = true
+	run := s.resume
+	s.resume = nil
+	run()
+	s.complete = true
 }

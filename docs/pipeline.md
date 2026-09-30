@@ -31,14 +31,14 @@
 
 ## 两个 SSA 输出阶段
 
-拟提供两个固定枚举，名称可在 M2 调整：
+源码级 Build 已提供两个固定枚举：
 
 | 阶段 | 截止点 | 用途 |
 | --- | --- | --- |
 | `Built` | SSA 构造及 Phi 补全、验证之后，进入 ssa.Compile 之前 | 第一条纵向闭环、差分基线 |
 | `EarlyOptimized` | 官方 pass 顺序运行至 early fuse 之后、expand calls 之前 | 自定义后端首选的后续目标 |
 
-首个原型仅实现 Built，EarlyOptimized 在 M5 验收。二者都不承诺“没有 ABI 信息”或“语言无关”；ssagen 在构造阶段已有 ABI 分析和 runtime lowering。EarlyOptimized 也并非完成了所有通用优化，后续仍有 sccp、dse 等。
+Built 和 EarlyOptimized 的实现见 [M3](m3-source-build.md) 与 [M5](m5-early-optimized.md)。二者都不承诺“没有 ABI 信息”或“语言无关”；ssagen 在构造阶段已有 ABI 分析和 runtime lowering。EarlyOptimized 也并非完成了所有通用优化，后续仍有 sccp、dse 等。
 
 保留阶段输入要求和输出不变量，禁止使用任意字符串组合 pass 的公共 API。每个配置有独立 verifier 和能力集合。
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go-backend-ssa/internal/ssa"
 	"go-backend-ssa/internal/ssagen"
+	"slices"
 	"testing"
 )
 
@@ -71,6 +72,59 @@ func H(n int)int{return n*3+1}
 				}
 			}()
 			saved[0].ContinueNative()
+		})
+	}
+}
+
+func TestEarlyOptimizationAndNativeContinuation(t *testing.T) {
+	const source = `package p
+func F(p *int,n int)int {s:=n*0;for i:=range n{if i&1==0{s+=i}else{s-=i}};if p!=nil{s+=*p};return s}
+func D(p *int)int {defer func(){*p+=3}();return *p}
+`
+	for _, seed := range []int{0, 1, 314159} {
+		t.Run(fmt.Sprint(seed), func(t *testing.T) {
+			t.Parallel()
+			compile := func(early bool) []string {
+				c, abis := loadQueueCompiler(t, 1, source, true)
+				if seed != 0 {
+					if err := c.Backend.SSA.PhaseOption("check", "seed", seed, ""); err != "" {
+						t.Fatal(err)
+					}
+				}
+				c.PrepareFrontend(abis, nil)
+				var result []string
+				for _, fn := range c.Package.Noder.Typecheck.Target.Funcs {
+					c.EnqueueFunc(fn, abis)
+					h := c.Backend.ConstructSSA(fn, false)
+					f := h.Func()
+					if early {
+						copyHandle := *h
+						if copyHandle.EarlyOptimize() != f || h.NativeCompleted() || f.RegAlloc != nil || len(f.RegArgs) != 0 {
+							t.Fatal("early boundary crossed native tail")
+						}
+						mustPanic := func(run func()) {
+							t.Helper()
+							defer func() {
+								if recover() == nil {
+									t.Error("consumed continuation accepted")
+								}
+							}()
+							run()
+						}
+						mustPanic(func() { h.EarlyOptimize() })
+					}
+					h.ContinueNative()
+					if !h.NativeCompleted() || h.Func() != f || f.RegAlloc == nil {
+						t.Fatal("native suffix incomplete")
+					}
+					result = append(result, f.String())
+				}
+				return result
+			}
+			native, early := compile(false), compile(true)
+			if !slices.Equal(native, early) {
+				t.Fatalf("resumed SSA differs for seed %d\nnative:%v\nearly:%v", seed, native, early)
+			}
 		})
 	}
 }

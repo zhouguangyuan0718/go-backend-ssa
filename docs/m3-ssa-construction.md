@@ -30,4 +30,4 @@
 
 ## 后续
 
-源码级 Build 已完成包准备、声明固定点的阶段编排与结果元数据，见[源码到 Built SSA](m3-source-build.md)。artifact 和严格版本校验已见[后续 M4 阶段](m4-import-artifact.md)。EarlyOptimized 需要独立的原生阶段截点。Linux/arm64、cgo/race 驱动、最低 bootstrap SDK 及更广上游回归继续分别验收。
+源码级 Build 已完成包准备、声明固定点的阶段编排与结果元数据，见[源码到 Built SSA](m3-source-build.md)。artifact 和严格版本校验已见[后续 M4 阶段](m4-import-artifact.md)。EarlyOptimized 已提供独立的原生阶段截点和续编译，见 [M5](m5-early-optimized.md)。Linux/arm64、cgo/race 驱动、最低 bootstrap SDK 及更广上游回归继续分别验收。

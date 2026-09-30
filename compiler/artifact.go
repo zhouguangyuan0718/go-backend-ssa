@@ -123,7 +123,7 @@ func validateArtifactInfo(info ArtifactInfo) error {
 	if info.Format != ArtifactFormat || m.UpstreamVersion != Version || m.UpstreamCommit != UpstreamCommit {
 		return fmt.Errorf("incompatible SSA artifact format or frontend pin")
 	}
-	if info.ImportPath == "" || info.ImportPath == "unsafe" || info.PackageName == "" || m.Stage != Built {
+	if info.ImportPath == "" || info.ImportPath == "unsafe" || info.PackageName == "" || (m.Stage != Built && m.Stage != EarlyOptimized) {
 		return fmt.Errorf("invalid SSA artifact package or stage")
 	}
 	if !version.IsValid(m.Language) || version.Lang(m.Language) != m.Language || version.Compare(m.Language, "go1.27") > 0 {

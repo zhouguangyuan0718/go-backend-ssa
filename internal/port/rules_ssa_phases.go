@@ -9,6 +9,7 @@ func ssaPhaseMigration(units []Unit) []Unit {
 		if u.Source != "src/cmd/compile/internal/ssa/compile.go" {
 			continue
 		}
+		u.RangeContinuations = map[string]RangeContinuationRule{"Compile": {Range: "passes", Method: "runCompileStages", Argument: "f"}}
 		u.WholeFile = true
 		u.Declarations = nil
 		u.ContextFrom = map[string]ContextSource{"Compile": {Argument: "f", Resolver: "diagnosticContext"}, "Func.DumpFileForPhase": {Argument: "f", Resolver: "diagnosticContext"}}

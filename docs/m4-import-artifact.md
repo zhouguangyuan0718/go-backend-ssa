@@ -46,4 +46,4 @@ artifact 不包含机器码。消费后端需要另外生成对象、运行时�
 - Go 1.27.1 / Go 1.27.0 各 12 组完整原生归档差分通过，包括优化/调试配置、内联、大图 Phi、分离归档、cgo pragma 记录和 build ID。这里的 cgo pragma 差分不等同于完整 cgo 驱动验收。
 - 冻结版本的完整 dist bootstrap 通过（428.95 秒），682 个不同包经本库编译；各阶段及最终编译器生成的完整 14072 字节测试归档与官方一致。强制重编的编译器与 toolchain3 的全部 35575009 字节一致，最终工具链程序运行结果与官方一致。该项限定 Linux/amd64、CGO_ENABLED=0、官方 Go 1.27.1 bootstrap SDK。
 
-EarlyOptimized、Linux/arm64、完整 cgo/race 驱动、最低 bootstrap SDK 和规定的更广回归仍按原路线推进。
+EarlyOptimized 已见 [M5](m5-early-optimized.md)。Linux/arm64、完整 cgo/race 驱动、最低 bootstrap SDK 和规定的更广回归仍按原路线推进。

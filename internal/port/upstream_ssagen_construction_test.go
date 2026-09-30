@@ -40,12 +40,14 @@ func TestPinnedSSAConstruction(t *testing.T) {
 			}
 			t.Run("built", func(t *testing.T) { testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_construction") })
 			t.Run("resumed", func(t *testing.T) { testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_resume") })
+			t.Run("early", func(t *testing.T) { testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_early") })
+			t.Run("early-resumed", func(t *testing.T) { testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_early_resume") })
 		})
 	}
 }
 
 // Every observer build, including native intrinsic bodies, uses the held graph.
-func constructionObserver(t *testing.T, code string, resume bool) string {
+func constructionObserver(t *testing.T, code string, resume, early bool) string {
 	t.Helper()
 	for _, hot := range []string{"hot", "false"} {
 		old := "c.buildssa(fn,0," + hot + ")"
@@ -56,7 +58,15 @@ func constructionObserver(t *testing.T, code string, resume bool) string {
 		if resume {
 			suffix = ".ContinueNative()"
 		}
-		code = strings.ReplaceAll(code, old, "c.ConstructSSA(fn,"+hot+")"+suffix)
+		replacement := "c.ConstructSSA(fn," + hot + ")" + suffix
+		if early {
+			if resume {
+				replacement = "func()*ssa.Func{h:=c.ConstructSSA(fn," + hot + ");h.EarlyOptimize();return h.ContinueNative()}()"
+			} else {
+				replacement = "c.ConstructSSA(fn," + hot + ").EarlyOptimize()"
+			}
+		}
+		code = strings.ReplaceAll(code, old, replacement)
 	}
 	return code
 }

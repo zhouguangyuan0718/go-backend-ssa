@@ -28,6 +28,7 @@ import (
 // finalization to the same compiler graph. Public stage calls are serialized;
 // CompileQueued runs the configured backend workers and joins them before return.
 type Context struct {
+	buildEarly                                       bool
 	bloop                                            *bloop.Context
 	loopvar                                          *loopvar.Context
 	deadlocals                                       *deadlocals.Context
@@ -325,6 +326,9 @@ func (c *Context) compileWorker(fn *ir.Func, worker int, profile *pgoir.Profile)
 			}
 		}
 		held := c.Backend.ConstructSSA(fn, c.Backend.Inline.IsPgoHotFunc(fn, profile) || c.Backend.Inline.HasPgoHotInline(fn))
+		if c.buildEarly {
+			held.EarlyOptimize()
+		}
 		c.constructed = append(c.constructed, held)
 		return
 	}
@@ -460,10 +464,21 @@ func (c *Context) WriteAssemblyHeader(output io.WriteSeeker) (err error) {
 // consumed even on cancellation; native FinishPackage is unavailable afterward.
 // check may be nil, and otherwise runs before each function on the joined worker.
 func (c *Context) BuildDeclarations(symABIs *ssagen.SymABIs, profile *pgoir.Profile, check func() error) ([]*ssagen.Construction, error) {
+	return c.buildDeclarations(symABIs, profile, check, false)
+}
+
+// BuildEarlyDeclarations advances each independently owned graph through early
+// fuse inside the original declaration fixed point, before final static data.
+func (c *Context) BuildEarlyDeclarations(symABIs *ssagen.SymABIs, profile *pgoir.Profile, check func() error) ([]*ssagen.Construction, error) {
+	return c.buildDeclarations(symABIs, profile, check, true)
+}
+
+func (c *Context) buildDeclarations(symABIs *ssagen.SymABIs, profile *pgoir.Profile, check func() error, early bool) ([]*ssagen.Construction, error) {
 	if c == nil || c.Backend == nil || c.buildMode || c.Backend.WorkerCount() != 1 || c.Package.Noder.Flag.LowerC != 1 || !c.frontendStarted || c.frontendFailed || c.frontendRunning || c.declarationsStarted {
 		panic("SSA package construction requires a fresh prepared single-worker compiler")
 	}
 	c.buildMode = true
+	c.buildEarly = early
 	c.buildCheck = check
 	defer func() { c.buildCheck = nil; c.constructed = nil }()
 	c.CompileDeclarations(symABIs, profile)

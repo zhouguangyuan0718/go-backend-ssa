@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m4-v74"
+const ToolVersion = "syncgo-m5-v75"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -52,6 +52,7 @@ type Unit struct {
 	Functions              []string
 	FunctionRegions        map[string]FunctionRegionRule
 	FunctionContinuations  map[string]FunctionContinuationRule
+	RangeContinuations     map[string]RangeContinuationRule
 	Declarations           []string // Types, complete constant groups, and Receiver.Method names.
 	ExportConstants        bool     // Generate public aliases for this file's exported native constants.
 	Owner                  *OwnerRule
@@ -99,6 +100,14 @@ type FunctionContinuationRule struct {
 	Before SourceCallAnchor
 	Method string
 	State  string // a unique local struct declared before the boundary, passed by address
+}
+
+// RangeContinuationRule exposes a native pass loop as a resumable runner.
+// Setup and its lexical state are retained once; the native panic guard and
+// cleanup execute on each invocation. Only a fixed array of local pass values
+// and a void function with one explicit panic guard are supported.
+type RangeContinuationRule struct {
+	Range, Method, Argument string
 }
 
 type SourceCallAnchor struct {
@@ -290,6 +299,21 @@ func (p Plan) Validate() error {
 			return fmt.Errorf("invalid migration source: %s", u.Source)
 		}
 
+		for name, r := range u.RangeContinuations {
+			selected := u.WholeFile
+			for _, f := range u.Functions {
+				selected = selected || f == name
+			}
+			if !selected || u.Context == nil || !token.IsIdentifier(name) || name == "init" || !token.IsIdentifier(r.Range) || r.Range == "_" || !token.IsIdentifier(r.Method) || r.Method == "_" || !token.IsIdentifier(r.Argument) || r.Argument == "_" {
+				return fmt.Errorf("invalid range continuation: %s", name)
+			}
+			if _, ok := u.FunctionRegions[name]; ok {
+				return fmt.Errorf("range continuation also has a region: %s", name)
+			}
+			if _, ok := u.FunctionContinuations[name]; ok {
+				return fmt.Errorf("range continuation also has a suffix: %s", name)
+			}
+		}
 		for name, r := range u.FunctionContinuations {
 			selected := u.WholeFile
 			for _, f := range u.Functions {

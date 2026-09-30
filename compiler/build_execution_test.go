@@ -19,7 +19,12 @@ import (
 // The official compiler writes its own Built-phase dumps. The object inspector
 // uses the official goobj.Reader through a temporary overlay; neither oracle
 // changes compiler algorithms or uses the library's migration transform.
-func TestSourceBuildOfficialOracle(t *testing.T) {
+func TestSourceBuildOfficialOracle(t *testing.T) { testSourceBuildOfficialOracle(t, compiler.Built) }
+func TestSourceEarlyOfficialOracle(t *testing.T) {
+	testSourceBuildOfficialOracle(t, compiler.EarlyOptimized)
+}
+
+func testSourceBuildOfficialOracle(t *testing.T, stage compiler.Stage) {
 	if os.Getenv("GO_SSA_NATIVE_EXECUTION") == "" {
 		t.Skip("set GO_SSA_NATIVE_EXECUTION for official Built dumps and object data")
 	}
@@ -72,6 +77,7 @@ func TestSourceBuildOfficialOracle(t *testing.T) {
 	for _, mode := range []string{"default", "noinline", "noopt", "amd64v3"} {
 		t.Run(mode, func(t *testing.T) {
 			req := request("p", source)
+			req.Options.Stage = stage
 			req.Files[0].Name = file
 			req.Options.Complete = true
 			args := []string{"tool", "compile", "-p", "p", "-complete", "-dwarf=false"}
@@ -90,6 +96,13 @@ func TestSourceBuildOfficialOracle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			phase := "build"
+			if stage == compiler.EarlyOptimized {
+				phase = "early_fuse"
+				if req.Options.DisableOptimization {
+					phase = "middle_opt"
+				}
+			}
 			var dumpFlags []string
 			names := map[string]bool{}
 			for _, f := range p.Functions {
@@ -97,20 +110,20 @@ func TestSourceBuildOfficialOracle(t *testing.T) {
 					t.Fatal("ambiguous dump name", f.Name)
 				}
 				names[f.Name] = true
-				dumpFlags = append(dumpFlags, "ssa/build/dump="+f.Name)
+				dumpFlags = append(dumpFlags, "ssa/"+phase+"/dump="+f.Name)
 			}
 			archive := filepath.Join(dir, mode+".a")
 			args = append(args, "-d="+strings.Join(dumpFlags, ","), "-o", archive, file)
 			run([]string{fmt.Sprintf("GOAMD64=v%d", req.Target.GOAMD64)}, args...)
 			for _, f := range p.Functions {
-				name := strings.NewReplacer(" ", "_", "/", "_", ":", "_").Replace(f.Name) + "_01__build.dump"
+				name := strings.NewReplacer(" ", "_", "/", "_", ":", "_").Replace(f.Name) + "_01__" + phase + ".dump"
 				expected, err := os.ReadFile(filepath.Join(dir, name))
 				if err != nil {
 					t.Fatal(err)
 				}
 				actual := liveDump(f.String())
 				if string(expected) != actual {
-					t.Fatalf("Built dump differs for %s\nlibrary:\n%s\nofficial:\n%s", f.Name, actual, expected)
+					t.Fatalf("%s dump differs for %s\nlibrary:\n%s\nofficial:\n%s", stage, f.Name, actual, expected)
 				}
 				if err := os.Remove(filepath.Join(dir, name)); err != nil {
 					t.Fatal(err)
@@ -185,7 +198,7 @@ func TestSourceBuildOfficialOracle(t *testing.T) {
 				byName[s.Name] = append(candidates[:matched], candidates[matched+1:]...)
 
 			}
-			t.Logf("%d Built graphs, complete function set and %d globals with relocations match official compiler", len(p.Functions), len(p.Globals))
+			t.Logf("%d %s graphs, complete function set and %d globals with relocations match official compiler", len(p.Functions), stage, len(p.Globals))
 		})
 	}
 }
