@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v40"
+const ToolVersion = "syncgo-m3-v41"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -126,6 +126,7 @@ type ContextRule struct {
 	Type, Constructor string
 	Fields            map[string]string
 	Adapter           string // Handwritten filename in the ported package.
+	DeferInit         bool   // Reviewed init outside a partial selection; may not reference selected state or functions.
 	Init              bool   // Move this file's reviewed init bodies into per-context initialization.
 }
 
@@ -346,6 +347,9 @@ func (p Plan) Validate() error {
 		}
 		pkg := path.Dir(output)
 		outputs[output] = true
+		if u.Context != nil && u.Context.DeferInit && (u.WholeFile || u.Context.Init) {
+			return fmt.Errorf("deferred init requires a partial selection without Init: %s", u.Source)
+		}
 		if u.WholeFile && (len(u.Functions)+len(u.Declarations) != 0) || !u.WholeFile && len(u.ZeroValues)+len(u.ReadTables) != 0 {
 			return fmt.Errorf("incompatible whole-file rules: %s", u.Source)
 		}

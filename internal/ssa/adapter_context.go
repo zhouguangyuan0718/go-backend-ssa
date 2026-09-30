@@ -18,6 +18,13 @@ import (
 // This adapter binds native SSA type operations to their compilation's universe.
 // It introduces no separate public session or process-global state.
 type Context struct {
+	checkpointBound     limitFact
+	checkEnabled        bool
+	debugPoset          bool
+	domainRelationTable map[Op]struct {
+		d domain
+		r relation
+	}
 	*opcodeTables
 	Types                       *types.Universe
 	IR                          *ir.Context

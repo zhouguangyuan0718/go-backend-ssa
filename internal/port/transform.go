@@ -165,6 +165,12 @@ func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.Fil
 		switch d := d.(type) {
 		case *ast.FuncDecl:
 			if u.Context != nil && d.Recv == nil && d.Name.Name == "init" {
+				if u.Context.DeferInit {
+					if dependency := deferredInitDependency(d, f, want); dependency != "" {
+						return nil, fmt.Errorf("deferred init references selected declaration: %s", dependency)
+					}
+					continue
+				}
 				if !u.Context.Init {
 					return nil, fmt.Errorf("package init requires an explicit adaptation rule: %s", name)
 				}
@@ -420,4 +426,68 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// The explicit partial-selection rule cannot discard initialization of selected
+// state or functions via source-local helpers and value initializers. The rule
+// remains an explicit review decision for effects outside this source file.
+// Identifier matching is conservative: shadowed names may reject a safe selection.
+func deferredInitDependency(init *ast.FuncDecl, file *ast.File, selected map[string]string) string {
+	declarations := map[string][]ast.Node{}
+	banned := map[string]bool{}
+	for name, kind := range selected {
+		if kind == "var" || kind == "func" {
+			banned[name] = true
+		}
+	}
+	for _, d := range file.Decls {
+		switch d := d.(type) {
+		case *ast.FuncDecl:
+			if d.Name.Name != "init" {
+				key := d.Name.Name
+				if d.Recv != nil {
+					key = receiverType(d) + "." + key
+				}
+				if selected[key] != "" {
+					banned[d.Name.Name] = true
+				}
+				declarations[d.Name.Name] = append(declarations[d.Name.Name], d.Body)
+			}
+		case *ast.GenDecl:
+			if d.Tok == token.VAR {
+				for _, sp := range d.Specs {
+					v := sp.(*ast.ValueSpec)
+					for _, id := range v.Names {
+						for _, e := range v.Values {
+							declarations[id.Name] = append(declarations[id.Name], e)
+						}
+					}
+				}
+			}
+		}
+	}
+	visited := map[string]bool{}
+	var found string
+	var visit func(ast.Node)
+	visit = func(node ast.Node) {
+		ast.Inspect(node, func(n ast.Node) bool {
+			id, ok := n.(*ast.Ident)
+			if !ok || found != "" {
+				return found == ""
+			}
+			if banned[id.Name] {
+				found = id.Name
+				return false
+			}
+			if !visited[id.Name] {
+				visited[id.Name] = true
+				for _, d := range declarations[id.Name] {
+					visit(d)
+				}
+			}
+			return found == ""
+		})
+	}
+	visit(init.Body)
+	return found
 }

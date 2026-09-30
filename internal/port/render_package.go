@@ -147,6 +147,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			prov.Rule = "package-state-to-context-methods-v2"
 			prov.Declarations = append(prov.Declarations, sortedKeys(c.Fields)...)
 			prov.Declarations = append(prov.Declarations, u.ContextParams...)
+			if c.DeferInit {
+				prov.Declarations = append(prov.Declarations, "deferred-unselected-init")
+			}
 		}
 		if c := u.Context; c != nil && c.Adapter != "" {
 			if _, exists := s.Blobs[path.Join(path.Dir(u.Source), c.Adapter)]; exists {

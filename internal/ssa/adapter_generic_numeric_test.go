@@ -56,6 +56,12 @@ func evalGenericInteger(t *testing.T, root, input *Value, number uint64) uint64 
 			n = uint64(uint32(arg(0)) >> arg(1))
 		case OpRsh64Ux32, OpRsh64Ux64:
 			n = arg(0) >> arg(1)
+		case OpBswap16:
+			n = uint64(bits.ReverseBytes16(uint16(arg(0))))
+		case OpBswap32:
+			n = uint64(bits.ReverseBytes32(uint32(arg(0))))
+		case OpBswap64:
+			n = bits.ReverseBytes64(arg(0))
 		case OpRotateLeft32:
 			n = uint64(bits.RotateLeft32(uint32(arg(0)), int(arg(1))))
 		case OpRotateLeft64:

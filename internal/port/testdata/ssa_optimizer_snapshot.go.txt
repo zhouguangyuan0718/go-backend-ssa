@@ -1,0 +1,233 @@
+package ssa
+
+import (
+	IMPORT_BASE
+	"IMPORT_IR"
+	"IMPORT_OBJ"
+	"IMPORT_SRC"
+	"IMPORT_SYS"
+	"IMPORT_TYPECHECK"
+	"IMPORT_TYPES"
+	LOWER_IMPORT
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"os"
+	"testing"
+)
+
+type snapshotGenericFrontend struct {
+	Frontend
+	splits []string
+ logs []string
+}
+
+func (*snapshotGenericFrontend) Debug_checknil() bool { return false }
+func (fe *snapshotGenericFrontend) Logf(format string,args ...any) {fe.logs=append(fe.logs,fmt.Sprintf(format,args...))}
+func (*snapshotGenericFrontend) Log() bool { return false }
+func (*snapshotGenericFrontend) Fatalf(pos src.XPos, f string, args ...any) {
+	panic(fmt.Sprintf("%d:%s", pos.Line(), fmt.Sprintf(f, args...)))
+}
+func (*snapshotGenericFrontend) Warnl(src.XPos, string, ...any) {}
+func (fe *snapshotGenericFrontend) SplitSlot(parent *LocalSlot, suffix string, offset int64, t *types.Type) LocalSlot {
+	// The fixture uses parameter slots. Keep the existing Name and accumulate its
+	// offset, exactly the non-auto branch of the native Frontend contract.
+	if parent.N.Class != ir.PPARAM {
+		panic("fixture expects a parameter slot")
+	}
+	fe.splits = append(fe.splits, fmt.Sprintf("%s/%s/%d/%v", parent.N.Sym().Name, suffix, offset, t))
+	return LocalSlot{N: parent.N, Type: t, Off: parent.Off + offset}
+}
+func TestSyncgoNativeSnapshot(t *testing.T) {
+	target := struct {
+		arch  string
+		size  int
+		order binary.ByteOrder
+	}{os.Getenv("SYNCGO_TARGET"), 8, binary.LittleEndian}
+	switch target.arch {
+	case "386", "mips":
+		target.size = 4
+	}
+	switch target.arch {
+	case "mips", "ppc64":
+		target.order = binary.BigEndian
+	}
+	SETUP
+	LOWER_FEATURES.GOAMD64 = 1
+	LOWER_FEATURES.GOARM.Version = 7
+	LOWER_FEATURES.GOPPC64 = 8
+	LOWER_FEATURES.GORISCV64 = 20
+	switch target.arch {
+	case "386":
+		LINK.Arch.Family = sys.I386
+	case "amd64":
+		LINK.Arch.Family = sys.AMD64
+	case "arm64":
+		LINK.Arch.Family = sys.ARM64
+	case "mips":
+		LINK.Arch.Family = sys.MIPS
+	case "ppc64":
+		LINK.Arch.Family = sys.PPC64
+	}
+	OPT_CHECKS
+	cfg := UP.NewConfig(target.arch, *UP.NewTypes(), LINK, true, false)
+	ty := cfg.Types
+	var out []string
+	add := func(label string, args ...any) { out = append(out, label+":"+fmt.Sprint(args...)) }
+	file := src.NewFileBase("optimizer.go", "optimizer.go")
+	pos := LINK.PosTable.XPos(src.MakePos(file, 10, 1))
+	fresh := func() (*Func, *snapshotGenericFrontend) {
+		cache := new(Cache)
+		cache.Reset()
+		fe := &snapshotGenericFrontend{}
+		f := cfg.NewFunc(fe, cache)
+		f.Name = "optimizer"
+		f.Type = TY.NewSignature(nil, nil, nil)
+		f.ABISelf = cfg.ABI1
+		f.pass = &pass{name: "optimizer"}
+		f.Entry = f.NewBlock(BlockRet)
+		f.Entry.Pos = pos
+		return f, fe
+	}
+ run := func(label string,f *Func, passes ...pass) {
+  checkFunc(f);numberLines(f)
+  for _,p:=range passes {f.pass=&p;p.fn(f);deadcode(f);f.invalidateCFG();checkFunc(f);add(label+"/"+p.name,f.String())}
+  decomposeBuiltin(f);softfloat(f);opt(f);deadcode(f);lower(f);lateLower(f);deadcode(f);f.invalidateCFG();checkFunc(f);checkLower(f)
+  add(label+"/lower",f.String());add(label+"/logs",f.Frontend().(*snapshotGenericFrontend).logs)
+ }
+ args := func(f *Func)(mem,ptr,x,y *Value){b:=f.Entry;mem=b.NewValue0(pos,OpInitMem,TY.TypeMem);ptr=b.NewValue0I(pos,OpArg,ty.BytePtr,16);n:=GRAPH.NewNameAt(pos,TY.LocalPkg.Lookup("ptr"),ty.BytePtr);n.Class=ir.PPARAM;ptr.Aux=n;x=b.NewValue0I(pos,OpArg,ty.Int32,0);y=b.NewValue0I(pos,OpArg,ty.Int32,4);return}
+ store := func(b *Block,ptr,v,mem *Value)*Value{return b.NewValue3A(pos,OpStore,TY.TypeMem,v.Type,ptr,v,mem)}
+ offset:=func(b *Block,ptr *Value,n int64)*Value{return b.NewValue1I(pos,OpOffPtr,ty.BytePtr,n,ptr)}
+ // CSE must distinguish ordered subtraction while merging commutative addition.
+ {
+  f,_:=fresh();b:=f.Entry;mem,ptr,x,y:=args(f)
+  a:=b.NewValue2(pos,OpAdd32,ty.Int32,x,y);aa:=b.NewValue2(pos,OpAdd32,ty.Int32,y,x)
+  d:=b.NewValue2(pos,OpSub32,ty.Int32,x,y);dd:=b.NewValue2(pos,OpSub32,ty.Int32,y,x)
+  for i,v:=range []*Value{a,aa,d,dd}{mem=store(b,offset(b,ptr,int64(i*4)),v,mem)}
+  b.SetControl(mem);run("cse",f,pass{name:"generic cse",fn:cse})
+ }
+ // Load CSE across disjoint memory definitions versus an aliasing definition.
+ for _,distance:=range []int64{0,8}{
+  f,_:=fresh();b:=f.Entry;mem,ptr,x,_:=args(f)
+  a:=b.NewValue2(pos,OpLoad,ty.Int32,ptr,mem);mem=store(b,offset(b,ptr,distance),x,mem)
+  z:=b.NewValue2(pos,OpLoad,ty.Int32,ptr,mem)
+  v:=b.NewValue2(pos,OpAdd32,ty.Int32,a,z);b.SetControl(store(b,offset(b,ptr,32),v,mem))
+  run(fmt.Sprint("memory-cse-",distance),f,pass{name:"generic cse",fn:cse})
+ }
+ {
+  f,_:=fresh();b:=f.Entry;mem,ptr,_,_:=args(f)
+  a:=b.NewValue0I(pos,OpConst32,ty.Int32,33);z:=b.NewValue0I(pos,OpConst32,ty.Int32,33)
+  b.SetControl(store(b,ptr,b.NewValue2(pos,OpAdd32,ty.Int32,a,z),mem));run("zcse",f,pass{name:"zero arg cse",fn:zcse})
+ }
+ // A narrower overwrite may not erase the untouched bytes of the first store.
+ for _,partial:=range []bool{false,true}{
+  f,_:=fresh();b:=f.Entry;mem,ptr,x,y:=args(f)
+  mem=store(b,ptr,x,mem);last:=y;if partial{last=f.ConstInt8(ty.UInt8,19)}
+  b.SetControl(store(b,ptr,last,mem));run(fmt.Sprint("dse-",partial),f,pass{name:"dse",fn:dse})
+ }
+ {
+  f,_:=fresh();b:=f.Entry;mem,ptr,x,_:=args(f)
+  v:=b.NewValue2(pos,OpAnd32,ty.Int32,x,f.ConstInt32(ty.Int32,255))
+  v=b.NewValue2(pos,OpOr32,ty.Int32,v,f.ConstInt32(ty.Int32,256))
+  v=b.NewValue2(pos,OpRsh32Ux32,ty.Int32,v,f.ConstInt32(ty.UInt32,8))
+  b.SetControl(store(b,ptr,v,mem));run("known-bits",f,pass{name:"known bits",fn:knownBits})
+ }
+ // Constant propagation must restrict phi inputs to reachable predecessors.
+ for _,take:=range []bool{false,true}{
+  f,_:=fresh();e:=f.Entry;mem,ptr,_,_:=args(f);e.Reset(BlockIf);e.SetControl(f.ConstBool(ty.Bool,take))
+  l,r,j:=f.NewBlock(BlockPlain),f.NewBlock(BlockPlain),f.NewBlock(BlockRet)
+  for _,b:=range []*Block{l,r,j}{b.Pos=pos};e.AddEdgeTo(l);e.AddEdgeTo(r);l.AddEdgeTo(j);r.AddEdgeTo(j)
+  a:=l.NewValue2(pos,OpMul32,ty.Int32,f.ConstInt32(ty.Int32,6),f.ConstInt32(ty.Int32,7))
+  b:=r.NewValue2(pos,OpAdd32,ty.Int32,f.ConstInt32(ty.Int32,8),f.ConstInt32(ty.Int32,9))
+  phi:=j.NewValue2(pos,OpPhi,ty.Int32,a,b);j.SetControl(store(j,ptr,phi,mem))
+  run(fmt.Sprint("sccp-",take),f,pass{name:"sccp",fn:sccp})
+ }
+ for _,p:=range []pass{{name:"phiopt",fn:phiopt},{name:"branchelim",fn:branchelim},{name:"short circuit",fn:shortcircuit},{name:"early fuse",fn:fuseEarly},{name:"late fuse",fn:fuseLate}}{
+  f,_:=fresh();e:=f.Entry;mem,ptr,x,y:=args(f);e.Reset(BlockIf);e.SetControl(e.NewValue2(pos,OpLess32,ty.Bool,x,y))
+  l,r,j:=f.NewBlock(BlockPlain),f.NewBlock(BlockPlain),f.NewBlock(BlockRet)
+  for _,b:=range []*Block{l,r,j}{b.Pos=pos};e.AddEdgeTo(l);e.AddEdgeTo(r);l.AddEdgeTo(j);r.AddEdgeTo(j)
+  phi:=j.NewValue2(pos,OpPhi,ty.Bool,f.ConstBool(ty.Bool,true),f.ConstBool(ty.Bool,false))
+  j.SetControl(store(j,ptr,phi,mem));run("diamond",f,p)
+ }
+ // Transitive signed comparisons and their unsigned counterparts.
+ for _,less:=range []Op{OpLess32,OpLess32U}{
+  f,_:=fresh();e:=f.Entry;mem,ptr,x,y:=args(f);z:=e.NewValue0I(pos,OpArg,ty.Int32,8)
+  b1,b2:=f.NewBlock(BlockIf),f.NewBlock(BlockIf);r0,r1,good,bad:=f.NewBlock(BlockRet),f.NewBlock(BlockRet),f.NewBlock(BlockRet),f.NewBlock(BlockRet)
+  for _,b:=range []*Block{b1,b2,r0,r1,good,bad}{b.Pos=pos}
+  e.Reset(BlockIf);e.SetControl(e.NewValue2(pos,less,ty.Bool,x,y));e.AddEdgeTo(b1);e.AddEdgeTo(r0)
+  b1.SetControl(b1.NewValue2(pos,less,ty.Bool,y,z));b1.AddEdgeTo(b2);b1.AddEdgeTo(r1)
+  b2.SetControl(b2.NewValue2(pos,less,ty.Bool,x,z));b2.AddEdgeTo(good);b2.AddEdgeTo(bad)
+  for i,b:=range []*Block{r0,r1,good,bad}{b.SetControl(store(b,ptr,f.ConstInt32(ty.Int32,int32(i)),mem))}
+  run(fmt.Sprint("prove-",less),f,pass{name:"prove",fn:prove})
+ }
+ // Induction-variable bounds and the native downward-counting rewrite.
+ for _,useIndex:=range []bool{false,true}{
+  f,_:=fresh();e:=f.Entry;mem,ptr,_,_:=args(f);n:=e.NewValue0I(pos,OpArg,ty.Int64,32)
+  h,body,out:=f.NewBlock(BlockIf),f.NewBlock(BlockPlain),f.NewBlock(BlockRet);for _,b:=range []*Block{h,body,out}{b.Pos=pos}
+  e.Reset(BlockPlain);e.AddEdgeTo(h);h.AddEdgeTo(body);h.AddEdgeTo(out);body.AddEdgeTo(h)
+  zero,one:=f.ConstInt64(ty.Int64,0),f.ConstInt64(ty.Int64,1)
+  i:=h.NewValue1(pos,OpPhi,ty.Int64,zero);next:=body.NewValue2(pos,OpAdd64,ty.Int64,i,one);i.AddArg(next)
+  h.SetControl(h.NewValue2(pos,OpLess64,ty.Bool,i,n));result:=n
+  if useIndex{result=i}
+  out.SetControl(store(out,ptr,result,mem));run(fmt.Sprint("loop-",useIndex),f,pass{name:"prove",fn:prove},pass{name:"check bce",fn:checkbce})
+ }
+ // Keep the first nil check and remove the dominated duplicate.
+ {
+  f,_:=fresh();e:=f.Entry;mem,ptr,x,_:=args(f)
+  a:=e.NewValue2(pos,OpNilCheck,ty.BytePtr,ptr,mem);b:=f.NewBlock(BlockRet);b.Pos=pos;e.Reset(BlockPlain);e.AddEdgeTo(b)
+  z:=b.NewValue2(pos,OpNilCheck,ty.BytePtr,ptr,mem)
+  value:=a
+  mem=store(b,value,x,mem);b.SetControl(store(b,z,x,mem))
+  run("nilcheck",f,pass{name:"nilcheckelim",fn:nilcheckelim})
+ }
+ // Four bytes of one integer exercise endian-dependent store combining.
+ {
+  f,_:=fresh();b:=f.Entry;mem,ptr,x,_:=args(f)
+  for i:=0;i<4;i++{v:=b.NewValue2(pos,OpRsh32Ux32,ty.Int32,x,f.ConstInt32(ty.UInt32,int32(i*8)));v=b.NewValue1(pos,OpTrunc32to8,ty.UInt8,v);mem=store(b,offset(b,ptr,int64(i)),v,mem)}
+  b.SetControl(mem);run("memcombine",f,pass{name:"opt",fn:opt},pass{name:"memcombine",fn:memcombine})
+ }
+
+
+ {
+  f,_:=fresh();b:=f.Entry;mem,ptr,_,_:=args(f);var value *Value
+  for i:=0;i<4;i++{load:=b.NewValue2(pos,OpLoad,ty.UInt8,offset(b,ptr,int64(i)),mem);v:=b.NewValue1(pos,OpZeroExt8to32,ty.UInt32,load);v=b.NewValue2(pos,OpLsh32x64,ty.UInt32,v,f.ConstInt64(ty.UInt64,int64(8*i)));if value==nil{value=v}else{value=b.NewValue2(pos,OpOr32,ty.UInt32,value,v)}}
+  b.SetControl(store(b,offset(b,ptr,16),value,mem));run("memcombine-load",f,pass{name:"opt",fn:opt},pass{name:"memcombine",fn:memcombine})
+ }
+ for _,keepAlive:=range []bool{false,true}{
+  f,_:=fresh();b:=f.Entry;mem,input,_,_:=args(f)
+  n:=GRAPH.NewNameAt(pos,TY.LocalPkg.Lookup("local"),ty.BytePtr);n.Class=ir.PAUTO
+  sp:=b.NewValue0(pos,OpSP,ty.Uintptr);ptr:=b.NewValue2A(pos,OpLocalAddr,TY.NewPtr(ty.BytePtr),n,sp,mem)
+  mem=b.NewValue1A(pos,OpVarDef,TY.TypeMem,n,mem);mem=store(b,ptr,input,mem)
+  if keepAlive{mem=b.NewValue1A(pos,OpVarLive,TY.TypeMem,n,mem)};b.SetControl(mem)
+  run(fmt.Sprint("dead-auto-",keepAlive),f,pass{name:"dead auto elim",fn:elimDeadAutosGeneric})
+ }
+ {
+  f,_:=fresh();e:=f.Entry;mem,ptr,_,_:=args(f);e.Reset(BlockIf);e.SetControl(e.NewValue0I(pos,OpArg,ty.Bool,8))
+  l,r,j:=f.NewBlock(BlockPlain),f.NewBlock(BlockPlain),f.NewBlock(BlockIf);yes,no:=f.NewBlock(BlockRet),f.NewBlock(BlockRet)
+  for _,b:=range []*Block{l,r,j,yes,no}{b.Pos=pos};e.AddEdgeTo(l);e.AddEdgeTo(r);l.AddEdgeTo(j);r.AddEdgeTo(j);j.AddEdgeTo(yes);j.AddEdgeTo(no)
+  j.SetControl(j.NewValue2(pos,OpPhi,ty.Bool,f.ConstBool(ty.Bool,true),f.ConstBool(ty.Bool,false)))
+  yes.SetControl(store(yes,ptr,f.ConstInt32(ty.Int32,1),mem));no.SetControl(store(no,ptr,f.ConstInt32(ty.Int32,0),mem))
+  run("shortcircuit-phi",f,pass{name:"short circuit",fn:shortcircuit})
+ }
+ for _,p:=range []pass{{name:"early fuse",fn:fuseEarly},{name:"late fuse",fn:fuseLate}}{
+  f,_:=fresh();e:=f.Entry;mem,ptr,x,y:=args(f);e.Reset(BlockIf)
+  second,yes,no:=f.NewBlock(BlockIf),f.NewBlock(BlockRet),f.NewBlock(BlockRet);for _,b:=range []*Block{second,yes,no}{b.Pos=pos}
+  if p.name=="early fuse"{e.SetControl(e.NewValue2(pos,OpLeq32,ty.Bool,f.ConstInt32(ty.Int32,1),x));second.SetControl(second.NewValue2(pos,OpLess32,ty.Bool,x,f.ConstInt32(ty.Int32,9)))}else{e.SetControl(e.NewValue2(pos,OpLess32,ty.Bool,x,y));second.SetControl(second.NewValue2(pos,OpLeq32,ty.Bool,x,y))}
+  e.AddEdgeTo(second);e.AddEdgeTo(no);second.AddEdgeTo(yes);second.AddEdgeTo(no)
+  yes.SetControl(store(yes,ptr,f.ConstInt32(ty.Int32,1),mem));no.SetControl(store(no,ptr,f.ConstInt32(ty.Int32,0),mem))
+  run("fuse-conditions",f,p)
+ }
+ // Features are inferred on the successful CPU probe edge and intersect at joins.
+ for _,negated:=range []bool{false,true}{
+  f,_:=fresh();e:=f.Entry;mem,ptr,x,_:=args(f)
+  fld:=TY.NewField(pos,TY.LocalPkg.Lookup("HasAVX2"),ty.Bool);cpu:=TY.NewStruct([]*types.Field{fld});TY.CalcSize(cpu)
+  sb:=e.NewValue0(pos,OpSB,ty.Uintptr);addr:=e.NewValue1A(pos,OpAddr,TY.NewPtr(cpu),&obj.LSym{Name:"internal/cpu.X86"},sb)
+  off:=e.NewValue1I(pos,OpOffPtr,TY.NewPtr(ty.Bool),fld.Offset,addr);flag:=e.NewValue2(pos,OpLoad,ty.Bool,off,mem)
+  if negated{flag=e.NewValue1(pos,OpNot,ty.Bool,flag)}
+  e.Reset(BlockIf);e.SetControl(flag);l,r,j:=f.NewBlock(BlockPlain),f.NewBlock(BlockPlain),f.NewBlock(BlockRet);for _,b:=range []*Block{l,r,j}{b.Pos=pos}
+  e.AddEdgeTo(l);e.AddEdgeTo(r);l.AddEdgeTo(j);r.AddEdgeTo(j);j.SetControl(store(j,ptr,x,mem))
+  checkFunc(f);cpufeatures(f);for _,b:=range f.Blocks{add(fmt.Sprint("features-",negated,"-",b.ID),b.CPUfeatures)}
+  add("maximum-features",f.maxCPUFeatures)
+ }
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Printf("SYNCGO_IR=%s\n",data)
+}
