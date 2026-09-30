@@ -1,0 +1,6 @@
+package b
+import "example/a"
+type View = a.Node[int]
+var Value a.Alias[int]
+var Item a.Scalar
+func Bounce(v a.Node[int]) a.Node[int] { return v }

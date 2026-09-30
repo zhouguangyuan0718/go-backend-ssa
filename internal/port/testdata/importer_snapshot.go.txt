@@ -1,0 +1,44 @@
+package importer
+import("encoding/json";"go/token";"fmt";"os";"path/filepath";"strings";"testing";"IMPORT_TYPES2";"IMPORT_SYNTAX";"IMPORT_PKGBITS")
+type snapshotImporter struct{packages map[string]*types2.Package;unsafe *types2.Package}
+func(i snapshotImporter)Import(path string)(*types2.Package,error){if path=="unsafe"{return i.unsafe,nil};if p:=i.packages[path];p!=nil&&p.Complete(){return p,nil};return nil,fmt.Errorf("missing %s",path)}
+func TestSyncgoImporterSnapshot(t *testing.T){
+ var out []string
+ for _,arch:=range []string{"386","amd64","arm64","ppc64"}{for _,order:=range [][]string{{"b","a"},{"a","b"}}{
+  t.Logf("case %s %v",arch,order);checker:=types2.NewContext();packages:=map[string]*types2.Package{}
+  SETUP_READER
+  var indirect *types2.Named
+  for _,name:=range order{
+   b,e:=os.ReadFile(filepath.Join(os.Getenv("IMPORTER_EXPORT_DIR"),name+".u"));if e!=nil{t.Fatal(e)}
+   t.Logf("read %s",name);p:=READ_PACKAGE(checker,packages,pkgbits.NewPkgDecoder("example/"+name,string(b)))
+   if p.Path()!="example/"+name||!p.Complete(){t.Fatal("root package identity")}
+   if name=="b"{indirect=types2.Unalias(p.Scope().Lookup("Value").Type()).(*types2.Named);_=indirect.Underlying();out=append(out,fmt.Sprintf("indirect:%s:%t",indirect,indirect.Obj().Pkg().Complete()))}
+  }
+  a,b:=packages["example/a"],packages["example/b"]
+  if indirect.Obj().Pkg()!=a{t.Fatal("dependency identity changed")}
+  out=append(out,fmt.Sprintf("mode:%s:%v",arch,order))
+  for _,pkg:=range []*types2.Package{a,b}{
+   out=append(out,fmt.Sprintf("package:%s:%s:%t:%v",pkg.Path(),pkg.Name(),pkg.Complete(),pkg.Scope().Names()))
+   for _,name:=range pkg.Scope().Names(){if !token.IsIdentifier(name){out=append(out,"synthetic:"+name);continue};o:=pkg.Scope().Lookup(name);out=append(out,fmt.Sprintf("object:%T:%s:%s:%s",o,o.Name(),o.Type(),o.Pos()))
+    switch o:=o.(type){case *types2.Const:out=append(out,"constant:"+o.Val().ExactString());case *types2.TypeName:
+     out=append(out,fmt.Sprintf("type:%t:%s",o.IsAlias(),o.Type().Underlying()))
+     if n,ok:=o.Type().(*types2.Named);ok{
+      for j:=0;j<n.TypeParams().Len();j++{p:=n.TypeParams().At(j);out=append(out,fmt.Sprintf("param:%s:%s",p.Obj().Name(),p.Constraint()))}
+      for j:=0;j<n.NumMethods();j++{m:=n.Method(j);sig:=m.Type().(*types2.Signature);out=append(out,fmt.Sprintf("method:%s:%s:%d:%d:%s",m.Name(),sig,sig.RecvTypeParams().Len(),sig.TypeParams().Len(),m.Pos()))}
+     }
+    }
+   }
+  }
+  node:=a.Scope().Lookup("Node").Type()
+  inst,e:=INSTANTIATE(checker,node,[]types2.Type{BASIC_INT},true);if e!=nil{t.Fatal(e)}
+  again,e:=INSTANTIATE(checker,node,[]types2.Type{BASIC_INT},true);if e!=nil||again!=inst||!IDENTICAL(inst,indirect){t.Fatal("generic cache/identity",e)}
+  st:=a.Scope().Lookup("Layout").Type().Underlying().(*types2.Struct);sizes:=SIZES_FOR("gc",arch);fields:=make([]*types2.Var,st.NumFields());for i:=range fields{fields[i]=st.Field(i)}
+  out=append(out,fmt.Sprintf("layout:%d:%d:%v",sizes.Sizeof(st),sizes.Alignof(st),sizes.Offsetsof(fields)))
+  source:=`package use;import "example/a";import "example/b";var X a.Node[int]=b.Value;var Y=a.Global.Map(func(x int)string{return "x"});func F(x a.Scalar)int{return x.Value()};var Z=a.Generic(int64(3))`
+  f,e:=syntax.Parse(syntax.NewFileBase("use.go"),strings.NewReader(source),nil,nil,syntax.CheckBranches);if e!=nil{t.Fatal(e)}
+  cfg:=types2.Config{Context:checker,GoVersion:"go1.27",Importer:snapshotImporter{packages,UNSAFE_PACKAGE},Sizes:sizes}
+  use,e:=cfg.Check("example/use",[]*syntax.File{f},nil);if e!=nil{t.Fatal(e)}
+  for _,name:=range use.Scope().Names(){out=append(out,fmt.Sprintf("checked:%s:%s",name,use.Scope().Lookup(name).Type()))}
+ }}
+ b,e:=json.Marshal(out);if e!=nil{t.Fatal(e)};fmt.Println("SYNCGO_IMPORTER="+string(b))
+}

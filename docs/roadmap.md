@@ -78,3 +78,5 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 运行时类型、全局声明、新增函数和 DWARF 的原生固定点已接通，见 [声明固定点](m3-native-declaration-fixed-point.md)。后续重心转向 noder 源码加载、完整前端驱动与真实链接执行。
 
 原生编译器指令已贯通源码 parser、Unified writer 与 reader，见 [编译器指令](m3-native-directives.md)。下一步接通原生 `checkFiles`、显式依赖导入及完整源码加载驱动。
+
+原生 types2 Unified 导入器已接通，含惰性声明、泛型方法和递归约束，见 [类型导入器](m3-native-type-importer.md)。下一步将它与 noder 的原生路径解析、依赖头校验及 `checkFiles` 连接。

@@ -219,6 +219,13 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	for obj, field := range projectedDependencies {
 		contextExternal[obj] = field
 	}
+	boundMethods, err := methodCallBindings(files, info, units)
+	if err != nil {
+		return err
+	}
+	for obj, field := range boundMethods {
+		contextExternal[obj] = field
+	}
 	externalMethods, err := externalContextMethods(files, info, units)
 	if err != nil {
 		return err
@@ -306,6 +313,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			}
 			return true
 		})
+		rewriteBoundMethodCalls(node, info, boundMethods, ctx)
 		rewriteExprs(node, selectors)
 		rewriteNodes(node, replacements(ctx))
 		for _, owner := range owners {

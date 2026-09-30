@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v58"
+const ToolVersion = "syncgo-m3-v59"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -69,9 +69,10 @@ type Unit struct {
 	ContextParamExports    []string               // Explicit signature adaptations for public value methods without an owner.
 	ContextParams          []string               // Reviewed receiver methods that take an explicit context parameter.
 	Literals               []LiteralRule          // Reviewed external struct values bound to an instance.
-	Calls                  []CallRule             // Reviewed external functions bound to context methods.
-	Nullable               map[string][]string    // Reviewed owned pointers/receivers that accept nil.
-	Checks                 map[string]string      // Selected function/method -> context argument validator.
+	MethodCalls            []MethodCallRule
+	Calls                  []CallRule          // Reviewed external functions bound to context methods.
+	Nullable               map[string][]string // Reviewed owned pointers/receivers that accept nil.
+	Checks                 map[string]string   // Selected function/method -> context argument validator.
 }
 
 // FunctionRegionRule extracts a contiguous sequence of complete native statements.
@@ -110,6 +111,10 @@ type HostCallRule struct {
 	StringArgument            string
 	StringArguments           []string // Alternative literal keys; mutually exclusive with StringArgument.
 }
+
+// MethodCallRule binds direct calls to an already migrated native method. The
+// adapter receives the original receiver as its first explicit parameter.
+type MethodCallRule struct{ Source, Method, Adapter string }
 
 // CallRule derives the upstream signature from Source; no replacement package
 // or invented compiler declaration is emitted into the library.
@@ -445,6 +450,14 @@ func (p Plan) Validate() error {
 				seenKeys[value] = true
 			}
 			seenHostCalls[key] = true
+		}
+		seenMethodCalls := map[string]bool{}
+		for _, r := range u.MethodCalls {
+			typ, method, ok := strings.Cut(r.Method, ".")
+			if u.Context == nil || !safePath(r.Source) || portPath(r.Source) == "" || !ok || !token.IsIdentifier(typ) || !token.IsIdentifier(method) || !memberPath(r.Adapter) || seenMethodCalls[r.Source+":"+r.Method] {
+				return fmt.Errorf("invalid method call binding")
+			}
+			seenMethodCalls[r.Source+":"+r.Method] = true
 		}
 		for _, call := range u.Calls {
 			if u.Context == nil || !safePath(call.Source) || portPath(call.Source) == "" || !token.IsIdentifier(call.Function) || !memberPath(call.Method) || call.KeepDefinition && strings.TrimPrefix(path.Dir(call.Source), "src/") != u.sourcePackage() {

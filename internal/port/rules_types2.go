@@ -30,7 +30,11 @@ func types2Migration() []Unit {
 		{Source: "src/cmd/compile/internal/types2/compiler_internal.go", WholeFile: true, Context: context(false)},
 		{Source: "src/cmd/compile/internal/types2/compilersupport.go", WholeFile: true, Context: context(false)},
 		{Source: "src/cmd/compile/internal/types2/const.go", WholeFile: true, Context: context(false), ContextParams: []string{"Checker.*"}},
-		{Source: "src/cmd/compile/internal/types2/context.go", WholeFile: true, Context: context(false)},
+		{Source: "src/cmd/compile/internal/types2/context.go", WholeFile: true, Context: context(false), ContextFrom: map[string]ContextSource{
+			"Context.instanceHash": {Argument: "orig", Resolver: "genericTypeContext"},
+			"Context.lookup":       {Argument: "orig", Resolver: "genericTypeContext"},
+			"Context.update":       {Argument: "orig", Resolver: "genericTypeContext"},
+		}},
 		{Source: "src/cmd/compile/internal/types2/conversions.go", WholeFile: true, Context: context(false), ContextParams: []string{"Checker.*"}},
 		{Source: "src/cmd/compile/internal/types2/cycles.go", WholeFile: true, Context: context(false), ContextParams: []string{"Checker.*"}},
 		{Source: "src/cmd/compile/internal/types2/decl.go", WholeFile: true, Context: context(false), ContextParams: []string{"Checker.*"}},

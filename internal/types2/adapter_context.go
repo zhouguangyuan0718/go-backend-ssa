@@ -40,3 +40,28 @@ func (c *Context) PackageScope(pkg *Package) *Scope {
 	}
 	return pkg.Scope()
 }
+
+// A native Context may be only an instantiation cache (including the fresh
+// caches created while lazily expanding imported types). Type operations must
+// use the origin's universe while the original receiver retains its cache.
+func genericTypeContext(orig Type) *Context {
+	var c *Context
+	switch t := orig.(type) {
+	case *Named:
+		if t != nil {
+			c = t.compilation
+		}
+	case *Alias:
+		if t != nil {
+			c = t.compilation
+		}
+	case *Signature:
+		if t != nil {
+			c = t.compilation
+		}
+	}
+	if c == nil {
+		panic("instantiation origin has no compilation owner")
+	}
+	return c
+}

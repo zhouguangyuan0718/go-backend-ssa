@@ -177,3 +177,34 @@ func TestReentrantDiagnosticCallback(t *testing.T) {
 		t.Fatal("nested check did not retain its own graph")
 	}
 }
+
+func TestIndependentInstantiationCachesKeepTypeUniverse(t *testing.T) {
+	cache := types2.NewContext()
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			owner := types2.NewContext()
+			p, _, _, e := check(owner, "example/cache", `package p;type Box[T any]struct{V T};type View[T any]=Box[T];func Identity[T any](v T)T{return v};type HasM interface{M()}`, "amd64", "go1.27", nil, false)
+			if e != nil {
+				t.Error(e)
+				return
+			}
+			arg := p.Scope().Lookup("HasM").Type().Underlying()
+			for _, name := range []string{"Box", "View", "Identity"} {
+				orig := p.Scope().Lookup(name).Type()
+				first, e := owner.Instantiate(cache, orig, []types2.Type{arg}, true)
+				if e != nil {
+					t.Error(e)
+					continue
+				}
+				second, e := owner.Instantiate(cache, orig, []types2.Type{arg}, true)
+				if e != nil || !owner.Identical(first, second) {
+					t.Error("independent cache changed type identity", e)
+				}
+				_ = first.Underlying()
+				_ = first.String()
+			}
+		})
+	}
+	wg.Wait()
+}

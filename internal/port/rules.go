@@ -205,6 +205,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, reflectdataMigration()...)
 	plan.Units = append(plan.Units, staticinitMigration()...)
 	plan.Units = append(plan.Units, dwarfgenMigration()...)
+	plan.Units = append(plan.Units, importerMigration()...)
 	plan.Units = append(plan.Units, noderMigration()...)
 	plan.Units = append(plan.Units, pkginitMigration()...)
 	plan.Units = append(plan.Units, ssagenABIMigration()...)

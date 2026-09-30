@@ -21,6 +21,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := loadMethodCallSignatures(s, units, before, signatureSources); err != nil {
+		return nil, nil, err
+	}
 	fs := token.NewFileSet()
 	var original []*ast.File
 	regionSources := make([]map[string]string, len(units))
@@ -79,7 +82,7 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	for _, f := range checkedFiles {
 		ast.Inspect(f, func(n ast.Node) bool {
 			if id, ok := n.(*ast.Ident); ok {
-				if obj := info.Defs[id]; obj != nil && obj.Parent() == pkg.Scope() {
+				if obj := info.Defs[id]; obj != nil && (obj.Parent() == pkg.Scope() || nativeMethodObject(obj)) {
 					before.sources[obj] = fs.PositionFor(id.Pos(), false).Filename
 				}
 			}
@@ -170,6 +173,12 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 				prov.Declarations = append(prov.Declarations, "retained-native-call:"+call.Function+":"+call.Method)
 			}
 		}
+		for _, r := range u.MethodCalls {
+			if prov.SignatureSources == nil {
+				prov.SignatureSources = map[string]string{}
+			}
+			prov.SignatureSources[r.Source] = signatureSources[r.Source]
+		}
 		for _, call := range u.ContextParamCalls {
 			data, err := s.Read(call.Source)
 			if err != nil {
@@ -200,6 +209,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		if u.WholeFile {
 			prov.Rule = "whole-file-and-zero-values-v1"
 			prov.Declarations = append(append([]string{"*"}, u.ZeroValues...), u.ReadTables...)
+		}
+		for _, r := range u.MethodCalls {
+			prov.Declarations = append(prov.Declarations, "method-call:"+r.Method+":"+r.Adapter)
 		}
 		for _, rule := range u.FixedSizeof {
 			prov.Declarations = append(prov.Declarations, "fixed-sizeof:"+rule.Function+":"+rule.Type)
@@ -341,6 +353,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		return nil, nil, err
 	}
 	if err := checkTraceAdapters(units, info, outpkg); err != nil {
+		return nil, nil, err
+	}
+	if err := checkMethodCallAdapters(units, before, outpkg, imports); err != nil {
 		return nil, nil, err
 	}
 	if err := checkCallAdapters(units, before, outpkg, imports); err != nil {

@@ -56,6 +56,7 @@ func TestPinnedUpstreamAndUpgrade(t *testing.T) {
 	testUpstreamObjectDeclarations(t, s, r)
 	testUpstreamNoderPositions(t, s, r, root)
 	testUpstreamNoderDirectives(t, s, r, root)
+	testUpstreamTypeImporter(t, s, r, root)
 	testUpstreamIR(t, s, r, root)
 	oldPin := pin
 	oldPin.Tag = "go1.27.0"
@@ -82,6 +83,7 @@ func TestPinnedUpstreamAndUpgrade(t *testing.T) {
 	testUpstreamObjectDeclarations(t, oldSource, old)
 	testUpstreamNoderPositions(t, oldSource, old, root)
 	testUpstreamNoderDirectives(t, oldSource, old, root)
+	testUpstreamTypeImporter(t, oldSource, old, root)
 	testUpstreamIR(t, oldSource, old, root)
 	dir := t.TempDir()
 	if err := Install(dir, old); err != nil {

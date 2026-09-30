@@ -1,0 +1,23 @@
+package a
+import "unsafe"
+const Answer = 41
+const Text = "retained export"
+const Big = 1 << 100
+const Complex = 3 + 4i
+type Number interface{~int|~int64}
+type Node[T any] struct{ Next *Node[T]; Value T }
+func(n *Node[T]) Get()T{return n.Value}
+func(n Node[T]) Map[U any](f func(T)U)Node[U]{return Node[U]{Value:f(n.Value)}}
+type Alias[T any] = Node[T]
+type Scalar int
+func(Scalar) Value()int{return 1}
+type Recursive interface { Again() Recursive }
+type Layout struct { Small byte; Data [3]int64; private string `json:"private"`; Pointer unsafe.Pointer; Chan chan<- int; Map map[string]*Node[int] }
+type A[_ B[any]] struct{}
+type B[_ any] interface{ f() A[B[any]] }
+var Global Alias[int]
+var Pointer unsafe.Pointer
+func Generic[T Number](x T)T{return x}
+func Variadic(x int, rest ...string)(int,string){return x,""}
+//line remapped.go:77:4
+type Located struct{X int}
