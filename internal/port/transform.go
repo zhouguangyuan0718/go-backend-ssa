@@ -104,7 +104,11 @@ func checkTypesImports(fset *token.FileSet, pkg string, files []*ast.File, imp t
 // selectFile either retains a whole file or selects the supported function/state
 // slice. Missing dependencies fail package type checking; no stubs are supplied.
 func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.File, error) {
-	f, err := parser.ParseFile(fset, name, data, parser.ParseComments|parser.SkipObjectResolution)
+	mode := parser.ParseComments | parser.SkipObjectResolution
+	if len(u.FunctionRegions) != 0 {
+		mode = parser.ParseComments
+	}
+	f, err := parser.ParseFile(fset, name, data, mode)
 	if err != nil {
 		return nil, err
 	}

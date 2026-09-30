@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v56"
+const ToolVersion = "syncgo-m3-v57"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -48,6 +48,7 @@ type Unit struct {
 	ContextAfterGuards     map[string]int // Preserve reviewed pure early returns before owner binding.
 	Source                 string
 	Functions              []string
+	FunctionRegions        map[string]FunctionRegionRule
 	Declarations           []string // Types, complete constant groups, and Receiver.Method names.
 	ExportConstants        bool     // Generate public aliases for this file's exported native constants.
 	Owner                  *OwnerRule
@@ -72,6 +73,15 @@ type Unit struct {
 	Nullable               map[string][]string    // Reviewed owned pointers/receivers that accept nil.
 	Checks                 map[string]string      // Selected function/method -> context argument validator.
 }
+
+// FunctionRegionRule extracts a contiguous sequence of complete native statements.
+// Inputs are original pointer locals/parameters; their types are inferred from
+// the pinned declarations. This is a stage boundary, not a body rewrite.
+type FunctionRegionRule struct {
+	First, Last SourceCallAnchor
+	Inputs      []string
+}
+type SourceCallAnchor struct{ Package, Member string }
 
 // ContextParamCallRule passes Field from the caller Context to a selected
 // ContextParamExports method. ContextType must match the defining unit.
@@ -103,7 +113,12 @@ type HostCallRule struct {
 
 // CallRule derives the upstream signature from Source; no replacement package
 // or invented compiler declaration is emitted into the library.
-type CallRule struct{ Source, Function, Method string }
+type CallRule struct {
+	Source, Function, Method string
+	// KeepDefinition retains a selected local native body while routing calls
+	// through its typed stage adapter. The adapter may invoke the retained body.
+	KeepDefinition bool
+}
 
 // LiteralRule wraps explicit native struct literals and local typed zero
 // declarations with a func(T) T instance method, or reviewed address literals
@@ -223,6 +238,28 @@ func (p Plan) Validate() error {
 		output := u.output()
 		if !safePath(u.Source) || !ownedPath(output) || path.Ext(output) != ".go" || (!u.WholeFile && len(u.Functions)+len(u.Declarations) == 0 && (u.Context == nil || len(u.Context.Fields) == 0)) || outputs[output] {
 			return fmt.Errorf("invalid migration source: %s", u.Source)
+		}
+
+		for name, r := range u.FunctionRegions {
+			selected := false
+			for _, f := range u.Functions {
+				selected = selected || f == name
+			}
+			if u.WholeFile || !selected || !token.IsIdentifier(name) || name == "init" || u.Context == nil {
+				return fmt.Errorf("invalid function region: %s", name)
+			}
+			for _, a := range []SourceCallAnchor{r.First, r.Last} {
+				if a.Package == "" || !safePath(a.Package) || !memberPath(a.Member) {
+					return fmt.Errorf("invalid function region anchor: %s", name)
+				}
+			}
+			seen := map[string]bool{}
+			for _, input := range r.Inputs {
+				if !token.IsIdentifier(input) || input == "_" || seen[input] {
+					return fmt.Errorf("invalid function region input: %s", input)
+				}
+				seen[input] = true
+			}
 		}
 		if u.ExportConstants {
 			facade := u.constantsOutput()
@@ -410,7 +447,7 @@ func (p Plan) Validate() error {
 			seenHostCalls[key] = true
 		}
 		for _, call := range u.Calls {
-			if u.Context == nil || !safePath(call.Source) || portPath(call.Source) == "" || !token.IsIdentifier(call.Function) || !memberPath(call.Method) {
+			if u.Context == nil || !safePath(call.Source) || portPath(call.Source) == "" || !token.IsIdentifier(call.Function) || !memberPath(call.Method) || call.KeepDefinition && strings.TrimPrefix(path.Dir(call.Source), "src/") != u.sourcePackage() {
 				return fmt.Errorf("invalid external call binding")
 			}
 		}

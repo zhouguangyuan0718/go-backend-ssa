@@ -74,3 +74,5 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 原生函数准备、完整 `ssagen.Compile` 与多 worker 队列已接通，见 [函数编译队列](m3-native-compile-queue.md)。后续包级驱动仍须按上游顺序迭代类型、全局声明和新函数，直至固定点，再执行完整数据收尾。
 
 完整原生包数据收尾及文件嵌入已接通，见 [包数据收尾](m3-native-package-data.md)。后续继续迁入包级类型/全局/函数固定点和源码驱动，再进行真实链接执行及替换验收。
+
+运行时类型、全局声明、新增函数和 DWARF 的原生固定点已接通，见 [声明固定点](m3-native-declaration-fixed-point.md)。后续重心转向 noder 源码加载、完整前端驱动与真实链接执行。

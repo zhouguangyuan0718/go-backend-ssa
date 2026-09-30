@@ -63,6 +63,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_archive")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_queue")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_data")
+	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_fixed")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -88,8 +89,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if len(snapshots) > 0 {
 		snapshotName = snapshots[0]
 	}
+	isFixedSSA := snapshotName == "ssagen_fixed"
 	isDataSSA := snapshotName == "ssagen_data"
-	isQueueSSA := snapshotName == "ssagen_queue" || isDataSSA
+	isQueueSSA := snapshotName == "ssagen_queue" || isDataSSA || isFixedSSA
 	isArchiveSSA := snapshotName == "ssagen_archive" || isQueueSSA
 	isObjectSSA := snapshotName == "ssagen_object" || isArchiveSSA
 	isFlushSSA := snapshotName == "ssagen_flush" || isObjectSSA
@@ -305,6 +307,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 			ported = archiveSnapshotFixture(t, ported, false, s.Pin.BuildToolchain)
 			if isQueueSSA {
 				ported = queueSnapshotFixture(t, ported, false)
+				if isFixedSSA {
+					ported = fixedPointSnapshotFixture(t, ported, false)
+				}
 				if isDataSSA {
 					ported = dataSnapshotFixture(t, ported, false)
 				}
@@ -524,6 +529,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 			native = archiveSnapshotFixture(t, native, true, s.Pin.BuildToolchain) + nativeGCArchiveObserver(t, s)
 			if isQueueSSA {
 				native = queueSnapshotFixture(t, native, true) + nativeGCQueueObserver(t, s)
+				if isFixedSSA {
+					native = fixedPointSnapshotFixture(t, native, true) + nativeGCDataObserver(t, s) + nativeGCFixedPointObserver(t, s)
+				}
 				if isDataSSA {
 					native = dataSnapshotFixture(t, native, true) + nativeGCDataObserver(t, s)
 				}
@@ -621,6 +629,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		fixture, err := os.ReadFile(filepath.Join(root, "internal/port/testdata/noder_body_fixture.go.txt"))
 		if err != nil {
 			t.Fatal(err)
+		}
+		if isFixedSSA {
+			fixture = []byte(strings.Replace(string(fixture), "source:=`package p", "source:=`package p\ntype FixedKey struct { Words [3]string; Next *FixedKey };var FixedGlobal FixedKey;func FixedEq(a,b FixedKey)bool{return a==b}", 1))
 		}
 		writeTestFile(t, dir, "internal/noder/adapter_fixture_test.go", strings.ReplaceAll(string(fixture), "BODY_INPUT_PATH", fmt.Sprintf("%q", filepath.Join(dir, "reader-input"))))
 	}

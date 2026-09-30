@@ -23,6 +23,7 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	}
 	fs := token.NewFileSet()
 	var original []*ast.File
+	regionSources := make([]map[string]string, len(units))
 	sources := make([][]byte, len(units))
 	for i, u := range units {
 		data, err := s.Read(u.Source)
@@ -31,6 +32,10 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		}
 		sources[i] = data
 		f, err := selectFile(fs, u.Source, data, u)
+		if err != nil {
+			return nil, nil, err
+		}
+		regionSources[i], err = extractFunctionRegions(s, fs, f, u, before)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -53,6 +58,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	pkg, info, err := checkTypesImports(fs, sourcePkg, checkedFiles, before, true)
 	if err != nil {
 		return nil, nil, fmt.Errorf("selected package %s: %w", sourcePkg, err)
+	}
+	if err := checkFunctionRegionInputs(original, info, units); err != nil {
+		return nil, nil, err
 	}
 	if err := checkLocalInputs(original, info, pkg, units); err != nil {
 		return nil, nil, err
@@ -132,6 +140,14 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		}
 		output = append(output, outf)
 		prov := Provenance{Output: u.output(), Source: u.Source, SourceSHA256: hash(sources[i]), OutputSHA256: hash(out), Rule: "select-and-relocate-v1", Declarations: append(append([]string(nil), u.Functions...), u.Declarations...)}
+
+		if len(u.FunctionRegions) != 0 {
+			prov.SignatureSources = regionSources[i]
+			for _, name := range sortedKeys(u.FunctionRegions) {
+				r := u.FunctionRegions[name]
+				prov.Declarations = append(prov.Declarations, "function-region:"+name+":"+r.First.Package+"."+r.First.Member+":"+r.Last.Package+"."+r.Last.Member+":"+strings.Join(r.Inputs, ","))
+			}
+		}
 		for _, state := range u.State {
 			if prov.SignatureSources == nil {
 				prov.SignatureSources = map[string]string{}
@@ -150,6 +166,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 				prov.SignatureSources = map[string]string{}
 			}
 			prov.SignatureSources[call.Source] = signatureSources[call.Source]
+			if call.KeepDefinition {
+				prov.Declarations = append(prov.Declarations, "retained-native-call:"+call.Function+":"+call.Method)
+			}
 		}
 		for _, call := range u.ContextParamCalls {
 			data, err := s.Read(call.Source)

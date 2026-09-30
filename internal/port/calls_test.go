@@ -69,3 +69,64 @@ func TestBindings(t *testing.T){a,b:=newContext(),newContext();a.Fire();cb:=a.Ca
 		t.Fatal("invalid adapter accepted")
 	}
 }
+
+func TestRetainedNativeCall(t *testing.T) {
+	const path = "src/cmd/compile/internal/p/p.go"
+	const source = `package p
+var count int
+func native(n int)int{count++;return n*2}
+func Run(n int)int{return native(n)+native(n+1)}
+`
+	const adapter = `package p
+type Context struct{count,calls int;failure any}
+func(c *Context)gate(n int)int{c.calls++;if n<0{panic(c.failure)};return c.native(n)}
+`
+	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", path: source})
+	s, e := OpenSource(context.Background(), repo, pin)
+	if e != nil {
+		t.Fatal(e)
+	}
+	u := Unit{Source: path, Functions: []string{"native", "Run"}, Context: &ContextRule{Type: "Context", Constructor: "newContext", Selective: true, Adapter: "adapter_context.go", Fields: map[string]string{"count": "count"}}, Calls: []CallRule{{Source: path, Function: "native", Method: "gate", KeepDefinition: true}}}
+	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{u}}
+	dir := t.TempDir()
+	writeTestFile(t, dir, "internal/p/adapter_context.go", adapter)
+	r, e := Render(s, plan, dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = Install(dir, r); e != nil {
+		t.Fatal(e)
+	}
+	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
+	writeTestFile(t, dir, "internal/p/check_test.go", `package p
+import "testing"
+func TestCalls(t *testing.T){c:=newContext();if n:=c.Run(3);n!=14||c.calls!=2||c.count!=2{t.Fatal(n,c.calls,c.count)};if c.native(1)!=2||c.calls!=2||c.count!=3{t.Fatal("native definition lost")};marker:=new(int);c.failure=marker;func(){defer func(){if recover()!=marker{t.Error("panic identity")}}();c.Run(-1)}();if c.count!=3||c.calls!=3{t.Fatal("failed entry reached native body")};other:=newContext();if other.Run(2)!=10||other.calls!=2||other.count!=2||c.count!=3{t.Fatal("shared state")}}
+`)
+	cmd := exec.Command("go", "test", "-race", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.27.1")
+	if out, e := cmd.CombinedOutput(); e != nil {
+		t.Fatalf("%v\n%s", e, out)
+	}
+	t.Run("missing definition", func(t *testing.T) {
+		p := plan
+		p.Units = append([]Unit(nil), plan.Units...)
+		p.Units[0].Functions = []string{"Run"}
+		if _, e := Render(s, p, dir); e == nil {
+			t.Fatal("unselected retained body accepted")
+		}
+	})
+	t.Run("unused binding", func(t *testing.T) {
+		s.cache[path] = []byte(strings.Replace(source, "native(n)+native(n+1)", "n", 1))
+		defer func() { s.cache[path] = []byte(source) }()
+		if _, e := Render(s, plan, dir); e == nil {
+			t.Fatal("unused retained call accepted")
+		}
+	})
+	t.Run("wrong signature", func(t *testing.T) {
+		writeTestFile(t, dir, "internal/p/adapter_context.go", strings.Replace(adapter, "gate(n int)", "gate(n int64)", 1))
+		if _, e := Render(s, plan, dir); e == nil {
+			t.Fatal("wrong wrapper signature accepted")
+		}
+	})
+}

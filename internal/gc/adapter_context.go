@@ -34,15 +34,18 @@ type Context struct {
 	RaceEnabled bool
 	random      *rand.Rand
 
-	header           *objabi.Context
-	archiveModes     ObjectMode
-	archiveFailed    bool
-	output           *archiveOutput
-	outputMessages   []string
-	Writer           *objw.Context
-	Package          *pkginit.Context
-	functionDataDone bool
-	dataFailed       bool
+	header              *objabi.Context
+	archiveModes        ObjectMode
+	archiveFailed       bool
+	output              *archiveOutput
+	outputMessages      []string
+	Writer              *objw.Context
+	Package             *pkginit.Context
+	functionDataDone    bool
+	dataFailed          bool
+	declarationsStarted bool
+	declarationsRunning bool
+	declarationsFailed  bool
 }
 
 func NewContext(writer *objw.Context) *Context {
@@ -55,7 +58,7 @@ func NewContext(writer *objw.Context) *Context {
 // AddGCLocals runs the native sequential registration of all function auxiliary
 // data after Flush and before symbol numbering. Call once per compilation.
 func (c *Context) AddGCLocals() {
-	if c == nil || c.Writer == nil || c.functionDataDone || c.workerFailure != nil || len(c.compilequeue) != 0 {
+	if c == nil || c.Writer == nil || c.functionDataDone || c.declarationsRunning || c.declarationsFailed || c.workerFailure != nil || len(c.compilequeue) != 0 {
 		panic("function data finalization requires an unconsumed compiler context")
 	}
 	c.functionDataDone = true
@@ -66,7 +69,7 @@ func (c *Context) AddGCLocals() {
 // Call after the package type/function fixed point and DWARF finalization.
 // A started data stage is consumed even if an input provider fails.
 func (c *Context) DumpData() {
-	if c == nil || c.Package == nil || c.functionDataDone || c.workerFailure != nil || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.StaticInit == nil || c.Package.Noder.ReflectData.StaticData == nil || c.Package.Noder.ReflectData.StaticData.Writer != c.Writer || c.Package.Noder.ReflectData.StaticData.IR != c.Package.Noder.Typecheck.IR {
+	if c == nil || c.Package == nil || c.functionDataDone || c.declarationsRunning || c.declarationsFailed || c.workerFailure != nil || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.StaticInit == nil || c.Package.Noder.ReflectData.StaticData == nil || c.Package.Noder.ReflectData.StaticData.Writer != c.Writer || c.Package.Noder.ReflectData.StaticData.IR != c.Package.Noder.Typecheck.IR {
 		panic("package data requires an unconsumed matching compiler graph")
 	}
 	c.functionDataDone = true
@@ -84,7 +87,7 @@ func (c *Context) BindPackage(p *pkginit.Context) {
 	c.Package = p
 }
 func (c *Context) checkGlobal(n *ir.Name) {
-	if c == nil || c.Package == nil || c.functionDataDone || c.workerFailure != nil || n == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(n) {
+	if c == nil || c.Package == nil || c.functionDataDone || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || n == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(n) {
 		panic("global belongs to another or finalized compilation")
 	}
 }
@@ -233,7 +236,7 @@ func (c *Context) BindBackend(backend *ssagen.Context, lowering *walk.Context) {
 // EnqueueFunc preserves native handling of closures, bodyless declarations and
 // sequential frontend preparation. CompileQueued must finish before finalization.
 func (c *Context) EnqueueFunc(fn *ir.Func, symABIs *ssagen.SymABIs) {
-	if c == nil || c.Backend == nil || c.functionDataDone || c.workerFailure != nil || fn == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(fn) || !c.Backend.OwnsSymABIs(symABIs) || c.enqueued[fn] || c.Package.Noder.Typecheck.IR.CurFunc != nil || c.Writer.Link.ObjectNumbered() || (fn.LSym != nil && !fn.IsClosure()) {
+	if c == nil || c.Backend == nil || c.functionDataDone || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || fn == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(fn) || !c.Backend.OwnsSymABIs(symABIs) || c.enqueued[fn] || c.Package.Noder.Typecheck.IR.CurFunc != nil || c.Writer.Link.ObjectNumbered() || (fn.LSym != nil && !fn.IsClosure()) {
 		panic("compiler queue requires an unconsumed owned function and ABI input")
 	}
 	c.enqueued[fn] = true
@@ -242,7 +245,7 @@ func (c *Context) EnqueueFunc(fn *ir.Func, symABIs *ssagen.SymABIs) {
 
 // CompileQueued executes the native worker queue, including nested closures.
 func (c *Context) CompileQueued(profile *pgoir.Profile) {
-	if c == nil || c.Backend == nil || c.functionDataDone || c.workerFailure != nil || c.Package.Noder.Typecheck.IR.CurFunc != nil {
+	if c == nil || c.Backend == nil || c.functionDataDone || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || c.Package.Noder.Typecheck.IR.CurFunc != nil {
 		panic("compile queue is not ready")
 	}
 	if c.Backend.WorkerCount() != c.Package.Noder.Typecheck.IR.Base.Flag.LowerC || c.Backend.WorkerCount() < 1 || c.errors() != 0 || (profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile)) {
@@ -285,4 +288,19 @@ func (c *Context) compileWorker(fn *ir.Func, worker int, profile *pgoir.Profile)
 		}
 	}()
 	c.Backend.Compile(fn, worker, profile)
+}
+
+// CompileDeclarations runs the native package fixed point after frontend passes,
+// generating runtime types, globals and functions until no more work appears.
+// The native final DWARF pass participates in that same fixed point. Call once
+// on a fresh bound backend; do not pre-enqueue functions or emit globals.
+func (c *Context) CompileDeclarations(symABIs *ssagen.SymABIs, profile *pgoir.Profile) {
+	if c == nil || c.Backend == nil || c.declarationsStarted || c.functionDataDone || c.workerFailure != nil || len(c.enqueued) != 0 || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.Typecheck.IR.CurFunc != nil || !c.Backend.OwnsSymABIs(symABIs) || c.Backend.WorkerCount() != c.Package.Noder.Typecheck.IR.Base.Flag.LowerC || c.Backend.WorkerCount() < 1 || c.errors() != 0 || profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile) {
+		panic("declaration compilation requires a fresh initialized backend and owned ABI/profile")
+	}
+	c.declarationsStarted, c.declarationsRunning = true, true
+	completed := false
+	defer func() { c.declarationsRunning = false; c.declarationsFailed = !completed }()
+	c.compileDeclarations(symABIs, profile)
+	completed = c.errors() == 0
 }

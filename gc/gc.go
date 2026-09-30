@@ -1,6 +1,6 @@
 // Package gc exposes native function preparation, backend worker scheduling,
-// compiler finalization and package archive output. The complete package fixed
-// point and source driver are separate stages; callers share one compiler graph.
+// declaration fixed points, data finalization and package archive output.
+// The source driver is a separate stage; callers share one compiler graph.
 package gc
 
 import (

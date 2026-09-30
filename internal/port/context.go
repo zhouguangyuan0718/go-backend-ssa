@@ -28,6 +28,9 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	selective := map[types.Object]bool{}
 	stateless := map[types.Object]bool{}
 	external := map[types.Object]string{}
+	retainedCalls := map[types.Object]bool{}
+	requestedRetained := map[string]bool{}
+	matchedRetained := map[string]bool{}
 	var owners []*OwnerRule
 	for i, u := range units {
 		if u.Owner != nil {
@@ -68,6 +71,9 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			}
 		}
 		for _, call := range u.Calls {
+			if call.KeepDefinition {
+				requestedRetained[call.Source+":"+call.Function] = true
+			}
 			pkg := strings.TrimPrefix(path.Dir(call.Source), "src/")
 			for _, obj := range info.Uses {
 				if obj != nil && obj.Pkg() != nil && obj.Pkg().Path() == pkg && obj.Name() == call.Function && obj.Parent() == obj.Pkg().Scope() {
@@ -75,6 +81,10 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 						return fmt.Errorf("conflicting external binding")
 					}
 					external[obj] = call.Method
+					if call.KeepDefinition {
+						retainedCalls[obj] = true
+						matchedRetained[call.Source+":"+call.Function] = true
+					}
 				}
 			}
 		}
@@ -168,7 +178,21 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	if err := validateEmbeddedOwners(info, owners); err != nil {
 		return err
 	}
+	for key := range requestedRetained {
+		if !matchedRetained[key] {
+			return fmt.Errorf("retained native call is unused: %s", key)
+		}
+	}
+	for obj := range retainedCalls {
+		if functions[obj] == "" {
+			return fmt.Errorf("retained call requires a selected local function: %s", obj.Name())
+		}
+		selective[obj] = false
+	}
 	for obj := range external {
+		if retainedCalls[obj] {
+			continue
+		}
 		delete(functions, obj) // Explicit bindings take precedence over generated methods.
 	}
 	traceBindings := map[types.Object]string{}
@@ -255,10 +279,10 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		for id, obj := range info.Uses {
 			name := states[obj]
 			if name == "" {
-				name = functions[obj]
+				name = external[obj]
 			}
 			if name == "" {
-				name = external[obj]
+				name = functions[obj]
 			}
 			if name != "" {
 				result[id] = binding(ctx, obj, name, id.Pos())
@@ -380,7 +404,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		// Local replacements apply even when their defining file needs no context.
 		var retained []ast.Decl
 		for _, d := range f.Decls {
-			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && external[info.Defs[fn.Name]] != "" {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && external[info.Defs[fn.Name]] != "" && !retainedCalls[info.Defs[fn.Name]] {
 				continue
 			}
 			retained = append(retained, d)

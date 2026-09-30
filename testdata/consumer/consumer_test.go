@@ -440,10 +440,7 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	finalizer := compilergc.NewContext(writer.ReflectData.Runtime.Writer)
 	finalizer.BindPackage(initialization)
 	finalizer.BindBackend(backend, lowering)
-	for _, fn := range result.Funcs {
-		finalizer.EnqueueFunc(fn, symABIs)
-	}
-	finalizer.CompileQueued(nil)
+	finalizer.CompileDeclarations(symABIs, nil)
 	backend.CheckLargeStacks()
 	if finalizer.QueuedFunctions() != 0 || graph.Diagnostics.HasErrors() {
 		t.Fatal("public compile queue did not finish")
@@ -458,15 +455,6 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 		}
 		compiledCount++
 	}
-	for _, decl := range result.Externs {
-		switch decl.Op() {
-		case ir.ONAME:
-			finalizer.DumpGlobal(decl)
-		case ir.OLITERAL:
-			finalizer.DumpGlobalConst(decl)
-		}
-	}
-	link.DwFixups.Finalize(link.Pkgpath, false)
 	finalizer.DumpData()
 	finalizer.SetObjectHeader(compilergc.ObjectConfig{GOOS: "linux", GOARCH: "amd64", GOAMD64: backend.SSA.GOAMD64, Version: "go1.27.1"})
 	var artifact consumerObjectOutput
