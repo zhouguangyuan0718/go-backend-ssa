@@ -21,6 +21,9 @@ func queueCompiler(t *testing.T, workers int, input string) (*gc.Context, *ssage
 	return loadQueueCompiler(t, workers, input, false)
 }
 func loadQueueCompiler(t *testing.T, workers int, input string, nativeFrontend bool) (*gc.Context, *ssagen.SymABIs) {
+	return loadQueueCompilerWithConfig(t, workers, input, nativeFrontend, nil)
+}
+func loadQueueCompilerWithConfig(t *testing.T, workers int, input string, nativeFrontend bool, configure func(*gc.Context)) (*gc.Context, *ssagen.SymABIs) {
 	t.Helper()
 	backend := testBackendWorkers(true, workers)
 	dwarfgen.NewContext(backend, backend.SSA.ReflectData)
@@ -29,6 +32,9 @@ func loadQueueCompiler(t *testing.T, workers int, input string, nativeFrontend b
 	n.Debug.SyncFrames = -1
 	n.Flag.Lang = "go1.27"
 	n.Flag.Complete = false
+	if configure != nil {
+		configure(c)
+	}
 	file, err := syntax.Parse(syntax.NewFileBase("queue.go"), strings.NewReader(input), nil, nil, syntax.CheckBranches)
 	if err != nil {
 		t.Fatal(err)

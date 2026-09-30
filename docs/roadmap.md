@@ -100,3 +100,7 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 ### 原生包前端阶段顺序
 
 `PrepareFrontend` 从固定 Main 抽取完整前端区间，连接现有包声明固定点与后端。阶段和输入归属于同一编译实例，失败后禁止输出；见[阶段记录](m3-native-frontend-pipeline.md)。后续补齐 Main 整包收尾、统一 Build 与替换验收。
+
+### 原生整包收尾
+
+`FinishPackage` 接通 Main 的声明编译后原生区间，`CompilePackage` 串起已加载 IR 的前端、声明固定点与最终符号编号。验证与边界见[阶段记录](m3-native-package-finish.md)。后续继续源码 Build、真实链接运行和工具链替换。

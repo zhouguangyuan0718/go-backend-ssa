@@ -5,6 +5,7 @@ import (
 	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/internal/bloop"
 	"go-backend-ssa/internal/cmd/bio"
+	"go-backend-ssa/internal/cmd/obj"
 	"go-backend-ssa/internal/cmd/objabi"
 	"go-backend-ssa/internal/cmd/src"
 	"go-backend-ssa/internal/deadlocals"
@@ -32,6 +33,7 @@ type Context struct {
 	deadlocals                                       *deadlocals.Context
 	slice                                            *slice.Context
 	frontendStarted, frontendRunning, frontendFailed bool
+	finishStarted, finishRunning, finishFailed       bool
 	Backend                                          *ssagen.Context
 	Lowering                                         *walk.Context
 	compilequeue                                     []*ir.Func
@@ -67,7 +69,7 @@ func NewContext(writer *objw.Context) *Context {
 // AddGCLocals runs the native sequential registration of all function auxiliary
 // data after Flush and before symbol numbering. Call once per compilation.
 func (c *Context) AddGCLocals() {
-	if c == nil || c.Writer == nil || c.functionDataDone || c.frontendRunning || c.frontendFailed || c.declarationsRunning || c.declarationsFailed || c.workerFailure != nil || len(c.compilequeue) != 0 {
+	if c == nil || c.Writer == nil || c.functionDataDone || c.finishStarted || c.frontendRunning || c.frontendFailed || c.declarationsRunning || c.declarationsFailed || c.workerFailure != nil || len(c.compilequeue) != 0 {
 		panic("function data finalization requires an unconsumed compiler context")
 	}
 	c.functionDataDone = true
@@ -78,7 +80,7 @@ func (c *Context) AddGCLocals() {
 // Call after the package type/function fixed point and DWARF finalization.
 // A started data stage is consumed even if an input provider fails.
 func (c *Context) DumpData() {
-	if c == nil || c.Package == nil || c.functionDataDone || c.frontendRunning || c.frontendFailed || c.declarationsRunning || c.declarationsFailed || c.workerFailure != nil || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.StaticInit == nil || c.Package.Noder.ReflectData.StaticData == nil || c.Package.Noder.ReflectData.StaticData.Writer != c.Writer || c.Package.Noder.ReflectData.StaticData.IR != c.Package.Noder.Typecheck.IR {
+	if c == nil || c.Package == nil || c.functionDataDone || c.finishFailed || c.finishStarted && !c.finishRunning || c.frontendRunning || c.frontendFailed || c.declarationsRunning || c.declarationsFailed || c.workerFailure != nil || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.StaticInit == nil || c.Package.Noder.ReflectData.StaticData == nil || c.Package.Noder.ReflectData.StaticData.Writer != c.Writer || c.Package.Noder.ReflectData.StaticData.IR != c.Package.Noder.Typecheck.IR {
 		panic("package data requires an unconsumed matching compiler graph")
 	}
 	c.functionDataDone = true
@@ -96,7 +98,7 @@ func (c *Context) BindPackage(p *pkginit.Context) {
 	c.Package = p
 }
 func (c *Context) checkGlobal(n *ir.Name) {
-	if c == nil || c.Package == nil || c.functionDataDone || c.frontendRunning || c.frontendFailed || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || n == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(n) {
+	if c == nil || c.Package == nil || c.functionDataDone || c.finishStarted || c.frontendRunning || c.frontendFailed || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || n == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(n) {
 		panic("global belongs to another or finalized compilation")
 	}
 }
@@ -121,7 +123,7 @@ const (
 
 // SetObjectHeader freezes target/header inputs after compiler data finalization.
 func (c *Context) SetObjectHeader(config ObjectConfig) {
-	if c == nil || c.Writer == nil || !c.functionDataDone || c.dataFailed || c.header != nil || config.GOOS != c.Writer.Link.TargetOS || config.GOARCH != c.Writer.Link.Arch.Name || config.Version == "" {
+	if c == nil || c.Writer == nil || !c.functionDataDone || c.finishRunning || c.finishFailed || c.dataFailed || c.header != nil || config.GOOS != c.Writer.Link.TargetOS || config.GOARCH != c.Writer.Link.Arch.Name || config.Version == "" {
 		panic("object header requires finalized, matching target inputs")
 	}
 	exp := c.Writer.Types.Experiment
@@ -133,7 +135,7 @@ func (c *Context) SetObjectHeader(config ObjectConfig) {
 // may be split, with the compiler member written first. Each member is single-
 // use even after an I/O failure. The caller owns and closes output.
 func (c *Context) WriteArchive(output io.WriteSeeker, mode ObjectMode) (err error) {
-	if c == nil || c.Writer == nil || c.Package == nil || c.header == nil || !c.functionDataDone || output == nil || mode == 0 || mode&^CombinedObject != 0 || c.archiveModes&mode != 0 || c.archiveFailed || c.output != nil {
+	if c == nil || c.Writer == nil || c.Package == nil || c.header == nil || !c.functionDataDone || output == nil || mode == 0 || mode&^CombinedObject != 0 || c.archiveModes&mode != 0 || c.archiveFailed || c.finishRunning || c.finishFailed || c.output != nil {
 		return fmt.Errorf("archive requires finalized, configured and unconsumed compiler state")
 	}
 	link := c.Writer.Link
@@ -249,7 +251,7 @@ func (c *Context) BindBackend(backend *ssagen.Context, lowering *walk.Context) {
 // EnqueueFunc preserves native handling of closures, bodyless declarations and
 // sequential frontend preparation. CompileQueued must finish before finalization.
 func (c *Context) EnqueueFunc(fn *ir.Func, symABIs *ssagen.SymABIs) {
-	if c == nil || c.Backend == nil || c.functionDataDone || c.frontendRunning || c.frontendFailed || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || fn == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(fn) || !c.Backend.OwnsSymABIs(symABIs) || c.enqueued[fn] || c.Package.Noder.Typecheck.IR.CurFunc != nil || c.Writer.Link.ObjectNumbered() || (fn.LSym != nil && !fn.IsClosure()) {
+	if c == nil || c.Backend == nil || c.functionDataDone || c.finishStarted || c.frontendRunning || c.frontendFailed || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || fn == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(fn) || !c.Backend.OwnsSymABIs(symABIs) || c.enqueued[fn] || c.Package.Noder.Typecheck.IR.CurFunc != nil || c.Writer.Link.ObjectNumbered() || (fn.LSym != nil && !fn.IsClosure()) {
 		panic("compiler queue requires an unconsumed owned function and ABI input")
 	}
 	c.enqueued[fn] = true
@@ -258,7 +260,7 @@ func (c *Context) EnqueueFunc(fn *ir.Func, symABIs *ssagen.SymABIs) {
 
 // CompileQueued executes the native worker queue, including nested closures.
 func (c *Context) CompileQueued(profile *pgoir.Profile) {
-	if c == nil || c.Backend == nil || c.functionDataDone || c.frontendRunning || c.frontendFailed || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || c.Package.Noder.Typecheck.IR.CurFunc != nil {
+	if c == nil || c.Backend == nil || c.functionDataDone || c.finishStarted || c.frontendRunning || c.frontendFailed || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || c.Package.Noder.Typecheck.IR.CurFunc != nil {
 		panic("compile queue is not ready")
 	}
 	if c.Backend.WorkerCount() != c.Package.Noder.Typecheck.IR.Base.Flag.LowerC || c.Backend.WorkerCount() < 1 || c.errors() != 0 || (profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile)) {
@@ -308,7 +310,7 @@ func (c *Context) compileWorker(fn *ir.Func, worker int, profile *pgoir.Profile)
 // The native final DWARF pass participates in that same fixed point. Call once
 // on a fresh bound backend; do not pre-enqueue functions or emit globals.
 func (c *Context) CompileDeclarations(symABIs *ssagen.SymABIs, profile *pgoir.Profile) {
-	if c == nil || c.Backend == nil || c.declarationsStarted || c.frontendRunning || c.frontendFailed || c.functionDataDone || c.workerFailure != nil || len(c.enqueued) != 0 || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.Typecheck.IR.CurFunc != nil || !c.Backend.OwnsSymABIs(symABIs) || c.Backend.WorkerCount() != c.Package.Noder.Typecheck.IR.Base.Flag.LowerC || c.Backend.WorkerCount() < 1 || c.errors() != 0 || profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile) {
+	if c == nil || c.Backend == nil || c.declarationsStarted || c.finishStarted || c.frontendRunning || c.frontendFailed || c.functionDataDone || c.workerFailure != nil || len(c.enqueued) != 0 || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.Typecheck.IR.CurFunc != nil || !c.Backend.OwnsSymABIs(symABIs) || c.Backend.WorkerCount() != c.Package.Noder.Typecheck.IR.Base.Flag.LowerC || c.Backend.WorkerCount() < 1 || c.errors() != 0 || profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile) {
 		panic("declaration compilation requires a fresh initialized backend and owned ABI/profile")
 	}
 	c.declarationsStarted, c.declarationsRunning = true, true
@@ -361,4 +363,33 @@ func (c *Context) PrepareFrontend(symABIs *ssagen.SymABIs, profile *pgoir.Profil
 	defer func() { c.frontendRunning = false; c.frontendFailed = !completed }()
 	c.prepareFrontend(symABIs, profile)
 	completed = c.errors() == 0
+}
+
+// FinishPackage preserves Main's post-compilation write-barrier checks, global
+// map keep relocations, data finalization and symbol numbering. Call once after
+// PrepareFrontend and CompileDeclarations. Archive output remains caller-owned.
+func (c *Context) FinishPackage() {
+	if c == nil || c.Backend == nil || !c.frontendStarted || c.frontendRunning || c.frontendFailed || !c.declarationsStarted || c.declarationsRunning || c.declarationsFailed || c.finishStarted || c.functionDataDone || c.dataFailed || c.workerFailure != nil || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.Typecheck.IR.CurFunc != nil || c.errors() != 0 {
+		panic("package finalization requires completed frontend and declaration stages")
+	}
+	c.finishStarted, c.finishRunning = true, true
+	completed := false
+	defer func() { c.finishRunning = false; c.finishFailed = !completed }()
+	c.finishPackage()
+	completed = c.errors() == 0 && !c.dataFailed && c.Writer.Link.ObjectNumbered()
+}
+func (c *Context) numberSymbols(link *obj.Link) {
+	if link != c.Writer.Link || !c.finishRunning {
+		panic("symbol numbering requires the active package writer")
+	}
+	c.Writer.NumberSymbols()
+}
+
+// CompilePackage compiles loaded and coverage-adjusted local IR through native
+// frontend passes, declaration iteration and final symbol numbering. The caller
+// configures the object header and writes archives after this method returns.
+func (c *Context) CompilePackage(symABIs *ssagen.SymABIs, profile *pgoir.Profile) {
+	c.PrepareFrontend(symABIs, profile)
+	c.CompileDeclarations(symABIs, profile)
+	c.FinishPackage()
 }

@@ -19,7 +19,7 @@ func gcFixedPointMigration(units []Unit) []Unit {
 	for _, name := range []string{"WriteBasicTypes", "WriteRuntimeTypes", "NeedRuntimeType"} {
 		calls = append(calls, CallRule{Source: root + "reflectdata/reflect.go", Function: name, Method: "Package.Noder.ReflectData." + name})
 	}
-	calls = append(calls, CallRule{Source: root + "gc/compile.go", Function: "enqueueFunc", Method: "EnqueueFunc", KeepDefinition: true}, CallRule{Source: root + "gc/compile.go", Function: "compileFunctions", Method: "CompileQueued", KeepDefinition: true})
+	calls = append(calls, CallRule{Source: root + "gc/compile.go", Function: "enqueueFunc", Method: "EnqueueFunc", KeepDefinition: true}, CallRule{Source: root + "gc/compile.go", Function: "compileFunctions", Method: "CompileQueued", KeepDefinition: true}, CallRule{Source: root + "gc/obj.go", Function: "dumpdata", Method: "DumpData", KeepDefinition: true})
 	for _, x := range []struct{ file, name, method string }{
 		{"ir/dump.go", "MatchAstDump", "Package.Noder.Typecheck.IR.MatchAstDump"},
 		{"ir/dump.go", "AstDump", "Package.Noder.Typecheck.IR.AstDump"},
@@ -33,9 +33,11 @@ func gcFixedPointMigration(units []Unit) []Unit {
 		{"escape/escape.go", "Funcs", "Lowering.Escape.Funcs"},
 		{"slice/slice.go", "Funcs", "slice.Funcs"},
 		{"ssagen/nowb.go", "EnableNoWriteBarrierRecCheck", "Backend.EnableNoWriteBarrierRecCheck"},
+		{"ssagen/nowb.go", "NoWriteBarrierRecCheck", "Backend.NoWriteBarrierRecCheck"},
+		{"staticinit/sched.go", "AddKeepRelocations", "Package.Noder.StaticInit.AddKeepRelocations"},
 	} {
 		calls = append(calls, CallRule{Source: root + x.file, Function: x.name, Method: x.method})
 	}
-	units = append(units, Unit{Source: root + "gc/main.go", Functions: []string{"Main", "MainFrontend"}, Context: &ctx, State: state, Calls: calls, ContextMethods: map[string]string{"Main": "compileDeclarations", "MainFrontend": "prepareFrontend"}, FunctionRegions: map[string]FunctionRegionRule{"MainFrontend": {SourceFunction: "Main", First: SourceCallAnchor{Package: "cmd/compile/internal/ir", Member: "MatchAstDump", Enclosing: "range", StringArgument: &SourceStringArgument{Index: 1, Value: "start"}}, Last: SourceCallAnchor{Package: "cmd/compile/internal/reflectdata", Member: "WriteBasicTypes"}, EndBefore: true, Inputs: []string{"symABIs", "profile"}}, "Main": {First: SourceCallAnchor{Package: "cmd/compile/internal/reflectdata", Member: "WriteBasicTypes"}, Last: SourceCallAnchor{Package: "cmd/compile/internal/base", Member: "Timer.AddEvent"}, Inputs: []string{"symABIs", "profile"}}}})
+	units = append(units, Unit{Source: root + "gc/main.go", Functions: []string{"Main", "MainFrontend", "MainFinish"}, Context: &ctx, State: state, Calls: calls, MethodCalls: []MethodCallRule{{Source: "src/cmd/internal/obj/sym.go", Method: "Link.NumberSyms", Adapter: "numberSymbols"}}, ContextMethods: map[string]string{"Main": "compileDeclarations", "MainFrontend": "prepareFrontend", "MainFinish": "finishPackage"}, FunctionRegions: map[string]FunctionRegionRule{"MainFinish": {SourceFunction: "Main", First: SourceCallAnchor{Package: "cmd/compile/internal/ssagen", Member: "NoWriteBarrierRecCheck", Enclosing: "if"}, Last: SourceCallAnchor{Package: "cmd/compile/internal/base", Member: "Ctxt.NumberSyms"}}, "MainFrontend": {SourceFunction: "Main", First: SourceCallAnchor{Package: "cmd/compile/internal/ir", Member: "MatchAstDump", Enclosing: "range", StringArgument: &SourceStringArgument{Index: 1, Value: "start"}}, Last: SourceCallAnchor{Package: "cmd/compile/internal/reflectdata", Member: "WriteBasicTypes"}, EndBefore: true, Inputs: []string{"symABIs", "profile"}}, "Main": {First: SourceCallAnchor{Package: "cmd/compile/internal/reflectdata", Member: "WriteBasicTypes"}, Last: SourceCallAnchor{Package: "cmd/compile/internal/base", Member: "Timer.AddEvent"}, Inputs: []string{"symABIs", "profile"}}}})
 	return units
 }

@@ -66,6 +66,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_data")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_fixed")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_pipeline")
+	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_package")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -95,7 +96,8 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		snapshotName = snapshots[0]
 	}
 	isSource := snapshotName == "noder_source" || snapshotName == "noder_prepackage"
-	isFrontendPipeline := snapshotName == "ssagen_pipeline"
+	isPackageFinish := snapshotName == "ssagen_package"
+	isFrontendPipeline := snapshotName == "ssagen_pipeline" || isPackageFinish
 	isFixedSSA := snapshotName == "ssagen_fixed" || isFrontendPipeline
 	isDataSSA := snapshotName == "ssagen_data"
 	isQueueSSA := snapshotName == "ssagen_queue" || isDataSSA || isFixedSSA
@@ -329,6 +331,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 					ported = fixedPointSnapshotFixture(t, ported, false)
 					if isFrontendPipeline {
 						ported = frontendPipelineSnapshotFixture(t, ported, false)
+						if isPackageFinish {
+							ported = packageFinishSnapshotFixture(t, ported, false)
+						}
 					}
 				}
 				if isDataSSA {
@@ -586,6 +591,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 					native = fixedPointSnapshotFixture(t, native, true) + nativeGCDataObserver(t, s) + nativeGCFixedPointObserver(t, s)
 					if isFrontendPipeline {
 						native = frontendPipelineSnapshotFixture(t, native, true) + nativeGCFrontendObserver(t, s)
+						if isPackageFinish {
+							native = packageFinishSnapshotFixture(t, native, true) + nativeGCFinishObserver(t, s)
+						}
 					}
 				}
 				if isDataSSA {
@@ -813,6 +821,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		if err != nil {
 			t.Fatal(err)
 		}
+		if isPackageFinish {
+			fixture = []byte(strings.Replace(string(fixture), "source:=`package p", "source:=`package p\nvar GlobalMap=map[int]int{1:2,3:4}", 1))
+		}
 		if isQueueSSA {
 			fixture = []byte(strings.ReplaceAll(strings.Replace(string(fixture), "source:=`package p", "source:=`package p\nfunc _(){}\nfunc Bodyless(p *int)int", 1), "g.Base.Flag.Complete=true", "g.Base.Flag.Complete=false"))
 		}
@@ -826,6 +837,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	if isQueueSSA {
 		targets = append(targets, "amd64-workers4")
+	}
+	if isPackageFinish {
+		targets = append(targets, "amd64-nooutline")
 	}
 	if snapshotName == "noder_prepackage" {
 		targets = []string{"ordinary", "main", "main-testmain", "runtime", "atomic-perfunc", "disabled"}
