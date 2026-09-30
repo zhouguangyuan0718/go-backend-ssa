@@ -896,3 +896,42 @@ func TestNativeS390XAuxFromPublicModule(t *testing.T) {
 		t.Fatal("empty native mask")
 	}
 }
+
+func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
+	layout, err := target.NewLayout("linux", "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := &gcbridge.Link{Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8, ByteOrder: binary.LittleEndian}}}
+	u, err := types.NewUniverseWithPositions(layout, &link.PosTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph := ir.NewContext(u, link)
+	tc := typecheck.NewContext(graph)
+	tc.InitUniverse()
+	rt := rttype.NewContext(objw.NewContext(u, link, "linux"))
+	rt.Init()
+	c := ssa.NewContext(abi.NewContext(graph), reflectdata.NewContext(tc, rt, staticdata.NewContext(graph, rt.Writer)), logopt.NewContext())
+	c.GOAMD64 = 1
+	cfg := c.NewConfig("amd64", *c.NewTypes(), link, true, false)
+	var cache ssa.Cache
+	cache.Reset()
+	f := cfg.NewFunc(nil, &cache)
+	f.Name = "public"
+	f.Type = u.NewSignature(nil, nil, nil)
+	f.ABISelf = cfg.ABI1
+	b := f.NewBlock(ssa.BlockRet)
+	f.Entry = b
+	v := b.NewValue0(position.XPos{}, ssa.OpInitMem, u.TypeMem)
+	b.SetControl(v)
+	if cfg.Ctxt() != link || cfg.ABI1.Universe() != u || v.Block != b || b.Func != f || f.NumBlocks() != 2 || f.NumValues() != 2 {
+		t.Fatal("public SSA graph identity lost")
+	}
+	if !strings.Contains(f.String(), "InitMem") {
+		t.Fatal("native graph formatting unavailable")
+	}
+	var _ *ssa.Value = v
+	var _ *ssa.Block = b
+	var _ *ssa.Func = f
+}

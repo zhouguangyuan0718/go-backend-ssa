@@ -1,10 +1,14 @@
 // Package ssa exposes the currently migrated native SSA operations.
-// Native types, locations, opcode metadata and the Frontend contract are available;
-// SSA graph construction is not yet available.
+// Native graph construction and target configuration are available. The complete
+// compiler pipeline is still being migrated.
 package ssa
 
 import (
+	"go-backend-ssa/abi"
+	"go-backend-ssa/internal/go/buildcfg"
 	compiler "go-backend-ssa/internal/ssa"
+	"go-backend-ssa/logopt"
+	"go-backend-ssa/reflectdata"
 	"go-backend-ssa/types"
 )
 
@@ -41,3 +45,19 @@ func NewTypes(u *types.Universe) *Types { return compiler.NewTypes(u) }
 // It uses t's owning compilation and computes its native layout if needed.
 // As with other layout operations, callers serialize access to the same graph.
 func CanSSA(t *types.Type) bool { return compiler.CanSSA(t) }
+
+// Context owns target rewrite callbacks and opcode tables for one compilation.
+type Context = compiler.Context
+type Config = compiler.Config
+type Func = compiler.Func
+type Block = compiler.Block
+type Value = compiler.Value
+type Cache = compiler.Cache
+type Edge = compiler.Edge
+type GoarmFeatures = buildcfg.GoarmFeatures
+
+// NewContext uses the compiler graph already shared by ABI and reflection data.
+// Set the target's feature fields explicitly before calling Context.NewConfig.
+func NewContext(a *abi.Context, rd *reflectdata.Context, log *logopt.Context) *Context {
+	return compiler.NewContext(a, rd, log)
+}

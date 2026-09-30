@@ -83,6 +83,7 @@
 66. [M3 SSA 值改写](docs/m3-ssa-mutations.md)：完整 Value/Block、常量缓存、类型比较与原生 Copy/Phi 消除。
 67. [M3 SSA 死代码清理](docs/m3-ssa-deadcode.md)：原生 numberLines/deadcode、语句位置迁移与死图回收。
 68. [M3 SSA 完整校验](docs/m3-ssa-check.md)：原生 verifier、内存检查、循环嵌套与分支预测。
+69. [M3 SSA 配置与 lowering](docs/m3-ssa-lowering.md)：完整原生架构配置、19 份重写文件、公共图构造与实例绑定。
 
 ## 当前可运行的工具
 
@@ -102,7 +103,7 @@ go test -race -timeout 30m ./...
 
 设定 `GO_SSA_SOURCE_REPO` 时，测试额外验证官方 go1.27.1 再生成、两版上游位置/符号回归与 SSA 类型切片差分测试、源码树未变以及 go1.27.0 → go1.27.1 升级；仓库需包含两个 tag。完整双版本差分包含多组独立原生编译，使用 `-timeout 30m`，避免默认 10 分钟时限。无该变量时仅跳过这项集成测试，其他测试照常执行。
 
-编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造与完整 typecheck 生产包，以及 types/objabi 的结构和算法切片；reader 的类型/对象实例化、函数体和字典读取主体已接入并完成源码差分；整包内联、方法包装、loopvar、pkginit、ABI wrappers、deadlocals、escape、slice 和完整 walk 已接通；SSA 构造尚未接通。
+编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造与完整 typecheck 生产包，以及 types/objabi 的结构和算法切片；reader 的类型/对象实例化、函数体和字典读取主体已接入并完成源码差分；整包内联、方法包装、loopvar、pkginit、ABI wrappers、deadlocals、escape、slice 和完整 walk 已接通；源码经 ssagen 构造 SSA 尚未接通；原生手动图构造及架构配置已公开。
 
 移植后的源码直接保存在本项目，和手写适配、转换规则一起纳入版本管理。使用本库时不需要先运行移植工具；维护者更新上游版本时再重新生成。
 
@@ -151,4 +152,4 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 
 类型布局入口示例见 [独立消费者测试](testdata/consumer/consumer_test.go)。先创建 Universe，再调用原生 `u.InitTypes(defTypeName)`；回调为传入的 Sym/Type 提供宿主的 `types.Object`。随后可直接调用 `Type.Size/Alignment/Registers/HasPointers` 与 `u.CalcSize/PtrDataSize/AlgType/Identical`。当前不提供假 `ir.Name`；宿主绑定契约及失败处理见 M2 文档。
 
-源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；之后可调用 Interleaved 完成整包优化，再调用 MakeWrappers 生成原生方法包装函数，随后逐函数调用 loopvar.ForCapture 处理循环变量捕获，再调用 pkginit.MakeTask 生成原生初始化任务，随后调用 ssagen 的 SymABIs.GenABIWrappers，并依次执行 deadlocals、escape、slice 和 walk；完整 unified 尾部、实验性 midway 和 compiler directives 尚未接入。尚无 SSA 构造入口。
+源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；之后可调用 Interleaved 完成整包优化，再调用 MakeWrappers 生成原生方法包装函数，随后逐函数调用 loopvar.ForCapture 处理循环变量捕获，再调用 pkginit.MakeTask 生成原生初始化任务，随后调用 ssagen 的 SymABIs.GenABIWrappers，并依次执行 deadlocals、escape、slice 和 walk；完整 unified 尾部、实验性 midway 和 compiler directives 尚未接入。源码到 SSA 的 Build 入口尚未接通；可使用公共 ssa 包的原生 Config/Func/Block/Value 手动构造图，见 [SSA 配置与 lowering](docs/m3-ssa-lowering.md)。

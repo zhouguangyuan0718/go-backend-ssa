@@ -1,8 +1,14 @@
 package ssa
 
 import (
+	"encoding/binary"
 	"fmt"
+	"go-backend-ssa/internal/abi"
+	"go-backend-ssa/internal/cmd/obj"
+	"go-backend-ssa/internal/go/buildcfg"
 	"go-backend-ssa/internal/ir"
+	"go-backend-ssa/internal/logopt"
+	"go-backend-ssa/internal/reflectdata"
 	"go-backend-ssa/internal/types"
 	"io"
 	"os/exec"
@@ -12,11 +18,17 @@ import (
 // It introduces no separate public session or process-global state.
 type Context struct {
 	*opcodeTables
-	Types       *types.Universe
-	IR          *ir.Context
-	ptrSize     int
-	TraceWriter io.Writer
-	Command     func(string, ...string) *exec.Cmd
+	Types                       *types.Universe
+	IR                          *ir.Context
+	ABI                         *abi.Context
+	ReflectData                 *reflectdata.Context
+	Log                         *logopt.Context
+	GOAMD64, GOPPC64, GORISCV64 int
+	GOARM                       buildcfg.GoarmFeatures
+	AuxMark                     auxMark
+	ptrSize                     int
+	TraceWriter                 io.Writer
+	Command                     func(string, ...string) *exec.Cmd
 }
 
 func typeContextOf(t *types.Type) *Context {
@@ -233,3 +245,92 @@ func nameContext(n *ir.Name) *Context {
 	return &Context{Types: graph.Types, IR: graph, ptrSize: graph.Types.PointerSize()}
 }
 func (c *Context) tracePrint(args ...any) (int, error) { return fmt.Fprint(c.traceWriter(), args...) }
+
+func configContext(c *Config) *Context {
+	if c == nil || c.Types.compilation == nil {
+		panic("SSA configuration has no compilation owner")
+	}
+	return c.Types.compilation
+}
+func (c *Context) fatalf(format string, args ...any) { panic(fmt.Errorf(format, args...)) }
+
+// NewContext binds lowering to existing compiler services. Configure the native
+// GOAMD64, GOARM, GOPPC64 or GORISCV64 fields before NewConfig for that target.
+// Calls within this context are serialized; independent contexts share no tables.
+func NewContext(a *abi.Context, rd *reflectdata.Context, log *logopt.Context) *Context {
+	c := &Context{ABI: a, ReflectData: rd, Log: log}
+	if a != nil {
+		c.IR = a.IR
+	}
+	if c.IR != nil {
+		c.Types = c.IR.Types
+	}
+	c.checkInputs()
+	c.checkTypes()
+	c.ptrSize = c.Types.PointerSize()
+	c.opcodeTables = new(opcodeTables)
+	c.initialize()
+	return c
+}
+
+func (c *Context) checkInputs() {
+	if c.IR == nil || c.IR.Base == nil || c.Types == nil || c.Types != c.IR.Types || c.ABI == nil || c.ABI.IR != c.IR || c.ReflectData == nil || c.ReflectData.Typecheck == nil || c.ReflectData.Typecheck.IR != c.IR || c.Log == nil {
+		panic("SSA lowering requires services from the same compilation")
+	}
+	rt := c.ReflectData.Runtime
+	if rt == nil || rt.Type == nil || rt.PtrType == nil || rt.Types != c.Types || rt.Writer == nil || rt.Writer.Link != c.IR.Base.Ctxt || rt.Writer.Types != c.Types {
+		panic("SSA lowering requires matching runtime layouts and object writer")
+	}
+	link := c.IR.Base.Ctxt
+	if link == nil || link.Arch == nil || link.Arch.Arch == nil || link.Arch.ByteOrder == nil || link.TargetOS == "" || c.Types.PosTable != &link.PosTable || link.Arch.PtrSize != c.Types.PointerSize() || link.Arch.RegSize != c.Types.RegisterSize() {
+		panic("SSA lowering requires an explicit matching target")
+	}
+}
+func (c *Context) checkConfig(arch string, ts Types, link *obj.Link, optimize, softfloat bool) {
+	c.checkInputs()
+	if c.opcodeTables == nil || ts.compilation != c || link != c.IR.Base.Ctxt || link.Arch.Name != arch {
+		panic("SSA configuration requires matching compiler inputs")
+	}
+	// Validate the complete native collection, including all pointer fields.
+	if ts != *c.NewTypes() {
+		panic("SSA configuration requires canonical types from this compilation")
+	}
+	size := 8
+	switch arch {
+	case "386", "arm", "mips", "mipsle":
+		size = 4
+	case "amd64", "arm64", "ppc64", "ppc64le", "mips64", "mips64le", "loong64", "riscv64", "s390x", "wasm":
+	default:
+		panic("unsupported SSA architecture: " + arch)
+	}
+	if c.Types.PointerSize() != size || c.Types.RegisterSize() != size {
+		panic("SSA target layout does not match architecture")
+	}
+	var order binary.ByteOrder = binary.LittleEndian
+	switch arch {
+	case "mips", "mips64", "ppc64", "s390x":
+		order = binary.BigEndian
+	}
+	if link.Arch.ByteOrder.Uint32([]byte{1, 2, 3, 4}) != order.Uint32([]byte{1, 2, 3, 4}) {
+		panic("SSA target byte order does not match architecture")
+	}
+
+	switch arch {
+	case "amd64":
+		if c.GOAMD64 < 1 || c.GOAMD64 > 4 {
+			panic("SSA lowering requires explicit GOAMD64 v1 through v4")
+		}
+	case "arm":
+		if c.GOARM.Version < 5 || c.GOARM.Version > 7 || c.GOARM.SoftFloat != softfloat {
+			panic("SSA lowering requires matching GOARM version and float mode")
+		}
+	case "ppc64", "ppc64le":
+		if c.GOPPC64 < 8 || c.GOPPC64 > 10 {
+			panic("SSA lowering requires explicit GOPPC64 power8 through power10")
+		}
+	case "riscv64":
+		if c.GORISCV64 != 20 && c.GORISCV64 != 22 && c.GORISCV64 != 23 {
+			panic("SSA lowering requires explicit GORISCV64 rva20, rva22 or rva23")
+		}
+	}
+}

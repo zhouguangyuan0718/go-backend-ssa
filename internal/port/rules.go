@@ -220,6 +220,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, ssaTypesMigration()...)
 	plan.Units = append(plan.Units, ssaOpcodeMigration()...)
 	plan.Units = append(plan.Units, ssaGraphMigration()...)
+	plan.Units = ssaLoweringMigration(plan.Units)
 	plan.Units = ssaDiagnosticMigration(plan.Units)
 	for i := range plan.Units {
 		if plan.Units[i].Source == "src/cmd/internal/obj/link.go" {

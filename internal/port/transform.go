@@ -178,7 +178,11 @@ func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.Fil
 			if want[key] != "func" && want[key] != "declaration" {
 				continue
 			}
-			if (d.Recv != nil && want[key] != "declaration") || d.Type.TypeParams != nil || d.Body == nil || (d.Recv == nil && d.Name.Name == "init") {
+			reviewedGeneric := false
+			for _, name := range u.StatelessFunctions {
+				reviewedGeneric = reviewedGeneric || name == key
+			}
+			if (d.Recv != nil && want[key] != "declaration") || d.Type.TypeParams != nil && !reviewedGeneric || d.Body == nil || (d.Recv == nil && d.Name.Name == "init") {
 				return nil, fmt.Errorf("unsupported function shape: %s", d.Name.Name)
 			}
 			if found[key] {

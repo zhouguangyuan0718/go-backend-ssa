@@ -1,0 +1,184 @@
+package ssa
+
+import (
+	IMPORT_BASE
+	"IMPORT_IR"
+	"IMPORT_OBJ"
+	"IMPORT_SRC"
+	"IMPORT_SYS"
+	"IMPORT_TYPECHECK"
+	"IMPORT_TYPES"
+	LOWER_IMPORT
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+	"testing"
+)
+
+type snapshotLowerFrontend struct{ Frontend }
+
+func (*snapshotLowerFrontend) Log() bool { return false }
+func (*snapshotLowerFrontend) Fatalf(pos src.XPos, f string, args ...any) {
+	panic(fmt.Sprintf("%d:%s", pos.Line(), fmt.Sprintf(f, args...)))
+}
+func (*snapshotLowerFrontend) Warnl(src.XPos, string, ...any) {}
+
+func TestSyncgoNativeSnapshot(t *testing.T) {
+	mode := os.Getenv("SYNCGO_TARGET")
+	target := struct {
+		arch  string
+		size  int
+		order binary.ByteOrder
+	}{strings.Split(mode, "-")[0], 8, binary.LittleEndian}
+	switch target.arch {
+	case "386", "arm", "mips", "mipsle":
+		target.size = 4
+	}
+	switch target.arch {
+	case "mips", "mips64", "ppc64", "s390x":
+		target.order = binary.BigEndian
+	}
+	_ = ir.PAUTO
+	SETUP
+	LOWER_FEATURES.GOAMD64 = 1
+	LOWER_FEATURES.GOARM.Version = 7
+	LOWER_FEATURES.GOPPC64 = 8
+	LOWER_FEATURES.GORISCV64 = 20
+	switch mode {
+	case "amd64-v4":
+		LOWER_FEATURES.GOAMD64 = 4
+	case "arm-v5":
+		LOWER_FEATURES.GOARM.Version = 5
+	case "ppc64-v10":
+		LOWER_FEATURES.GOPPC64 = 10
+	case "riscv64-v23":
+		LOWER_FEATURES.GORISCV64 = 23
+	}
+	var out []string
+	add := func(label string, args ...any) { out = append(out, label+":"+fmt.Sprint(args...)) }
+	for _, soft := range []bool{false, true} {
+		LOWER_FEATURES.GOARM.SoftFloat = soft
+		LINK.Flag_shared = soft
+		cfg := UP.NewConfig(target.arch, *UP.NewTypes(), LINK, true, soft)
+		add("config", cfg.arch, " ", cfg.PtrSize, " ", cfg.RegSize, " ", cfg.BigEndian, " ", cfg.SoftFloat, " ", cfg.FPReg, " ", cfg.LinkReg, " ", cfg.hasGReg, " ", cfg.unalignedOK, " ", cfg.haveCondSelect, " ", cfg.haveByteSwap(2), " ", cfg.haveByteSwap(4), " ", cfg.haveByteSwap(8))
+		add("masks", cfg.gpRegMask, " ", cfg.fpRegMask, " ", cfg.simdRegMask, " ", cfg.specialRegMask, " ", cfg.fp32RegMask, " ", cfg.fp64RegMask)
+		add("regs", cfg.intParamRegs, " ", cfg.floatParamRegs, " ", cfg.registers)
+		add("shared-clobber", LINK.Flag_shared, " ", DIAG_TABLE[Op386LoweredWB].reg.clobbers)
+		add("callbacks", cfg.lowerBlock != nil, " ", cfg.lowerValue != nil, " ", cfg.lateLowerBlock != nil, " ", cfg.lateLowerValue != nil, " ", cfg.splitLoad != nil)
+		add("abi", cfg.ABI0.Which(), " ", cfg.ABI1.Which(), " ", cfg.ABI0.LocalsOffset(), " ", cfg.ABI1.LocalsOffset())
+		var keys []int64
+		for k := range cfg.mulRecipes {
+			keys = append(keys, k)
+		}
+		sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+		add("recipes", len(keys))
+		fresh := func() *Func {
+			cache := new(Cache)
+			cache.Reset()
+			f := cfg.NewFunc(&snapshotLowerFrontend{}, cache)
+			f.Name = "lower"
+			f.Type = TY.NewSignature(nil, nil, nil)
+			f.ABISelf = cfg.ABI1
+			f.pass = &pass{name: "lower"}
+			f.Entry = f.NewBlock(BlockRet)
+			f.Entry.Pos = LINK.PosTable.XPos(src.MakePos(src.NewFileBase("lower.go", "lower.go"), 10, 1))
+			return f
+		}
+		f := fresh()
+		b := f.Entry
+		pos := b.Pos
+		it := cfg.Types.Int32
+		x := b.NewValue0I(pos, OpArg, it, 0)
+		y := b.NewValue0I(pos, OpArg, it, 4)
+		mem := b.NewValue0(pos, OpInitMem, TY.TypeMem)
+		sp := b.NewValue0(pos, OpSP, cfg.Types.Uintptr)
+		ptr := b.NewValue1I(pos, OpOffPtr, TY.NewPtr(it), 16, sp)
+		k := f.ConstInt32(it, 9)
+		v := b.NewValue2(pos, OpAdd32, it, x, y)
+		v = b.NewValue2(pos, OpMul32, it, v, k)
+		v = b.NewValue2(pos, OpXor32, it, v, y)
+		mem = b.NewValue3A(pos, OpStore, TY.TypeMem, it, ptr, v, mem)
+		b.SetControl(mem)
+		checkFunc(f)
+		numberLines(f)
+		lower(f)
+		lateLower(f)
+		deadcode(f)
+		checkFunc(f)
+		checkLower(f)
+		add("graph", f.String())
+		// Probe actual feature-gated rule selection. A target without the feature may
+		// intentionally leave this isolated value unchanged; it is not a full pass.
+		if !soft {
+			f := fresh()
+			b := f.Entry
+			typ := cfg.Types.Int64
+			if target.arch == "arm" {
+				typ = cfg.Types.Float64
+			}
+			if target.arch == "amd64" {
+				typ = cfg.Types.Int32
+			}
+			x := b.NewValue0(b.Pos, OpArg, typ)
+			y := b.NewValue0I(b.Pos, OpArg, typ, 8)
+			var v *Value
+			switch target.arch {
+			case "amd64":
+				n := b.NewValue1(b.Pos, OpAMD64NOTL, typ, y)
+				v = b.NewValue2(b.Pos, OpAMD64ANDL, typ, x, n)
+			case "arm":
+				a := b.NewValue0I(b.Pos, OpArg, typ, 16)
+				m := b.NewValue2(b.Pos, OpARMMULD, typ, x, y)
+				v = b.NewValue2(b.Pos, OpARMADDD, typ, a, m)
+			case "ppc64", "ppc64le":
+				v = b.NewValue1(b.Pos, OpBswap64, typ, x)
+			case "riscv64":
+				v = b.NewValue2(b.Pos, OpMax64, typ, x, y)
+			}
+			if v != nil {
+				changed := cfg.lowerValue(v)
+				add("feature", changed, " ", v.Op, " ", v.AuxInt, " ", v.Args)
+			}
+		}
+
+		// Run every native strength-reduction closure in a separate graph. Retain the
+		// opcode, argument and AuxInt sequence for comparison with the pinned source.
+		for _, key := range keys {
+			f := fresh()
+			b := f.Entry
+			m := b.NewValue0(b.Pos, OpArg, cfg.Types.Int64)
+			x := b.NewValue0(b.Pos, OpArg, cfg.Types.Int64)
+			result := cfg.mulRecipes[key].build(m, x)
+			var code []string
+			for _, v := range b.Values {
+				code = append(code, fmt.Sprintf("%d/%s/%d/%v", v.ID, v.Op, v.AuxInt, v.Args))
+			}
+			add("recipe", key, " ", cfg.mulRecipes[key].cost, " ", result.ID, " ", code)
+		}
+	}
+	// Pure arithmetic helpers retain native integer boundary behavior.
+	for _, width := range []uint{8, 16, 32, 64} {
+		for _, d := range []int64{1, 2, 3, 5, 7, 9, 17, 127, 255, 257, 65535, 2147483647, 9223372036854775807} {
+			if width < 64 && uint64(d) >= uint64(1)<<width {
+				continue
+			}
+			if umagicOK(width, d) {
+				add("umagic", width, " ", d, " ", umagic(width, d))
+			}
+			if (width == 64 || uint64(d) < uint64(1)<<(width-1)) && smagicOK(width, d) {
+				add("smagic", width, " ", d, " ", smagic(width, d))
+			}
+			if udivisibleOK(width, d) {
+				add("divisible", width, " ", d, " ", udivisible(width, d))
+			}
+		}
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("SYNCGO_IR=%s\n", data)
+}
