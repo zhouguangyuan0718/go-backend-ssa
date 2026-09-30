@@ -1,0 +1,71 @@
+package noder
+
+import (
+ "encoding/json"
+ "fmt"
+ "os"
+ "strings"
+ "testing"
+ "go-backend-ssa/internal/syntax"
+)
+
+type directiveConfig struct { Arch, OS string; Std, Runtime, FieldTrack bool }
+func TestDirectiveSnapshot(t *testing.T) {
+ configs:=[]directiveConfig{{"amd64","linux",false,false,false},{"wasm","js",false,false,false},{"amd64","linux",true,false,false},{"amd64","linux",true,true,true},{"ppc64","aix",true,false,false}}
+ sources:=[]string{
+ "//go:noinline\n//go:nosplit\nfunc F(){}",
+ "//go:noescape\nfunc F(x *int)",
+ "//go:nointerface\nfunc F(){}",
+ "//go:systemstack\nfunc F(){}",
+ "//go:nowritebarrierrec\nfunc F(){}",
+ "//go:uintptrkeepalive\nfunc F(x uintptr){}",
+ "//go:uintptrescapes\nfunc F(x uintptr){}",
+ "//go:unknown\nfunc F(){}",
+ "//go:embed one `two words` \"three\\x20words\"\nvar X string",
+ "//go:embed \"bad\"suffix\nvar X string",
+ "//go:embed\nvar X string",
+ "//go:wasmimport env f\nfunc F()",
+ "//go:wasmexport entry\nfunc F(){}",
+ "//go:wasmimport only\nfunc F()",
+ "//go:wasmexport\nfunc F(){}",
+ "//go:linkname F remote.F\nfunc F(){}\n//go:linknamestd F\n",
+ "//go:linkname F\nfunc F(){}",
+ "//go:linkname F a b\nfunc F(){}",
+ "//go:cgo_import_dynamic f f \"libc.so\"\nfunc F(){}",
+ "//go:cgo_import_dynamic f f \"-bad\"\nfunc F(){}",
+ "//go:cgo_import_dynamic f f \"lib.a/member.o\"\nfunc F(){}",
+ "//go:cgo_ldflag \"-Wl,flag\"\nfunc F(){}",
+ "//go:cgo_export_static F remote\nfunc F(){}",
+ "//go:cgo_dynamic_linker \"/lib/ld.so\"\nfunc F(){}",
+ "//go:cgo_import_static f extra\nfunc F(){}",
+ "//go:cgo_unsafe_args\nfunc F(){}",
+ "//go:noinline\nvar X int",
+ "var X int //go:noinline\nfunc F(){}",
+ "//go:embed a\n",
+ "//go:wasmexport F\n",
+ "//line _cgo_fake.go:40\n//go:cgo_ldflag \"-flag\"\nfunc F(){}",
+ "//go:generate ignored\nfunc F(){}",
+ }
+ var all []string
+ for _,cfg:=range configs { for _,filename:=range []string{"input.go","_cgo_input.go"}{for i,src:=range sources{
+  p,errs:=parseDirectiveSnapshot(t,cfg,filename,"package p\n"+src+"\n")
+  all=append(all,fmt.Sprintf("%+v/%s/%d/errors=%q",cfg,filename,i,errs))
+  if len(errs)>0{continue}
+  for _,l:=range p.linknames{all=append(all,fmt.Sprintf("link:%s:%t:%s:%s",l.pos,l.std,l.local,l.remote))}
+  for _,a:=range p.pragcgobuf{all=append(all,fmt.Sprintf("cgo:%q",a))}
+  syntax.Inspect(p.file,func(n syntax.Node)bool{
+   var raw syntax.Pragma
+   switch n:=n.(type){case *syntax.FuncDecl:raw=n.Pragma;case *syntax.VarDecl:raw=n.Pragma;case *syntax.TypeDecl:raw=n.Pragma}
+   if raw==nil{return true};q:=raw.(*pragmas)
+   all=append(all,fmt.Sprintf("pragma:%T:%s:%d",n,n.Pos(),q.Flag))
+   for _,v:=range q.Pos{all=append(all,fmt.Sprintf("position:%d:%s",v.Flag,v.Pos))}
+   for _,v:=range q.Embeds{all=append(all,fmt.Sprintf("embed:%s:%q",v.Pos,v.Patterns))}
+   if v:=q.WasmImport;v!=nil{all=append(all,fmt.Sprintf("wasmimport:%s:%s:%s",v.Pos,v.Module,v.Name))}
+   if v:=q.WasmExport;v!=nil{all=append(all,fmt.Sprintf("wasmexport:%s:%s",v.Pos,v.Name))}
+   return true
+  })
+ }}}
+ b,e:=json.MarshalIndent(all,"","  ");if e!=nil{t.Fatal(e)}
+ if path:=os.Getenv("DIRECTIVE_SNAPSHOT");path!=""{if e=os.WriteFile(path,b,0600);e!=nil{t.Fatal(e)}}else{t.Log(string(b))}
+ t.Logf("%d native parsing configurations",len(configs)*2*len(sources))
+}

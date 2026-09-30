@@ -22,3 +22,9 @@ type Context = compiler.Context
 func NewContext(checker *types2.Context, tc *typecheck.Context) (*Context, error) {
 	return compiler.NewContext(checker, tc)
 }
+
+// ParsedFile retains syntax and original per-file compiler directives.
+type ParsedFile = compiler.ParsedFile
+
+// ParseErrors contains all native parser/directive errors in source order.
+type ParseErrors = compiler.ParseErrors

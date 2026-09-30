@@ -26,10 +26,6 @@ import (
 )
 
 func ExampleNewContext() {
-	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return}"), nil, nil, syntax.CheckBranches)
-	if err != nil {
-		panic(err)
-	}
 	checker := types2.NewContext()
 	info := &types2.Info{
 		StoreTypesInSyntax: true,
@@ -40,12 +36,6 @@ func ExampleNewContext() {
 		Implicits:          map[syntax.Node]types2.Object{},
 		Scopes:             map[syntax.Node]*types2.Scope{},
 		FileVersions:       map[*syntax.PosBase]string{},
-	}
-	files := []*syntax.File{file}
-	config := types2.Config{Context: checker, GoVersion: "go1.27", Sizes: checker.SizesFor("gc", "amd64")}
-	pkg, err := config.Check("example/p", files, info)
-	if err != nil {
-		panic(err)
 	}
 	layout, err := target.NewLayout("linux", "amd64")
 	if err != nil {
@@ -69,11 +59,22 @@ func ExampleNewContext() {
 	if err != nil {
 		panic(err)
 	}
+	writer.GOOS = "linux"
+	parsed, err := writer.ParseFile("id.go", strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)}\n//go:noinline\nfunc Sum()(n int){for x:=range Each{n+=x};return}"))
+	if err != nil {
+		panic(err)
+	}
+	files := []*syntax.File{parsed.Syntax()}
+	config := types2.Config{Context: checker, GoVersion: "go1.27", Sizes: checker.SizesFor("gc", "amd64")}
+	pkg, err := config.Check("example/p", files, info)
+	if err != nil {
+		panic(err)
+	}
 	closures, err := writer.RewriteRangeFuncs(pkg, info, files)
 	if err != nil {
 		panic(err)
 	}
-	stub, err := writer.WritePackage(pkg, info, files, closures)
+	stub, err := writer.WriteParsedPackage(pkg, info, []*noder.ParsedFile{parsed}, closures)
 	if err != nil {
 		panic(err)
 	}
@@ -102,8 +103,8 @@ func ExampleNewContext() {
 		panic(err)
 	}
 	fmt.Println(len(stub) > 0, pkg.Scope().Lookup("X").Type())
-	fmt.Println(target == tc.Target, len(sum.Body) > 0)
+	fmt.Println(target == tc.Target, len(sum.Body) > 0, sum.Pragma&ir.Noinline != 0)
 	// Output:
 	// true int
-	// true true
+	// true true true
 }

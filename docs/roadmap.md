@@ -76,3 +76,5 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 完整原生包数据收尾及文件嵌入已接通，见 [包数据收尾](m3-native-package-data.md)。后续继续迁入包级类型/全局/函数固定点和源码驱动，再进行真实链接执行及替换验收。
 
 运行时类型、全局声明、新增函数和 DWARF 的原生固定点已接通，见 [声明固定点](m3-native-declaration-fixed-point.md)。后续重心转向 noder 源码加载、完整前端驱动与真实链接执行。
+
+原生编译器指令已贯通源码 parser、Unified writer 与 reader，见 [编译器指令](m3-native-directives.md)。下一步接通原生 `checkFiles`、显式依赖导入及完整源码加载驱动。

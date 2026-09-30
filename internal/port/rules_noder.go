@@ -7,17 +7,21 @@ func noderMigration() []Unit {
 	return []Unit{
 		noderReaderMigration(context()),
 
-		{Source: "src/cmd/compile/internal/noder/noder.go", Functions: []string{"trimFilename", "checkEmbed", "Renameinit"}, Declarations: []string{"noder", "linkname", "pragmas", "pragmas.Nointerface", "WasmImport", "WasmExport", "pragmaPos", "pragmaEmbed"},
+		{Source: "src/cmd/compile/internal/noder/noder.go", Functions: []string{"trimFilename", "checkEmbed", "Renameinit", "isCgoGeneratedFile", "safeArg", "parseGoEmbed"}, Declarations: []string{"noder", "noder.error", "noder.checkUnusedDuringParse", "noder.pragma", "linkname", "pragmas", "pragmas.Nointerface", "WasmImport", "WasmExport", "pragmaPos", "pragmaEmbed"},
 			Context: func() *ContextRule {
 				c := context()
-				c.Fields = map[string]string{"unOps": "unOps", "binOps": "binOps", "renameinitgen": "renameinitgen"}
+				c.Fields = map[string]string{"unOps": "unOps", "binOps": "binOps", "renameinitgen": "renameinitgen", "allowedStdPragmas": "allowedStdPragmas"}
 				return c
 			}(),
-			State: []StateRule{{Source: "src/cmd/compile/internal/base/link.go", Variable: "Ctxt", Field: "Ctxt"}, {Source: "src/cmd/compile/internal/base/flag.go", Variable: "Flag", Field: "Base.Flag"}},
+			Owner: &OwnerRule{Types: []string{"noder"}, Context: "Context", Field: "compilation"},
+			State: []StateRule{{Source: "src/internal/buildcfg/cfg.go", Variable: "GOARCH", Field: "GOARCH"}, {Source: "src/cmd/compile/internal/base/link.go", Variable: "Ctxt", Field: "Ctxt"}, {Source: "src/cmd/compile/internal/base/flag.go", Variable: "Flag", Field: "Base.Flag"}},
 			Calls: []CallRule{{Source: "src/cmd/internal/objabi/line.go", Function: "AbsFile", Method: "absFile"}}},
 		{Source: "src/cmd/compile/internal/noder/posmap.go", WholeFile: true, Context: context(), Owner: &OwnerRule{Types: []string{"posMap"}, Context: "Context", Field: "compilation"}},
 		{Source: "src/cmd/compile/internal/noder/codes.go", WholeFile: true},
-		{Source: "src/cmd/compile/internal/noder/lex.go", Declarations: []string{"funcPragmas"}},
+		{Source: "src/cmd/compile/internal/noder/lex.go", WholeFile: true, Context: context(), State: []StateRule{
+			{Source: "src/internal/buildcfg/cfg.go", Variable: "GOOS", Field: "GOOS"},
+			{Source: "src/internal/buildcfg/exp.go", Variable: "Experiment", Field: "Types.Experiment"},
+		}},
 		{Source: "src/cmd/compile/internal/noder/quirks.go", Functions: []string{"typeExprEndPos", "lastFieldType"}, Context: context()},
 		{Source: "src/cmd/compile/internal/noder/helpers.go", WholeFile: true, Context: context()},
 		{Source: "src/cmd/compile/internal/noder/types.go", WholeFile: true, Context: func() *ContextRule {

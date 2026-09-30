@@ -31,6 +31,8 @@ import (
 // algorithms. The supplied Link and its position table belong to this instance.
 type Context struct {
 	exportDone                                       bool
+	allowedStdPragmas                                map[string]bool
+	GOOS                                             string
 	Interleaved                                      *interleaved.Context
 	Inline                                           *inline.Context
 	StaticInit                                       *staticinit.Context
@@ -203,7 +205,15 @@ func (c *Context) RewriteRangeFuncs(pkg *types2.Package, info *types2.Info, file
 // WritePackage runs the native writer after required frontend preparation.
 // See RewriteRangeFuncs for range-over-function source. Compiler directives and
 // experimental midway rewriting are not yet integrated at this entry point.
-func (c *Context) WritePackage(pkg *types2.Package, info *types2.Info, files []*syntax.File, rangeClosures map[*syntax.FuncLit]bool) (data string, err error) {
+func (c *Context) WritePackage(pkg *types2.Package, info *types2.Info, files []*syntax.File, rangeClosures map[*syntax.FuncLit]bool) (string, error) {
+	noders := make([]*noder, len(files))
+	for i, file := range files {
+		noders[i] = &noder{compilation: c, file: file}
+	}
+	return c.writeCheckedPackage(pkg, info, files, noders, rangeClosures)
+}
+
+func (c *Context) writeCheckedPackage(pkg *types2.Package, info *types2.Info, files []*syntax.File, noders []*noder, rangeClosures map[*syntax.FuncLit]bool) (data string, err error) {
 	if err := c.validateCheckedPackage(pkg, info, files); err != nil {
 		return "", err
 	}
@@ -226,10 +236,6 @@ func (c *Context) WritePackage(pkg *types2.Package, info *types2.Info, files []*
 	diagnosticStart := len(c.Diagnostics.Diagnostics())
 	c.checked, c.info, c.rangeClosures = pkg, info, rangeClosures
 	defer func() { c.checked = nil; c.info = nil; c.rangeClosures = nil }()
-	noders := make([]*noder, len(files))
-	for i, file := range files {
-		noders[i] = &noder{file: file}
-	}
 	data = c.writePkgStub(posMap{compilation: c}, noders)
 	for _, d := range c.Diagnostics.Diagnostics()[diagnosticStart:] {
 		if d.Severity == diagnostic.Error {
@@ -391,4 +397,72 @@ func (w exportOutput) Write(p []byte) (int, error) {
 // ExportAvailable reports whether a local reader has an unused export phase.
 func (c *Context) ExportAvailable() bool {
 	return c != nil && c.localPkgReader != nil && !c.exportDone && c.Ctxt != nil
+}
+
+// ParsedFile retains the native per-file directives with their syntax tree.
+// The tree may be checked and rewritten by this Context's checker; directives
+// must travel with it to WriteParsedPackage. Do not copy or mutate this handle.
+type ParsedFile struct{ native *noder }
+
+func (f *ParsedFile) Syntax() *syntax.File {
+	if f == nil || f.native == nil {
+		return nil
+	}
+	return f.native.file
+}
+
+// ParseErrors preserves all native parsing/directive errors in source order.
+type ParseErrors []syntax.Error
+
+func (e ParseErrors) Error() string {
+	if len(e) == 0 {
+		return "noder: parse failed"
+	}
+	return e[0].Error()
+}
+
+// ParseFile runs the original syntax parser with the original noder directive
+// handlers. Inputs are explicit; this method does not open files. Configure
+// GOOS, flags, target, package path and experiments before parsing. Multiple
+// files may be parsed concurrently while that configuration remains fixed.
+// A parser or reader panic is propagated after the error collector is joined.
+func (c *Context) ParseFile(filename string, input io.Reader) (*ParsedFile, error) {
+	if c == nil || c.Ctxt == nil || c.Types == nil || c.Base == nil || input == nil || filename == "" || c.GOOS == "" || c.GOARCH == "" || c.Ctxt.Pkgpath == "" {
+		return nil, fmt.Errorf("noder parsing requires a source, filename, target OS/architecture and package path")
+	}
+	p := &noder{compilation: c, err: make(chan syntax.Error)}
+	var failures ParseErrors
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for e := range p.err {
+			failures = append(failures, e)
+		}
+	}()
+	func() {
+		defer func() { close(p.err); <-done }()
+		p.file, _ = syntax.Parse(syntax.NewFileBase(filename), input, p.error, p.pragma, syntax.CheckBranches)
+	}()
+	if len(failures) != 0 {
+		return nil, failures
+	}
+	if p.file == nil {
+		return nil, fmt.Errorf("noder parser returned no syntax tree")
+	}
+	return &ParsedFile{native: p}, nil
+}
+
+// WriteParsedPackage preserves native linkname/cgo/pragma metadata while
+// writing successfully checked and prepared trees. The checker, import loading
+// and range-function rewrite are still explicit caller phases at this entry.
+func (c *Context) WriteParsedPackage(pkg *types2.Package, info *types2.Info, parsed []*ParsedFile, rangeClosures map[*syntax.FuncLit]bool) (string, error) {
+	noders := make([]*noder, len(parsed))
+	files := make([]*syntax.File, len(parsed))
+	for i, f := range parsed {
+		if f == nil || f.native == nil || f.native.compilation != c || f.native.file == nil {
+			return "", fmt.Errorf("parsed source belongs to another or uninitialized compilation")
+		}
+		noders[i], files[i] = f.native, f.native.file
+	}
+	return c.writeCheckedPackage(pkg, info, files, noders, rangeClosures)
 }
