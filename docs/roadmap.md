@@ -116,3 +116,7 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 ### 原生 profile 输入与带 PGO 的自编译
 
 已接通 raw/gzip/预处理 profile 的原生读取和调用图归属，验证热点机器码及使用默认 PGO 的真实编译器自编译，见[阶段记录](m3-native-profile-input.md)。后续继续完整 dist bootstrap、多阶段稳定性、第二目标与独立 SSA 阶段接口。
+
+### 正式 dist bootstrap 与二进制固定点
+
+隔离替换工具链已完成 Linux/amd64、CGO_ENABLED=0 的正式 make.bash/dist bootstrap，并在默认 PGO 下通过强制重编的完整二进制固定点和程序执行验证，见[阶段记录](m3-dist-bootstrap.md)。后续继续独立 Built/EarlyOptimized API、第二目标、cgo/race 与规定回归；最低 bootstrap SDK 仍单独待验收。

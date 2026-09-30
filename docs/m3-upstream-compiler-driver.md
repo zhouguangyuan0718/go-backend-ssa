@@ -1,12 +1,12 @@
 # M3 上游编译驱动接入
 
-`gcintegrate` 导出固定 Go 1.27.1 Git 源码到新的隔离目录，复制同版本官方 bootstrap 工具和源码树中缺少的生成文件，将本库 `compiler` 的完整生产依赖闭包放入 `src/cmd/vendor/go-backend-ssa`，并替换 `src/cmd/compile/main.go`。它拒绝覆盖已有输出目录；不会修改输入 Go 仓库、宿主 GOROOT 或本库源码。
+`gcintegrate` 导出固定 Go 1.27.1 Git 源码到新的隔离目录，复制同版本官方 bootstrap 工具和源码树中缺少的生成文件，将本库 `compiler` 的完整生产依赖闭包放入 `src/cmd/vendor/go-backend-ssa.invalid`，并替换 `src/cmd/compile/main.go`。它拒绝覆盖已有输出目录；不会修改输入 Go 仓库、宿主 GOROOT 或本库源码。
 
-替换驱动保留官方参数、importcfg/embedcfg 和原生 ABI 配置解析。源码加载、前端、SSA、机器码、归档及汇编头全部通过 `compiler.Compile` 完成，驱动没有调用原版 `gc.Main` 或外部编译器的回退路径。构建必须在隔离树的 `src/cmd` 模块中执行，以解析隔离 vendor 副本；该模块的 Go 指令同步设为 1.27.1。
+替换驱动保留官方参数、importcfg/embedcfg 和原生 ABI 配置解析。源码加载、前端、SSA、机器码、归档及汇编头全部通过 `compiler.Compile` 完成，驱动没有调用原版 `gc.Main` 或外部编译器的回退路径。隔离副本将导入路径映射为私有别名 `go-backend-ssa.invalid`，兼容 cmd 模块及正式 dist 的外部工作模块 vendor 解析；库的公开 module 不变。cmd 模块的 Go 指令设为 1.27.1。
 
 ## 产物身份与使用
 
-准备工具生成 `go-backend-ssa.json`，记录上游 commit、本库 Git revision、生产文件逐一哈希、组合内容哈希及 bootstrap 路径。组合哈希还覆盖替换驱动模板；dirty 工作树也以实际文件内容标识。`compile -V=full` 包含该内容哈希，使 cmd/go 为不同实现生成不同构建缓存身份。
+准备工具生成 `go-backend-ssa.json`，记录上游 commit、本库 Git revision、原始和实际 vendored 生产文件逐一哈希、集成文件哈希、组合内容哈希及 bootstrap 路径。组合哈希还覆盖替换驱动模板、导入重写结果及 bootstrap 补丁；dirty 工作树也以实际文件内容标识。`compile -V=full` 包含该内容哈希，使 cmd/go 为不同实现生成不同构建缓存身份。
 
 ```sh
 go run ./cmd/gcintegrate -repo "$GO_SSA_SOURCE_REPO" -root . \
@@ -50,4 +50,6 @@ Linux/amd64 本机执行不需要镜像。其他宿主使用已存在的镜像�
 
 ## 尚待完成
 
-这里证明了真实驱动替换、无 cgo 标准库重建和一次编译器自编译后的代码生成。完整 Go dist bootstrap/多阶段稳定性、整套规定回归、cgo/race 等驱动能力、第二目标及独立 Built/EarlyOptimized API 仍需继续验收。不能把这些记录等同于全部工具链替换目标已经完成。
+这里证明了真实驱动替换、无 cgo 标准库重建和一次编译器自编译后的代码生成。后续阶段已完成本文限定目标的正式 dist bootstrap 与二进制固定点；整套规定回归、cgo/race 等驱动能力、第二目标及独立 Built/EarlyOptimized API 仍需继续验收。不能把这些记录等同于全部工具链替换目标已经完成。
+
+正式 dist bootstrap 接入、各阶段验证和当前限制见[后续自举阶段](m3-dist-bootstrap.md)。

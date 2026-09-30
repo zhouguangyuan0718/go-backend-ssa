@@ -158,7 +158,8 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 		return nil, e
 	}
 	arch := sys.NewContext().ArchAMD64
-	link := &obj.Link{Arch: &obj.LinkArch{Arch: arch}, TargetOS: req.Target.GOOS, Pkgpath: req.ImportPath, Pathname: workingDirectory, UseBASEntries: true, Flag_locationlists: !req.Options.DisableDwarf}
+	link := &obj.Link{Arch: &obj.LinkArch{Arch: arch}, Pkgpath: req.ImportPath, Pathname: workingDirectory, UseBASEntries: true, Flag_locationlists: !req.Options.DisableDwarf}
+	link.TargetOS = req.Target.GOOS
 	if e = link.Headtype.Set(req.Target.GOOS); e != nil {
 		return nil, e
 	}

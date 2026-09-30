@@ -4,9 +4,9 @@
 
 库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。目标是每次编译拥有独立状态，并让统一 Build 的返回结果跨后续调用保活。当前低层 SSA 和指令接口使用原生 worker 缓存，须在同一 worker 复用前消费结果。
 
-当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化；M3 已接通源码解析、types2 类型检查、Unified IR writer/reader、前端分析和 walk、完整 IR 到 SSA，以及 AMD64 原生指令生成、x86 汇编、完整函数 Flush（PCLN/DWARF）、原生 Go 对象二进制序列化，以及最终 Unified 导出和包归档；原生函数编译入口、后台工作队列、声明固定点及完整包数据收尾已接通，原生编译器指令已贯通 parser 和 writer/reader，原生 types2 导入器已支持显式 Unified 依赖数据。统一源码 Build API、完整包编译驱动和上游工具链替换尚未完成。** 当前各阶段通过显式 Context 接入；源码测试夹具已串联这些阶段，不能据此视为完整编译器驱动。详细验收范围见下列阶段记录。
+当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化；M3 已接通从显式源码/依赖到完整前端、SSA、AMD64 机器码及原生归档的 `compiler.Compile`。固定 Go 1.27.1 的真实驱动替换、无 cgo 标准库和工具重建、默认 PGO 及正式 dist bootstrap 均已验证，强制重编后的编译器达到二进制固定点。** 独立 Built/EarlyOptimized SSA API、Linux/arm64、cgo/race 驱动和其余规定回归尚待完成；尚不能视为全部替换目标完成。详细验收范围见下列阶段记录。
 
-- 语言范围：Go 1.27；其他语言版本尚不支持。
+- 语言范围：默认 Go 1.27；原生 Compile 提供显式语言版本选项，独立 Build 的首个设计基线仍为 Go 1.27。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
 - 交付形式：普通 Go module，进程内调用，返回本库的 SSA 对象。
 - 对外保证目标：调用隔离、无共享可变编译状态、可重入、跨调用并发安全。
@@ -115,6 +115,7 @@
 98. [M3 源码到原生归档](docs/m3-native-source-compiler.md)：独立源码编译入口、显式依赖、原生最终检查和真实链接执行。
 99. [M3 上游编译驱动接入](docs/m3-upstream-compiler-driver.md)：隔离 cmd/compile、内容哈希、标准库重建和编译器自编译。
 100. [M3 原生 PGO 输入](docs/m3-native-profile-input.md)：原生 pprof/预处理输入、实例解码状态、热点机器码及带 PGO 的真实自编译。
+101. [M3 正式 dist bootstrap](docs/m3-dist-bootstrap.md)：隔离导入映射、bootstrap 复制、完整自举和编译器二进制固定点。
 
 ## 当前可运行的工具
 

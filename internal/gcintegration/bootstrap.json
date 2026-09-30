@@ -1,0 +1,14 @@
+[
+  {
+    "Old": "var bootstrapDirs = []string{\n",
+    "New": "var bootstrapDirs = []string{\n\t\"cmd/vendor/go-backend-ssa.invalid/...\",\n"
+  },
+  {
+    "Old": "\t\t\tdst := pathf(\"%s/%s\", base, path)",
+    "New": "\t\t\tbootstrapPath := path\n\t\t\tif path == \"cmd/vendor/go-backend-ssa.invalid\" || strings.HasPrefix(path, \"cmd/vendor/go-backend-ssa.invalid/\") {\n\t\t\t\tbootstrapPath = strings.TrimPrefix(path, \"cmd/vendor/\")\n\t\t\t}\n\t\t\tdst := pathf(\"%s/%s\", base, bootstrapPath)"
+  },
+  {
+    "Old": "\t\tpath := m[2]\n\t\tif strings.HasPrefix(path, \"cmd/\") {",
+    "New": "\t\tpath := m[2]\n\t\tif strings.HasPrefix(path, \"go-backend-ssa.invalid/\") {\n\t\t\tpath = \"bootstrap/\" + path\n\t\t} else if strings.HasPrefix(path, \"cmd/\") {"
+  }
+]

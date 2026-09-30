@@ -60,3 +60,5 @@ M2 第三批把上游 SSA 特殊类型绑定与 tuple/results 构造转为 Unive
 M3 已接通真实隔离 `cmd/compile` 驱动、Linux/amd64 无 cgo 标准库重建及一次编译器自编译后的代码生成，见[接入记录](m3-upstream-compiler-driver.md)。驱动编译使用隔离 cmd 模块的 vendor 副本，生产编译直接进入本库；完整 bootstrap 和其余最终验收仍未完成。
 
 原生 raw/gzip/预处理 PGO 输入已接通，自编译现在使用上游默认 profile，且产物继续生成与第一阶段相同的测试归档，见[PGO 验证](m3-native-profile-input.md)。这尚未替代 dist bootstrap 的完整多阶段验收。
+
+正式 dist bootstrap 已在 Linux/amd64、CGO_ENABLED=0 和 Go 1.27.1 bootstrap SDK 下通过；各阶段归档及强制重编后的编译器二进制保持一致，详见[自举记录](m3-dist-bootstrap.md)。独立 SSA 阶段接口、第二目标、其余驱动与回归要求仍未全部完成。

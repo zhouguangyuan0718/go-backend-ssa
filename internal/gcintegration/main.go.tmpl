@@ -104,7 +104,7 @@ func run() error {
     }
     // Explicit opt-in audit evidence records successful calls into the library.
     if path := os.Getenv("GO_SSA_BRIDGE_TRACE"); path != "" {
-        record, err := json.Marshal(struct{ Package, Library, Upstream, Profile string }{req.ImportPath, bridgeRevision, compiler.UpstreamCommit, base.Flag.PgoProfile}); if err != nil { return err }
+        record, err := json.Marshal(struct{ Package, Library, Upstream, Profile string; Files []string }{req.ImportPath, bridgeRevision, compiler.UpstreamCommit, base.Flag.PgoProfile, flag.Args()}); if err != nil { return err }
         f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); if err != nil { return err }
         _, err = f.Write(append(record, '\n')); closeErr := f.Close(); if err != nil { return err }; return closeErr
     }

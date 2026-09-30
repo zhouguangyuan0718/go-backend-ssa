@@ -29,6 +29,9 @@ type Manifest struct {
 	Upstream, Version, Library, LibraryRevision, Bootstrap string
 	Packages                                               []string
 	Files                                                  map[string]string
+	IntegrationFiles                                       map[string]string
+	VendorModule                                           string
+	VendoredFiles                                          map[string]string
 }
 
 // Prepare never changes repo, root or bootstrap and never overwrites output.
@@ -64,7 +67,7 @@ func Prepare(ctx context.Context, repo, root, output, bootstrap string) (*Manife
 	if err != nil {
 		return nil, fmt.Errorf("library dependency closure: %w: %s", err, &stderr)
 	}
-	m := &Manifest{Upstream: pin.Commit, Version: pin.Tag, Bootstrap: bootstrap, Files: map[string]string{}}
+	m := &Manifest{Upstream: pin.Commit, Version: pin.Tag, Bootstrap: bootstrap, Files: map[string]string{}, VendorModule: vendorModule, VendoredFiles: map[string]string{}}
 	contents := map[string][]byte{}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	for {
@@ -102,16 +105,31 @@ func Prepare(ctx context.Context, repo, root, output, bootstrap string) (*Manife
 	h := sha256.New()
 	h.Write([]byte(pin.Commit))
 	h.Write(driver)
+	h.Write(bootstrapPatch)
+	h.Write([]byte(vendorModule))
 	keys := make([]string, 0, len(contents))
 	for key := range contents {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	vendorContents := make(map[string][]byte, len(keys))
 	for _, key := range keys {
 		sum := sha256.Sum256(contents[key])
 		digest := hex.EncodeToString(sum[:])
 		m.Files[key] = digest
 		fmt.Fprintf(h, "\n%s\x00%s", key, digest)
+		vendored := contents[key]
+		if strings.HasSuffix(key, ".go") {
+			vendored, err = rewriteLibraryImports(key, vendored)
+			if err != nil {
+				return nil, err
+			}
+		}
+		vendorContents[key] = vendored
+		vendorSum := sha256.Sum256(vendored)
+		vendorDigest := hex.EncodeToString(vendorSum[:])
+		m.VendoredFiles[key] = vendorDigest
+		fmt.Fprintf(h, "\x00%s", vendorDigest)
 	}
 	m.Library = hex.EncodeToString(h.Sum(nil))
 	rev := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "HEAD")
@@ -151,9 +169,9 @@ func Prepare(ctx context.Context, repo, root, output, bootstrap string) (*Manife
 	if err = copyTree(filepath.Join(bootstrap, "src"), filepath.Join(output, "src"), true); err != nil {
 		return nil, err
 	}
-	vendor := filepath.Join(output, "src/cmd/vendor/go-backend-ssa")
+	vendor := filepath.Join(output, "src/cmd/vendor", vendorModule)
 	for _, key := range keys {
-		if err = write(filepath.Join(vendor, filepath.FromSlash(key)), contents[key], 0644); err != nil {
+		if err = write(filepath.Join(vendor, filepath.FromSlash(key)), vendorContents[key], 0644); err != nil {
 			return nil, err
 		}
 	}
@@ -173,7 +191,7 @@ func Prepare(ctx context.Context, repo, root, output, bootstrap string) (*Manife
 		return nil, err
 	}
 	b = bytes.Replace(b, []byte("\ngo 1.27\n"), []byte("\ngo 1.27.1\n"), 1)
-	b = append(b, []byte("\nrequire go-backend-ssa v0.0.0\n")...)
+	b = append(b, []byte("\nrequire "+vendorModule+" v0.0.0\n")...)
 	if err = os.WriteFile(gomod, b, 0644); err != nil {
 		return nil, err
 	}
@@ -182,16 +200,45 @@ func Prepare(ctx context.Context, repo, root, output, bootstrap string) (*Manife
 	if err != nil {
 		return nil, err
 	}
-	b = append(b, []byte("# go-backend-ssa v0.0.0\n## explicit; go 1.27.1\n"+strings.Join(m.Packages, "\n")+"\n")...)
+	vendoredPackages := make([]string, len(m.Packages))
+	for i, path := range m.Packages {
+		vendoredPackages[i] = vendorPath(path)
+	}
+	b = append(b, []byte("# "+vendorModule+" v0.0.0\n## explicit; go 1.27.1\n"+strings.Join(vendoredPackages, "\n")+"\n")...)
 	if err = os.WriteFile(modules, b, 0644); err != nil {
 		return nil, err
 	}
-	mainSource, err := format.Source(bytes.ReplaceAll(driver, []byte("{{CONTENT_HASH}}"), []byte(m.Library)))
+	mainSource, err := rewriteLibraryImports("main.go", driver)
+	if err != nil {
+		return nil, err
+	}
+	mainSource, err = format.Source(bytes.ReplaceAll(mainSource, []byte("{{CONTENT_HASH}}"), []byte(m.Library)))
 	if err != nil {
 		return nil, err
 	}
 	if err = os.WriteFile(filepath.Join(output, "src/cmd/compile/main.go"), mainSource, 0644); err != nil {
 		return nil, err
+	}
+	distFile := filepath.Join(output, "src/cmd/dist/buildtool.go")
+	b, err = os.ReadFile(distFile)
+	if err != nil {
+		return nil, err
+	}
+	b, err = patchBootstrap(b)
+	if err != nil {
+		return nil, err
+	}
+	if err = os.WriteFile(distFile, b, 0644); err != nil {
+		return nil, err
+	}
+	m.IntegrationFiles = make(map[string]string)
+	for _, name := range []string{"src/cmd/compile/main.go", "src/cmd/dist/buildtool.go", "src/cmd/go.mod", "src/cmd/vendor/modules.txt"} {
+		b, err = os.ReadFile(filepath.Join(output, filepath.FromSlash(name)))
+		if err != nil {
+			return nil, err
+		}
+		sum := sha256.Sum256(b)
+		m.IntegrationFiles[name] = hex.EncodeToString(sum[:])
 	}
 	b, err = json.MarshalIndent(m, "", "  ")
 	if err != nil {

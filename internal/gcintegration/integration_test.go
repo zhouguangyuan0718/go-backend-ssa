@@ -34,6 +34,7 @@ func TestPinnedCompilerDriver(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	verifyIntegrationFiles(t, tree, manifest)
 	hostTools := filepath.Join(tree, "pkg/tool", runtime.GOOS+"_"+runtime.GOARCH)
 	env := func(goroot, cache, goos, goarch string) []string {
 		return append(os.Environ(), "GOROOT="+goroot, "GOCACHE="+cache, "GOTOOLCHAIN=local", "GOWORK=off", "GOFLAGS=", "GOOS="+goos, "GOARCH="+goarch, "GOAMD64=v1", "GOEXPERIMENT=", "CGO_ENABLED=0", "GOPROXY=off", "GOSUMDB=off", "GOMAXPROCS=4", "GOCOMPILEDEBUG=", "GOSSAFUNC=", "GOSSADIR=", "GO_SSA_BRIDGE_TRACE=")
