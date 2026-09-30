@@ -12,7 +12,8 @@ import (
 // Literal bindings preserve the native value initializer and pass its result to
 // an explicit instance binder. Local typed zero declarations are equivalent to
 // explicit zero struct values. Pointer rules require an explicit &T{...};
-// implicit element literals are rejected.
+// implicit element literals are rejected. MakeSlice rules bind the result of
+// the original builtin allocation without changing argument evaluation.
 func literalBindings(files []*ast.File, info *types.Info, units []Unit) (map[ast.Node]string, error) {
 	result := map[ast.Node]string{}
 	for i, u := range units {
@@ -36,6 +37,35 @@ func literalBindings(files []*ast.File, info *types.Info, units []Unit) (map[ast
 			count := 0
 			var failure error
 			ast.Inspect(files[i], func(n ast.Node) bool {
+				if rule.MakeSlice {
+					call, ok := n.(*ast.CallExpr)
+					if !ok || len(call.Args) < 2 || len(call.Args) > 3 {
+						return true
+					}
+					id, ok := ast.Unparen(call.Fun).(*ast.Ident)
+					if !ok || info.Uses[id] != types.Universe.Lookup("make") {
+						return true
+					}
+					slice, ok := types.Unalias(info.TypeOf(call)).(*types.Slice)
+					if !ok {
+						return true
+					}
+					named, ok := types.Unalias(slice.Elem()).(*types.Named)
+					if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != strings.TrimPrefix(path.Dir(rule.Source), "src/") || named.Obj().Name() != rule.Type {
+						return true
+					}
+					if _, ok := named.Underlying().(*types.Struct); !ok || named.TypeParams().Len() != 0 {
+						failure = fmt.Errorf("slice binding requires non-generic struct elements: %s", rule.Type)
+						return false
+					}
+					if result[call] != "" {
+						failure = fmt.Errorf("duplicate slice allocation binding: %s", rule.Type)
+						return false
+					}
+					result[call] = rule.Method
+					count++
+					return true
+				}
 				if rule.NilPointer {
 					call, ok := n.(*ast.CallExpr)
 					if !ok || !info.Types[call.Fun].IsType() || len(call.Args) != 1 {
@@ -188,6 +218,9 @@ func checkLiteralAdapters(units []Unit, before *packageImporter, out *types.Pack
 			originalType := original.Type()
 			if rule.Pointer || rule.NilPointer {
 				originalType = types.NewPointer(originalType)
+			}
+			if rule.MakeSlice {
+				originalType = types.NewSlice(originalType)
 			}
 			want := types.TypeString(originalType, func(p *types.Package) string {
 				if mapped := imports[p.Path()]; mapped != "" {

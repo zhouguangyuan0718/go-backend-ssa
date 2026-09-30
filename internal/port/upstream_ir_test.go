@@ -53,6 +53,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_phases")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_compile")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_frontend")
+	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_frames")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -199,11 +200,13 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || snapshotName == "walk" {
 		setup = strings.Replace(setup, "c,err:=NewContext(types2.NewContext(),tc)", "c,err:=noder.NewContext(types2.NewContext(),tc)", 1)
 	}
-	if snapshotName == "ssagen_frontend" {
+	if snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" {
 		position = "u.Pos"
 		setup = `archs:=sys.NewContext();var targetArch *sys.Arch;for _,a:=range archs.Archs{if a.Name==target.arch{targetArch=a}};link:=&obj.Link{Arch:&obj.LinkArch{Arch:targetArch},Pkgpath:"example/p"};u:=types.NewUniverseWithPositions(target.size,target.size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");graph:=ir.NewContext(u,link);tc:=typecheck.NewContext(graph);tc.InitUniverse();tc.InitRuntime();rt:=rttype.NewContext(objw.NewContext(u,link,"linux"));rt.Init();c:=NewContext(tc);c.SSA=ssa.NewContext(abi.NewContext(graph),reflectdata.NewContext(tc,rt,staticdata.NewContext(graph,rt.Writer)),logopt.NewContext());c.SSA.Now=func()time.Time{return time.Time{}};c.Arch.LinkArch=link.Arch`
 	}
 	ported := strings.NewReplacer(
+		"FRAME_IMPORT", "go-backend-ssa/internal/liveness", "FRAME_INIT", "c.Liveness=liveness.NewContext(c.SSA)", "FRAME_FRONTEND", "c.NewFrontend(fn,false).(*ssafn)", "FRAME_ALLOC", "c.AllocFrame(f)", "FRAME_DEBUG", "graph.Debug", "FRAME_HASH", "graph.Base.MergeLocalsHash", "FRAME_NEWHASH", "graph.Base.NewHashDebug", "FRAME_ENV", "c.Liveness.ClobberDeadHash=hashSuffix",
+
 		"FE_IMPORT", `"time";"go-backend-ssa/internal/abi";"go-backend-ssa/internal/rttype";"go-backend-ssa/internal/objw";"go-backend-ssa/internal/reflectdata";"go-backend-ssa/internal/staticdata";"go-backend-ssa/internal/logopt";`, "FE_SSA_IMPORT", "go-backend-ssa/internal/ssa", "FE_FEATURES", "c.SSA", "FE_FLAG", "graph.Base.Flag", "FE_SYMS", "graph.Syms", "FE_NEW", "c.NewFrontend(fn,false)", "FE_BOUND", "c.abiForFunc",
 		"COMPILE_IMPORT", `"time";`, "COMPILE_SERVICES", "c.Now=func()time.Time{return time.Time{}}",
 		"ALLOC_ARCHS", "archs.Archs", "ALLOC_FLAGS", `c.FramePointerEnabled=(target.arch=="amd64"||target.arch=="arm64")&&!strings.Contains(mode,"nofp");graph.Base.Flag.ClobberDeadReg=strings.Contains(mode,"clobber");if strings.Contains(mode,"noopt"){graph.Base.Flag.N=1}`,
@@ -256,9 +259,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	goroot := strings.TrimSpace(string(run("env", "GOROOT")))
 	overlay := map[string]string{}
 	packages := []string{"cmd/compile/internal/ir", "cmd/compile/internal/types", "cmd/compile/internal/base", "cmd/internal/obj", "cmd/compile/internal/typecheck", "cmd/compile/internal/noder", "cmd/compile/internal/dwarfgen", "cmd/compile/internal/objw", "cmd/compile/internal/bitvec", "cmd/internal/objabi", "internal/bisect", "internal/abi", "cmd/compile/internal/rttype", "cmd/compile/internal/reflectdata", "cmd/compile/internal/typebits", "cmd/compile/internal/staticdata", "cmd/internal/hash", "cmd/compile/internal/compare", "cmd/compile/internal/staticinit", "cmd/compile/internal/pgoir", "cmd/internal/pgo", "cmd/compile/internal/inline/inlheur", "cmd/compile/internal/inline", "cmd/compile/internal/logopt", "cmd/compile/internal/devirtualize", "cmd/compile/internal/inline/interleaved", "cmd/compile/internal/loopvar", "cmd/compile/internal/pkginit", "cmd/compile/internal/ssagen", "cmd/compile/internal/deadlocals", "cmd/compile/internal/escape", "cmd/compile/internal/slice"}
-	if pkgName == "ssa" || snapshotName == "ssagen_frontend" {
+	if pkgName == "ssa" || snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" {
 		packages = append(packages, "cmd/compile/internal/ssa", "cmd/compile/internal/abt")
-		if snapshotName == "ssagen_frontend" || snapshotName == "ssa_objects" || snapshotName == "ssa_opcodes" || snapshotName == "ssa_check" || snapshotName == "ssa_lower" || snapshotName == "ssa_generic" || snapshotName == "ssa_optimizer" || snapshotName == "ssa_calls" || snapshotName == "ssa_allocation" || snapshotName == "ssa_phases" || snapshotName == "ssa_compile" {
+		if snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssa_objects" || snapshotName == "ssa_opcodes" || snapshotName == "ssa_check" || snapshotName == "ssa_lower" || snapshotName == "ssa_generic" || snapshotName == "ssa_optimizer" || snapshotName == "ssa_calls" || snapshotName == "ssa_allocation" || snapshotName == "ssa_phases" || snapshotName == "ssa_compile" {
 			for _, arch := range []string{"arm", "arm64", "loong64", "mips", "ppc64", "riscv", "s390x", "wasm", "x86"} {
 				packages = append(packages, "cmd/internal/obj/"+arch)
 			}
@@ -269,6 +272,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	if pkgName == "abi" {
 		packages = append(packages, "cmd/compile/internal/abi")
+	}
+	if snapshotName == "ssagen_frames" {
+		packages = append(packages, "cmd/compile/internal/liveness")
 	}
 	for _, pkg := range packages {
 		for _, name := range s.PackageFiles(pkg) {
@@ -340,10 +346,12 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if pkgName == "base" {
 		nativeSetup = `Ctxt=&obj.Link{}`
 	}
-	if snapshotName == "ssagen_frontend" {
+	if snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" {
 		nativeSetup = `var targetArch *sys.Arch;for _,a:=range sys.Archs{if a.Name==target.arch{targetArch=a}};base.Ctxt=&obj.Link{Arch:&obj.LinkArch{Arch:targetArch},Pkgpath:"example/p"};types.PtrSize=target.size;types.RegSize=target.size;types.MaxWidth=1<<50;types.BuiltinPkg=types.NewPkg("go.builtin","");types.LocalPkg=types.NewPkg("example/p","p");types.UnsafePkg=types.NewPkg("unsafe","unsafe");typecheck.InitUniverse();base.AutogeneratedPos=base.Ctxt.PosTable.XPos(src.MakePos(src.NewFileBase("<autogenerated>","<autogenerated>"),1,0));buildcfg.GOARCH=target.arch;buildcfg.GOOS="linux";ir.Pkgs.Go=types.NewPkg("go","");ir.Pkgs.InternalMaps=types.NewPkg("go.internal/runtime/maps","internal/runtime/maps");ir.Pkgs.InternalMaps.Prefix="internal/runtime/maps";ir.Pkgs.Runtime=types.NewPkg("go.runtime","runtime");ir.Pkgs.Runtime.Prefix="runtime";typecheck.Target=&ir.Package{};ir.Pkgs.Itab=types.NewPkg("go.itab","go.itab");ir.Pkgs.Itab.Prefix="go:itab";typecheck.InitRuntime();rttype.Init();Arch.LinkArch=base.Ctxt.Arch`
 	}
 	native := strings.NewReplacer(
+		"FRAME_IMPORT", "cmd/compile/internal/liveness", "FRAME_INIT", "", "FRAME_FRONTEND", "&ssafn{curfn:fn}", "FRAME_ALLOC", "fe.AllocFrame(f)", "FRAME_DEBUG", "base.Debug", "FRAME_HASH", "base.MergeLocalsHash", "FRAME_NEWHASH", "base.NewHashDebug", "FRAME_ENV", "t.Setenv(\"GOCLOBBERDEADHASH\",hashSuffix)",
+
 		"FE_IMPORT", `"internal/buildcfg";"cmd/compile/internal/rttype";`, "FE_SSA_IMPORT", "cmd/compile/internal/ssa", "FE_FEATURES", "buildcfg", "FE_FLAG", "base.Flag", "FE_SYMS", "ir.Syms", "FE_NEW", "&ssafn{curfn:fn}", "FE_BOUND", "abiForFunc",
 		"COMPILE_IMPORT", "", "COMPILE_SERVICES", "",
 		"ALLOC_ARCHS", "sys.Archs", "ALLOC_FLAGS", `buildcfg.FramePointerEnabled=(target.arch=="amd64"||target.arch=="arm64")&&!strings.Contains(mode,"nofp");base.Flag.ClobberDeadReg=strings.Contains(mode,"clobber");if strings.Contains(mode,"noopt"){base.Flag.N=1}`,
@@ -454,8 +462,11 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		// Metadata covers all architectures in one run; containers use host-sized indexes, and numeric helpers use fixed-width inputs.
 		targets = []string{""}
 	}
-	if snapshotName == "ssagen_frontend" {
+	if snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" {
 		targets = []string{"386", "amd64", "arm", "arm64", "loong64", "mips", "mipsle", "mips64", "mips64le", "ppc64", "ppc64le", "riscv64", "s390x", "wasm", "amd64-soft", "arm-soft", "amd64-noopt", "amd64-race", "amd64-noregabi"}
+	}
+	if snapshotName == "ssagen_frames" {
+		targets = []string{"386", "amd64", "arm", "arm64", "loong64", "mips", "mipsle", "mips64", "mips64le", "ppc64", "ppc64le", "riscv64", "s390x", "wasm", "amd64-nomerge", "amd64-noopt", "amd64-nofp", "amd64-hash0", "amd64-hash1", "amd64-clobber0", "amd64-clobber1"}
 	}
 	if snapshotName == "reflectdata_descriptors" {
 		targets = append(targets, "amd64-split", "amd64-runtime", "amd64-dynlink")

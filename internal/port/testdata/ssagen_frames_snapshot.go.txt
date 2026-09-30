@@ -1,0 +1,119 @@
+package ssagen
+
+import (
+ IMPORT_BASE
+ "IMPORT_IR"
+ "IMPORT_OBJ"
+ "IMPORT_SRC"
+ "IMPORT_SYS"
+ "IMPORT_TYPECHECK"
+ "IMPORT_TYPES"
+ "FE_SSA_IMPORT"
+ "FRAME_IMPORT"
+ FE_IMPORT
+ "encoding/binary"
+ "encoding/json"
+ "fmt"
+ "io"
+ "os"
+ "strings"
+ "testing"
+)
+
+func TestSyncgoNativeSnapshot(t *testing.T) {
+ mode:=os.Getenv("SYNCGO_TARGET")
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.Split(mode,"-")[0],8,binary.LittleEndian}
+ switch target.arch{case "386","arm","mips","mipsle":target.size=4}
+ switch target.arch{case "mips","mips64","ppc64","s390x":target.order=binary.BigEndian}
+ SETUP
+ FRAME_INIT
+ var _ *liveness.MergeLocalsState
+ FE_FEATURES.GOAMD64=1;FE_FEATURES.GOARM.Version=7;FE_FEATURES.GOPPC64=8;FE_FEATURES.GORISCV64=20
+ FE_FEATURES.FramePointerEnabled=(target.arch=="amd64"||target.arch=="arm64")&&!strings.Contains(mode,"nofp")
+ EXPERIMENT.RegabiArgs=true;EXPERIMENT.PreemptibleLoops=false;EXPERIMENT.SIMD=false
+ FE_FLAG.LowerC=1;FE_FLAG.WB=true;if strings.Contains(mode,"noopt"){FE_FLAG.N=1}
+ FRAME_DEBUG.MergeLocals=1;if strings.Contains(mode,"nomerge"){FRAME_DEBUG.MergeLocals=0}
+ if strings.Contains(mode,"hash"){FRAME_DEBUG.MergeLocalsHash=mode[len(mode)-1:];FRAME_HASH=FRAME_NEWHASH("mergelocals",FRAME_DEBUG.MergeLocalsHash,io.Discard)}
+ hashSuffix:="";if strings.Contains(mode,"clobber"){FE_FLAG.ClobberDead=true;hashSuffix=mode[len(mode)-1:]};FRAME_ENV
+ UP.InitConfig();cfg:=UP.ssaConfig
+ var out []string;add:=func(s string,args ...any){out=append(out,fmt.Sprintf(s,args...))}
+ for _,scenario:=range []string{"disjoint","overlap","nonpointer","branch","loop","layout","indirect","indirect-escape"}{
+  pos:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase(scenario+".go","/src/"+scenario+".go"),17,3))
+  fn:=GRAPH.NewFunc(pos,pos,TY.LocalPkg.Lookup(scenario),TY.NewSignature(nil,nil,nil));fn.DeclareParams(true);fn.DebugInfo=new(ssa.FuncDebug)
+  fe:=FRAME_FRONTEND
+  cache:=new(ssa.Cache);cache.Reset();f:=cfg.NewFunc(fe,cache);f.Name=scenario;f.Type=fn.Type();f.ABI0=cfg.ABI0;f.ABI1=cfg.ABI1;f.ABISelf=cfg.ABI1;f.ABIDefault=cfg.ABI1;f.OwnAux=ssa.OwnAuxCall(fn.Linksym(),cfg.ABI1.ABIAnalyze(fn.Type(),true));f.Entry=f.NewBlock(ssa.BlockRet);f.Entry.Pos=pos
+  mem:=f.Entry.NewValue0(pos,ssa.OpInitMem,TY.TypeMem)
+  local:=func(name string,typ *types.Type)*ir.Name{return fn.NewLocal(pos,TY.LocalPkg.Lookup(name),typ)}
+  effect:=func(b *ssa.Block,op ssa.Op,n *ir.Name,m *ssa.Value)*ssa.Value{if op==ssa.OpVarDef&&!n.Type().HasPointers()&&!ssa.IsMergeCandidate(n){return m};return b.NewValue1A(pos,op,TY.TypeMem,n,m)}
+  ret:=func(b *ssa.Block,m *ssa.Value){b.SetControl(b.NewValue1(pos,ssa.OpMakeResult,TY.TypeResultMem,m))}
+  ptrArray:=TY.NewArray(TY.NewPtr(TY.Types[types.TUINT8]),4)
+  switch scenario{
+  case "layout":
+   local("unused",TY.NewArray(TY.Types[types.TUINT8],17))
+   p:=local("ptr",cfg.Types.BytePtr);p.SetNeedzero(true)
+   z:=local("zero",TY.NewArray(TY.Types[types.TUINT8],0))
+   scalar:=local("scalar",TY.Types[types.TUINT8])
+   for _,n:=range []*ir.Name{p,z,scalar}{mem=effect(f.Entry,ssa.OpVarLive,n,mem)}
+   for i:=range 2{n:=local(fmt.Sprintf("defer%d",i),TY.Types[types.TUINT8]);n.SetOpenDeferSlot(true);n.SetUsed(true);n.SetFrameOffset(int64(i))}
+   ret(f.Entry,mem)
+  case "branch","loop":
+   a,b:=local("a",ptrArray),local("b",ptrArray)
+   sb:=f.Entry.NewValue0(pos,ssa.OpSB,cfg.Types.Uintptr)
+   condAddr:=f.Entry.NewValue1A(pos,ssa.OpAddr,TY.NewPtr(cfg.Types.Bool),LINK.Lookup("example/p.condition"),sb)
+   if scenario=="branch"{
+    f.Entry.Reset(ssa.BlockIf);f.Entry.SetControl(f.Entry.NewValue2(pos,ssa.OpLoad,cfg.Types.Bool,condAddr,mem))
+    left,right,join:=f.NewBlock(ssa.BlockPlain),f.NewBlock(ssa.BlockPlain),f.NewBlock(ssa.BlockRet)
+    for _,bb:=range []*ssa.Block{left,right,join}{bb.Pos=pos}
+    f.Entry.AddEdgeTo(left);f.Entry.AddEdgeTo(right);left.AddEdgeTo(join);right.AddEdgeTo(join)
+    lm:=effect(left,ssa.OpVarDef,a,mem);lm=effect(left,ssa.OpVarLive,a,lm)
+    rm:=effect(right,ssa.OpVarDef,b,mem);rm=effect(right,ssa.OpVarLive,b,rm)
+    ret(join,join.NewValue2(pos,ssa.OpPhi,TY.TypeMem,lm,rm))
+   }else{
+    f.Entry.Reset(ssa.BlockPlain);mem=effect(f.Entry,ssa.OpVarDef,a,mem)
+    head,body,exit:=f.NewBlock(ssa.BlockIf),f.NewBlock(ssa.BlockPlain),f.NewBlock(ssa.BlockRet)
+    for _,bb:=range []*ssa.Block{head,body,exit}{bb.Pos=pos}
+    f.Entry.AddEdgeTo(head);head.AddEdgeTo(body);head.AddEdgeTo(exit);body.AddEdgeTo(head)
+    phi:=head.NewValue1(pos,ssa.OpPhi,TY.TypeMem,mem)
+    head.SetControl(head.NewValue2(pos,ssa.OpLoad,cfg.Types.Bool,condAddr,phi))
+    bm:=effect(body,ssa.OpVarDef,b,phi);bm=effect(body,ssa.OpVarLive,a,bm);bm=effect(body,ssa.OpVarLive,b,bm);phi.AddArg(bm)
+    ret(exit,phi)
+   }
+  case "indirect","indirect-escape":
+   a,b:=local("a",ptrArray),local("b",ptrArray)
+   sp:=f.Entry.NewValue0(pos,ssa.OpSP,cfg.Types.Uintptr)
+   sb:=f.Entry.NewValue0(pos,ssa.OpSB,cfg.Types.Uintptr)
+   cell:=f.Entry.NewValue1A(pos,ssa.OpAddr,TY.NewPtr(cfg.Types.BytePtr),LINK.Lookup("example/p.source"),sb)
+   ptr:=f.Entry.NewValue2(pos,ssa.OpLoad,cfg.Types.BytePtr,cell,mem)
+   for _,n:=range []*ir.Name{a,b}{
+    mem=effect(f.Entry,ssa.OpVarDef,n,mem)
+    addr:=f.Entry.NewValue2A(pos,ssa.OpLocalAddr,TY.NewPtr(n.Type()),n,sp,mem)
+    word:=f.Entry.NewValue1I(pos,ssa.OpOffPtr,TY.NewPtr(cfg.Types.BytePtr),int64(target.size),addr)
+    mem=f.Entry.NewValue3A(pos,ssa.OpStore,TY.TypeMem,cfg.Types.BytePtr,word,ptr,mem)
+    if scenario=="indirect-escape"{
+     dest:=f.Entry.NewValue1A(pos,ssa.OpAddr,TY.NewPtr(word.Type),LINK.Lookup("example/p.escaped"),sb)
+     mem=f.Entry.NewValue3A(pos,ssa.OpStore,TY.TypeMem,word.Type,dest,word,mem)
+    }else{
+     value:=f.Entry.NewValue2(pos,ssa.OpLoad,cfg.Types.BytePtr,word,mem)
+     mem=f.Entry.NewValue3A(pos,ssa.OpStore,TY.TypeMem,cfg.Types.BytePtr,cell,value,mem)
+    }
+    mem=effect(f.Entry,ssa.OpVarLive,n,mem)
+   }
+   ret(f.Entry,mem)
+  default:
+   typ:=ptrArray;if scenario=="nonpointer"{typ=TY.NewArray(TY.Types[types.TUINT64],4)}
+   a,b:=local("a",typ),local("b",typ)
+   mem=effect(f.Entry,ssa.OpVarDef,a,mem)
+   if scenario!="overlap"{mem=effect(f.Entry,ssa.OpVarLive,a,mem)}
+   mem=effect(f.Entry,ssa.OpVarDef,b,mem)
+   if scenario=="overlap"{mem=effect(f.Entry,ssa.OpVarLive,a,mem)}
+   mem=effect(f.Entry,ssa.OpVarLive,b,mem);ret(f.Entry,mem)
+  }
+  ssa.Compile(f)
+  FRAME_ALLOC
+  add("frame:%s:%d:%d:%d",scenario,fe.stksize,fe.stkptrsize,fe.stkalign)
+  for _,n:=range fn.Dcl{add("local:%s:%v:%d:%t:%t:%t:%d",n.Sym().Name,n.Type(),n.FrameOffset(),n.Used(),n.Needzero(),n.OpenDeferSlot(),UP.StackOffset(ssa.LocalSlot{N:n,Type:n.Type(),Off:3}))}
+  for _,n:=range fn.DebugInfo.(*ssa.FuncDebug).OptDcl{add("removed:%s:%v",n.Sym().Name,n.Type())}
+  add("ssa:%s",f.String())
+ }
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Printf("SYNCGO_IR=%s\n",data)
+}

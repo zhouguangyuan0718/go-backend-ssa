@@ -7,6 +7,7 @@ import (
 	"go-backend-ssa/internal/cmd/src"
 	errorspkg "go-backend-ssa/internal/go/types/errors"
 	"go-backend-ssa/internal/ir"
+	"go-backend-ssa/internal/liveness"
 	"go-backend-ssa/internal/ssa"
 	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
@@ -18,14 +19,17 @@ import (
 // type and runtime declarations have been initialized. Phase operations within
 // one graph are serialized; separate contexts can compile independently.
 type Context struct {
-	SSA             *ssa.Context
-	Arch            ArchInfo
-	ssaConfig       *ssa.Config
-	ssaCaches       []ssa.Cache
-	BoundsCheckFunc [ssa.BoundsKindCount]*obj.LSym
-	softFloatOps    map[ssa.Op]sfRtCallDef
-	deferType       *types.Type
-	Typecheck       *typecheck.Context
+	Liveness         *liveness.Context
+	ptrSize, regSize int
+	maxWidth         int64
+	SSA              *ssa.Context
+	Arch             ArchInfo
+	ssaConfig        *ssa.Config
+	ssaCaches        []ssa.Cache
+	BoundsCheckFunc  [ssa.BoundsKindCount]*obj.LSym
+	softFloatOps     map[ssa.Op]sfRtCallDef
+	deferType        *types.Type
+	Typecheck        *typecheck.Context
 	// ReadFile supplies symabis input. There is no implicit filesystem fallback.
 	ReadFile func(string) ([]byte, error)
 }
@@ -36,6 +40,7 @@ func NewContext(tc *typecheck.Context) *Context {
 	}
 	c := newContext()
 	c.Typecheck = tc
+	c.ptrSize, c.regSize, c.maxWidth = tc.IR.Types.PointerSize(), tc.IR.Types.RegisterSize(), tc.IR.Types.MaxWidth()
 	return c
 }
 func (c *Context) readFile(name string) ([]byte, error) {
@@ -46,6 +51,9 @@ func (c *Context) readFile(name string) ([]byte, error) {
 }
 func (c *Context) fatalLogf(f string, a ...any) { panic(fmt.Errorf(f, a...)) }
 func (c *Context) fatalf(f string, a ...any)    { panic(fmt.Errorf(f, a...)) }
+func (c *Context) fatalfAt(pos src.XPos, f string, a ...any) {
+	panic(fmt.Errorf("%s: %s", c.Typecheck.IR.Base.FmtPos(pos), fmt.Sprintf(f, a...)))
+}
 func (c *Context) traceWriter() io.Writer {
 	if c.Typecheck.IR.TraceWriter != nil {
 		return c.Typecheck.IR.TraceWriter
@@ -114,3 +122,45 @@ func (c *Context) warnfAt(pos src.XPos, format string, args ...any) {
 
 // SSAConfig returns the configuration prepared by native InitConfig.
 func (c *Context) SSAConfig() *ssa.Config { return c.ssaConfig }
+
+// AllocFrame runs native frame layout after SSA compilation and returns its
+// total size, pointer-containing prefix size and required alignment.
+func (c *Context) AllocFrame(f *ssa.Func) (size, pointerSize, alignment int64) {
+	c.checkFrame(f)
+	fe := f.Frontend().(*ssafn)
+	fe.AllocFrame(f)
+	return fe.stksize, fe.stkptrsize, fe.stkalign
+}
+func (c *Context) checkFrame(f *ssa.Func) {
+	c.checkBackend()
+	if c.Liveness == nil || c.Liveness.SSA != c.SSA || f == nil || f.Config != c.ssaConfig || f.RegAlloc == nil {
+		panic("frame layout requires compiled SSA and matching liveness services")
+	}
+	fe, ok := f.Frontend().(*ssafn)
+	if !ok || fe.compilation != c || fe.curfn == nil || !c.Typecheck.IR.OwnsNode(fe.curfn) {
+		panic("frame frontend belongs to another compilation")
+	}
+	if debug, ok := fe.curfn.DebugInfo.(*ssa.FuncDebug); !ok || debug == nil {
+		panic("frame layout requires native function debug metadata")
+	}
+	checkName := func(n *ir.Name) {
+		if n == nil || !c.Typecheck.IR.OwnsNode(n) || n.Type() == nil || n.Type().Universe() != c.Typecheck.IR.Types {
+			panic("frame variable belongs to another compilation")
+		}
+	}
+	for _, n := range fe.curfn.Dcl {
+		checkName(n)
+	}
+	for _, loc := range f.RegAlloc {
+		if slot, ok := loc.(ssa.LocalSlot); ok {
+			checkName(slot.N)
+		}
+	}
+	for _, b := range f.Blocks {
+		for _, v := range b.Values {
+			if n, ok := v.Aux.(*ir.Name); ok {
+				checkName(n)
+			}
+		}
+	}
+}

@@ -50,6 +50,7 @@ func CanSSA(t *types.Type) bool { return compiler.CanSSA(t) }
 type Context = compiler.Context
 type Config = compiler.Config
 type Func = compiler.Func
+type FuncDebug = compiler.FuncDebug
 type Block = compiler.Block
 type Value = compiler.Value
 type Cache = compiler.Cache

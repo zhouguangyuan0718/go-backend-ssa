@@ -91,6 +91,7 @@
 74. [M3 SSA 阶段配置与初始化](docs/m3-ssa-phases.md)：原生阶段表、选项解析、顺序校验及实例初始化分组。
 75. [M3 完整原生 SSA Compile](docs/m3-ssa-compile.md)：完整阶段循环、统计/转储服务、公开入口及物理位置执行验证。
 76. [M3 原生 SSA 前端与初始化](docs/m3-ssagen-frontend.md)：目标配置、运行时符号、defer 布局及原生 Frontend 服务。
+77. [M3 原生栈帧分配](docs/m3-ssagen-frames.md)：局部变量活跃区间与合并、帧布局、栈偏移及实例隔离。
 
 ## 当前可运行的工具
 

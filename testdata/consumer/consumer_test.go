@@ -13,6 +13,7 @@ import (
 	"go-backend-ssa/inline"
 	"go-backend-ssa/inline/inlheur"
 	"go-backend-ssa/ir"
+	"go-backend-ssa/liveness"
 	"go-backend-ssa/logopt"
 	"go-backend-ssa/loopvar"
 	"go-backend-ssa/noder"
@@ -968,11 +969,13 @@ func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
 	graph.Base.Flag.LowerC = 1
 	backend := ssagen.NewContext(tc)
 	backend.SSA = c
+	backend.Liveness = liveness.NewContext(c)
 	backend.Arch.LinkArch = link.Arch
 	backend.InitConfig()
 	cfg = backend.SSAConfig()
 	compiledIR := graph.NewFunc(position.XPos{}, position.XPos{}, u.LocalPkg.Lookup("compiled"), u.NewSignature(nil, nil, nil))
 	compiledIR.DeclareParams(true)
+	compiledIR.DebugInfo = new(ssa.FuncDebug)
 	var compiledCache ssa.Cache
 	compiledCache.Reset()
 	compiled := cfg.NewFunc(backend.NewFrontend(compiledIR, false), &compiledCache)
@@ -988,6 +991,9 @@ func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
 	ssa.Compile(compiled)
 	if clockCalls == 0 || compiled.RegAlloc == nil {
 		t.Fatal("public native SSA pipeline did not run")
+	}
+	if size, ptrsize, alignment := backend.AllocFrame(compiled); size != 0 || ptrsize != 0 || alignment != 8 {
+		t.Fatalf("public native frame layout: %d/%d/%d", size, ptrsize, alignment)
 	}
 }
 

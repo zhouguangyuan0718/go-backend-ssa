@@ -123,6 +123,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			prov.SignatureSources[call.Source] = signatureSources[call.Source]
 		}
 		for _, literal := range u.Literals {
+			if literal.MakeSlice {
+				prov.Declarations = append(prov.Declarations, "make-slice:"+literal.Type+":"+literal.Method)
+			}
 			if literal.NilPointer {
 				prov.Declarations = append(prov.Declarations, "nil-pointer:"+literal.Type+":"+literal.Method)
 			}
