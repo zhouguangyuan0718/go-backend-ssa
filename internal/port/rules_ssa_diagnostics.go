@@ -26,5 +26,5 @@ func ssaDiagnosticMigration(units []Unit) []Unit {
 			u.Context.RedirectTrace = true
 		}
 	}
-	return append(units, Unit{Source: root + "print.go", WholeFile: true}, Unit{Source: root + "deadcode.go", Functions: []string{"findlive", "ReachableBlocks", "liveValues"}})
+	return append(units, Unit{Source: root + "print.go", WholeFile: true}, Unit{Source: root + "deadcode.go", WholeFile: true})
 }

@@ -10,7 +10,7 @@ func ssaGraphMigration() []Unit {
 		{Source: "src/cmd/compile/internal/ssa/allocators.go", WholeFile: true, SliceReinterpretations: nativeAllocatorReinterpretations(), ReceiverState: &ReceiverStateRule{Type: "Cache", Fields: map[string]string{
 			"poolFreeValueSlice": "poolFreeValueSlice", "poolFreeLimitSlice": "poolFreeLimitSlice", "poolFreeSparseSet": "poolFreeSparseSet", "poolFreeSparseMap": "poolFreeSparseMap", "poolFreeSparseMapPos": "poolFreeSparseMapPos",
 		}}},
-		{Source: "src/cmd/compile/internal/ssa/numberlines.go", Functions: []string{"notStmtBoundary"}, Declarations: []string{"Block.FirstPossibleStmtValue"}},
+		{Source: "src/cmd/compile/internal/ssa/numberlines.go", WholeFile: true, Context: &ContextRule{Type: "Context", Constructor: "initialize", Initialize: true, Selective: true, RedirectTrace: true, Adapter: "adapter_context.go"}, ContextFrom: map[string]ContextSource{"numberLines": {Argument: "f", Resolver: "diagnosticContext"}}},
 		{Source: "src/cmd/compile/internal/ssa/biasedsparsemap.go", WholeFile: true},
 		{Source: "src/cmd/compile/internal/ssa/cache.go", WholeFile: true},
 		{Source: "src/cmd/compile/internal/ssa/compile.go", Declarations: []string{"pass"}},

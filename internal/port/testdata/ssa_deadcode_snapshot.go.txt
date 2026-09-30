@@ -1,0 +1,261 @@
+package ssa
+
+import (
+	"IMPORT_ABI"
+	IMPORT_BASE
+	"IMPORT_IR"
+	"IMPORT_OBJ"
+	"IMPORT_SRC"
+	"IMPORT_SYS"
+	"IMPORT_TYPECHECK"
+	"IMPORT_TYPES"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"os"
+	"testing"
+)
+
+type snapshotDeadcodeFrontend struct {
+	Frontend
+	warnings []string
+}
+
+func (f *snapshotDeadcodeFrontend) Log() bool { return false }
+func (f *snapshotDeadcodeFrontend) Fatalf(pos src.XPos, format string, args ...any) {
+	panic(fmt.Sprintf("%d:%s", pos.Line(), fmt.Sprintf(format, args...)))
+}
+func (f *snapshotDeadcodeFrontend) Warnl(pos src.XPos, format string, args ...any) {
+	f.warnings = append(f.warnings, fmt.Sprintf("%d:%s", pos.Line(), fmt.Sprintf(format, args...)))
+}
+
+func TestSyncgoNativeSnapshot(t *testing.T) {
+	target := struct {
+		arch  string
+		size  int
+		order binary.ByteOrder
+	}{os.Getenv("SYNCGO_TARGET"), 8, binary.LittleEndian}
+	switch target.arch {
+	case "386":
+		target.size = 4
+	case "mips":
+		target.size = 4
+		target.order = binary.BigEndian
+	case "ppc64":
+		target.order = binary.BigEndian
+	}
+	SETUP
+	ABI_SETUP
+	var out []string
+	add := func(label string, args ...any) { out = append(out, label+":"+fmt.Sprint(args...)) }
+	trapped := func(label string, fn func()) {
+		func() {
+			defer func() {
+				v := recover()
+				if v == nil {
+					t.Fatalf("%s did not fail", label)
+				}
+				add(label, v)
+			}()
+			fn()
+		}()
+	}
+	file := src.NewFileBase("deadcode.go", "deadcode.go")
+	position := func(line uint) src.XPos { return LINK.PosTable.XPos(src.MakePos(file, line, 2)) }
+	pos := position(10)
+
+	cfg := &Config{PtrSize: int64(target.size), RegSize: int64(target.size), Types: *UP.NewTypes(), ctxt: LINK}
+	fresh := func() (*Func, *snapshotDeadcodeFrontend) {
+		fe := &snapshotDeadcodeFrontend{}
+		cache := new(Cache)
+		cache.Reset()
+		f := cfg.NewFunc(fe, cache)
+		f.Name = "deadcode"
+		f.Type = TY.NewSignature(nil, nil, nil)
+		f.ABISelf = ABI_NEW(0, 0, 0, 1)
+		f.pass = &pass{name: "deadcode phase", stats: 3}
+		f.Entry = f.NewBlock(BlockRet)
+		f.Entry.Pos = pos
+		return f, fe
+	}
+	dump := func(label string, f *Func) {
+		for _, b := range f.Blocks {
+			add(label+"-block", b.ID, " ", b.Kind, " ", b.Likely, " ", b.Preds, " ", b.Succs, " ", b.ControlValues())
+			for _, v := range b.Values {
+				add(label+"-value", v.ID, " ", v.Op, " ", v.Type, " ", v.AuxInt, " ", v.Aux, " ", v.Uses, " ", v.Args, " ", v.InCache, " ", v.Pos.Line(), " ", v.Pos.IsStmt())
+			}
+		}
+	}
+	check := func(f *Func) {
+		uses := map[*Value]int32{}
+		for _, b := range f.Blocks {
+			for i, e := range b.Succs {
+				back := e.b.Preds[e.i]
+				if back.b != b || back.i != i {
+					t.Fatal("reverse edge")
+				}
+			}
+			for _, v := range b.ControlValues() {
+				uses[v]++
+			}
+			for _, v := range b.Values {
+				for _, a := range v.Args {
+					uses[a]++
+				}
+			}
+		}
+		for _, b := range f.Blocks {
+			for _, v := range b.Values {
+				if uses[v] != v.Uses {
+					t.Fatalf("%s uses=%d want=%d", v, v.Uses, uses[v])
+				}
+			}
+		}
+	}
+	// A diamond with dead predecessors, a discarded BlockFirst edge and an unreachable loop.
+	f, fe := fresh()
+	e := f.Entry
+	e.Reset(BlockIf)
+	left, right, join, dead, loopA, loopB := f.NewBlock(BlockFirst), f.NewBlock(BlockPlain), f.NewBlock(BlockRet), f.NewBlock(BlockPlain), f.NewBlock(BlockPlain), f.NewBlock(BlockIf)
+	e.AddEdgeTo(left)
+	e.AddEdgeTo(right)
+	left.AddEdgeTo(join)
+	left.AddEdgeTo(loopA)
+	right.AddEdgeTo(join)
+	dead.AddEdgeTo(join)
+	loopA.AddEdgeTo(loopB)
+	loopB.AddEdgeTo(loopA)
+	loopB.AddEdgeTo(join)
+	for _, b := range f.Blocks {
+		b.Pos = position(30)
+	}
+	it := cfg.Types.Int64
+	ptr := TY.NewPtr(it)
+	mem := e.NewValue0(pos, OpInitMem, TY.TypeMem)
+	sp := e.NewValue0(pos, OpSP, cfg.Types.Uintptr)
+	address := e.NewValue1I(pos, OpOffPtr, ptr, 8, sp)
+	cond := f.ConstBool(cfg.Types.Bool, true)
+	e.SetControl(cond)
+	loopB.SetControl(cond)
+	a, b := f.ConstInt64(it, 5), f.ConstInt64(it, 9)
+	gone := left.NewValue2(position(15), OpAdd64, it, a, b)
+	lv := left.NewValue2(position(15), OpSub64, it, b, a)
+	right.NewValue2(position(18), OpNilCheck, ptr, address, mem)
+	rv := right.NewValue2(position(19), OpAdd64, it, a, b)
+	dv := dead.NewValue2(position(20), OpMul64, it, a, b)
+	cycleA := loopA.NewValue2(pos, OpAdd64, it, a, b)
+	cycleB := loopB.NewValue2(pos, OpMul64, it, cycleA, b)
+	phi := join.NewValue4(position(21), OpPhi, it, lv, rv, dv, cycleB)
+	store := join.NewValue3A(position(25), OpStore, TY.TypeMem, it, address, phi, mem)
+	join.SetControl(store)
+	blockGone := join.NewValue2(position(30), OpAdd64, it, a, b)
+	unused := f.ConstInt64(it, 1001)
+	local := GRAPH.NewNameAt(pos, TY.LocalPkg.Lookup("live"), it)
+	local.Class = ir.PAUTO
+	liveSlot, deadSlot := &LocalSlot{N: local, Type: it}, &LocalSlot{N: local, Type: it, Off: 8}
+	f.Names = []*LocalSlot{liveSlot, deadSlot}
+	f.NamedValues[*liveSlot] = []*Value{phi, phi, unused}
+	f.NamedValues[*deadSlot] = []*Value{gone, unused}
+	numberLines(f)
+	dump("numbered", f)
+	add("stats", fe.warnings)
+	oldGoneID, oldBlockGoneID, oldUnusedID := gone.ID, blockGone.ID, unused.ID
+	deadcode(f)
+	check(f)
+	dump("deadcode", f)
+	add("names", len(f.Names), " ", f.NamedValues[*liveSlot], " ", f.NamedValues[*deadSlot])
+	add("released", gone.Op, " ", gone.Block == nil, " ", blockGone.Block == nil, " ", unused.InCache, " ", unused.Block == nil, " ", oldGoneID, " ", oldBlockGoneID, " ", oldUnusedID)
+	add("position-conserved", lv.Pos.IsStmt(), " ", join.Pos.IsStmt())
+	add("cache", f.ConstInt64(it, 1001) == unused)
+	var freeValues []ID
+	for v := f.freeValues; v != nil; v = v.argstorage[0] {
+		freeValues = append(freeValues, v.ID)
+	}
+	var freeBlocks []ID
+	for b := f.freeBlocks; b != nil; b = b.succstorage[0].b {
+		freeBlocks = append(freeBlocks, b.ID)
+	}
+	add("free-values", freeValues)
+	add("free-blocks", freeBlocks)
+	deadcode(f)
+	check(f)
+	dump("second-deadcode", f)
+	// Removing one of two parallel edges updates the corresponding Phi position exactly.
+	f, _ = fresh()
+	e = f.Entry
+	e.Reset(BlockFirst)
+	join = f.NewBlock(BlockRet)
+	join.Pos = pos
+	e.AddEdgeTo(join)
+	e.AddEdgeTo(join)
+	a, b = f.ConstInt64(it, 1), f.ConstInt64(it, 2)
+	mem = e.NewValue0(pos, OpInitMem, TY.TypeMem)
+	sp = e.NewValue0(pos, OpSP, cfg.Types.Uintptr)
+	address = e.NewValue1I(pos, OpOffPtr, ptr, 8, sp)
+	phi = join.NewValue2(pos, OpPhi, it, a, b)
+	store = join.NewValue3A(pos, OpStore, TY.TypeMem, it, address, phi, mem)
+	join.SetControl(store)
+	numberLines(f)
+	deadcode(f)
+	check(f)
+	dump("parallel-edge", f)
+	add("phi-copy-spliced", store.Args[1] == a)
+	// Empty blocks, loops, multiple files and explicitly non-statement positions.
+	f, fe = fresh()
+	e = f.Entry
+	e.Reset(BlockPlain)
+	empty, head, body, exit := f.NewBlock(BlockPlain), f.NewBlock(BlockIf), f.NewBlock(BlockPlain), f.NewBlock(BlockRet)
+	e.AddEdgeTo(empty)
+	empty.AddEdgeTo(head)
+	head.AddEdgeTo(body)
+	head.AddEdgeTo(exit)
+	body.AddEdgeTo(head)
+	other := LINK.PosTable.XPos(src.MakePos(src.NewFileBase("other.go", "other.go"), 71, 3))
+	e.Pos = position(11)
+	empty.Pos = pos.WithNotStmt()
+	head.Pos = position(22)
+	body.Pos = other
+	exit.Pos = position(40)
+	mem = e.NewValue0(pos, OpInitMem, TY.TypeMem)
+	cond = f.ConstBool(cfg.Types.Bool, true)
+	head.SetControl(cond)
+	exit.SetControl(mem)
+	a = f.ConstInt64(it, 1)
+	body.NewValue2(other, OpAdd64, it, a, a)
+	body.NewValue0(position(32).WithNotStmt(), OpUnknown, it)
+	numberLines(f)
+	dump("loop-numbered", f)
+	add("loop-stats", fe.warnings)
+	deadcode(f)
+	check(f)
+	dump("loop-deadcode", f)
+	// Preserve a native failure on an artificial unreachable Copy cycle.
+	f, _ = fresh()
+	mem = f.Entry.NewValue0(pos, OpInitMem, TY.TypeMem)
+	f.Entry.SetControl(mem)
+	dead = f.NewBlock(BlockPlain)
+	dead.AddEdgeTo(dead)
+	cycleA = dead.NewValue0(pos, OpCopy, it)
+	cycleB = dead.NewValue1(pos, OpCopy, it, cycleA)
+	cycleA.AddArg(cycleB)
+	numberLines(f)
+	trapped("unreachable-copy-cycle", func() { deadcode(f) })
+	dump("copy-cycle-failure-state", f)
+	// Deadcode explicitly rejects post-register-allocation input before mutation.
+	f, _ = fresh()
+	mem = f.Entry.NewValue0(pos, OpInitMem, TY.TypeMem)
+	f.Entry.SetControl(mem)
+	numberLines(f)
+	f.RegAlloc = make([]Location, f.NumValues())
+	trapped("after-regalloc", func() { deadcode(f) })
+	dump("rejected-unchanged", f)
+	for _, op := range []Op{OpAddr, OpPhi, OpConst64, OpCopy, OpAdd64, OpLoad, OpNilCheck, OpArgIntReg} {
+		add("statement-op", op, " ", isPoorStatementOp(op), " ", notStmtBoundary(op))
+	}
+	var _ ir.Node
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("SYNCGO_IR=" + string(data))
+}
