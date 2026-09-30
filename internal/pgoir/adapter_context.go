@@ -13,7 +13,11 @@ import (
 // Context binds native profile attribution to an existing compiler graph.
 // Independent contexts may run concurrently; operations on one graph are serial.
 type Context struct {
-	Typecheck *typecheck.Context
+	Typecheck  *typecheck.Context
+	processing *pgo.Context
+	// OpenProfile provides the input consumed and closed by native New.
+	// No implicit filesystem lookup occurs when this provider is absent.
+	OpenProfile func(string) (io.ReadCloser, error)
 	// These are the upstream cycle-breaking hooks, now owned by this compilation.
 	// The frontend must bind both before building a nonempty profile. Unbound
 	// hooks retain upstream's fatal behavior; there is no successful fallback.
@@ -27,6 +31,7 @@ func NewContext(tc *typecheck.Context) *Context {
 	}
 	c := newContext()
 	c.Typecheck = tc
+	c.processing = pgo.NewContext()
 	return c
 }
 
@@ -79,3 +84,33 @@ func (c *Context) tracePrintf(f string, a ...any) (int, error) {
 
 // OwnsProfile reports whether the attributed IR graph belongs to this instance.
 func (c *Context) OwnsProfile(p *Profile) bool { return p != nil && p.compilation == c }
+
+func (c *Context) openProfile(name string) (io.ReadCloser, error) {
+	if c.OpenProfile == nil {
+		return nil, fmt.Errorf("profile input provider is not configured")
+	}
+	reader, err := c.OpenProfile(name)
+	if err == nil && reader == nil {
+		return nil, fmt.Errorf("profile input provider returned a nil stream")
+	}
+	return reader, err
+}
+
+// New loads a raw or preprocessed native profile from OpenProfile and binds its
+// call graph to this compiler instance. The input stream is closed by the
+// native reader on success and failure.
+func (c *Context) New(name string) (*Profile, error) {
+	for _, fn := range c.Typecheck.Target.Funcs {
+		c.checkNode(fn)
+	}
+	profile, err := c.readProfile(name)
+	if err != nil || profile == nil {
+		return profile, err
+	}
+	for _, node := range profile.WeightedCG.IRNodes {
+		if node.AST != nil {
+			c.checkNode(node.AST)
+		}
+	}
+	return profile, nil
+}

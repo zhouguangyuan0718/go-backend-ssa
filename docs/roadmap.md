@@ -112,3 +112,7 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 ### 隔离上游编译驱动
 
 已通过隔离 Go 1.27.1 的真实 `cmd/compile` 调用本库，强制重建 Linux/amd64 无 cgo 标准库，并验证自编译的编译器继续生成一致归档，见[驱动接入记录](m3-upstream-compiler-driver.md)。后续继续完整 bootstrap、所需驱动能力与回归、第二目标及独立 SSA 阶段接口。
+
+### 原生 profile 输入与带 PGO 的自编译
+
+已接通 raw/gzip/预处理 profile 的原生读取和调用图归属，验证热点机器码及使用默认 PGO 的真实编译器自编译，见[阶段记录](m3-native-profile-input.md)。后续继续完整 dist bootstrap、多阶段稳定性、第二目标与独立 SSA 阶段接口。

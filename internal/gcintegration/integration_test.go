@@ -177,7 +177,23 @@ func main(){x:=[]int{5,1,3};slices.Sort(x);ch:=make(chan int);go func(){ch<-twic
 		t.Fatalf("standard rebuild package count: got %d want %d", len(builtPackages), expected)
 	}
 	t.Logf("all %d selected standard packages compiled through library", expected)
-	run(filepath.Join(tree, "bin/go"), []string{"build", "-a", "-p=4", "-pgo=off", "-o", filepath.Join(probe, "compile.self"), "cmd/compile"}, targetEnv, filepath.Join(tree, "src/cmd"))
+	run(filepath.Join(tree, "bin/go"), []string{"build", "-a", "-p=4", "-o", filepath.Join(probe, "compile.self"), "cmd/compile"}, targetEnv, filepath.Join(tree, "src/cmd"))
+	pgoCalls, e := os.ReadFile(trace)
+	if e != nil {
+		t.Fatal(e)
+	}
+	pgoUsed := false
+	for _, line := range bytes.Split(bytes.TrimSpace(pgoCalls), []byte{'\n'}) {
+		var call struct{ Package, Profile string }
+		if e = json.Unmarshal(line, &call); e != nil {
+			t.Fatal(e)
+		}
+		pgoUsed = pgoUsed || call.Package == "main" && call.Profile != ""
+	}
+	if !pgoUsed {
+		t.Fatal("compiler self-build did not use the native default PGO profile")
+	}
+	t.Log("compiler self-build used the native default PGO profile")
 	if b := execute("compile.self", "-V=full"); !bytes.Contains(b, []byte(manifest.Library)) {
 		t.Fatalf("self-compiled compiler identity mismatch: %s", b)
 	}

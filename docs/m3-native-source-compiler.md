@@ -25,4 +25,6 @@
 
 ## 后续边界
 
-此入口运行完整原生后端；独立使用所需的 Built/EarlyOptimized API 仍需在共享阶段上实现。隔离 Go 1.27.1 驱动接入、无 cgo 标准库重建及一次编译器自编译已在[后续阶段](m3-upstream-compiler-driver.md)完成；完整 bootstrap、更多驱动选项、PGO/cgo、第二目标和规定回归仍需继续验收。原生 symabis 输入描述 ABI，不代表本入口已经处理汇编源文件或组装归档中的外部对象。
+此入口运行完整原生后端；独立使用所需的 Built/EarlyOptimized API 仍需在共享阶段上实现。隔离 Go 1.27.1 驱动接入、无 cgo 标准库重建及一次编译器自编译已在[后续阶段](m3-upstream-compiler-driver.md)完成；完整 bootstrap、更多驱动选项、cgo/race、第二目标和规定回归仍需继续验收。原生 symabis 输入描述 ABI，不代表本入口已经处理汇编源文件或组装归档中的外部对象。
+
+显式 raw/gzip/预处理 PGO 输入及带默认 profile 的自编译已接通，见[后续 PGO 阶段](m3-native-profile-input.md)。

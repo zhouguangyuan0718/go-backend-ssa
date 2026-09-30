@@ -32,6 +32,7 @@ import (
 	"go-backend-ssa/internal/liveness"
 	"go-backend-ssa/internal/noder"
 	"go-backend-ssa/internal/objw"
+	"go-backend-ssa/internal/pgoir"
 	"go-backend-ssa/internal/pkginit"
 	"go-backend-ssa/internal/reflectdata"
 	"go-backend-ssa/internal/rttype"
@@ -77,6 +78,13 @@ type EmbedConfig struct {
 type SourcePaths struct {
 	WorkingDirectory, GOROOT, HostOS string
 }
+
+// ProfileInput supplies a raw (optionally gzip-compressed) pprof profile or a
+// native preprocessed profile. Name is used only to identify diagnostics.
+type ProfileInput struct {
+	Name string
+	Data []byte
+}
 type Request struct {
 	ImportPath string
 	Files      []SourceFile
@@ -88,8 +96,9 @@ type Request struct {
 	Imports   map[string][]byte
 	ImportMap map[string]string
 	// SymABIs supplies native assembler ABI declarations, when present.
-	SymABIs []byte
-	Embed   EmbedConfig
+	SymABIs    []byte
+	PGOProfile *ProfileInput
+	Embed      EmbedConfig
 }
 type Result struct {
 	Archive        []byte
@@ -154,7 +163,6 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 		return nil, e
 	}
 	u := types.NewUniverseWithPositions(8, 8, 1<<50, &link.PosTable)
-	u.LocalPkg = u.NewPkg(req.ImportPath, "")
 	u.BuiltinPkg.Prefix = "go:builtin"
 	u.UnsafePkg.Name = "unsafe"
 	u.Experiment = *exp
@@ -177,6 +185,8 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 		}
 	}()
 	tc := typecheck.NewContext(graph)
+	lowering := walk.NewPackageState(tc)
+	u.LocalPkg = u.NewPkg(req.ImportPath, "")
 	tc.InitUniverse()
 	tc.InitRuntime()
 	flags := &graph.Base.Flag
@@ -239,6 +249,7 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 	}
 	nd.ReflectData = reflectdata.NewContext(tc, rt, sd)
 	nd.StaticInit = staticinit.NewContext(tc, nd.ReflectData)
+	lowering.BindFrontend(nd, escape.NewContext(tc, nd.Inline.Log))
 	backend := ssagen.NewContext(tc)
 	backend.Inline = nd.Inline
 	backend.SSA = ssa.NewContext(abi.NewContext(graph), nd.ReflectData, nd.Inline.Log)
@@ -310,17 +321,35 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 		backend.ReadFile = func(string) ([]byte, error) { return data, nil }
 		syms.ReadSymABIs("input.symabis")
 	}
+	var profile *pgoir.Profile
+	if req.PGOProfile != nil {
+		name := req.PGOProfile.Name
+		if name == "" {
+			name = "input.pprof"
+		}
+		data := bytes.Clone(req.PGOProfile.Data)
+		flags.PgoProfile = name
+		nd.Inline.PGO.OpenProfile = func(string) (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(data)), nil }
+		graph.Base.Timer.Start("fe", "pgo-load-profile")
+		profile, e = nd.Inline.PGO.New(name)
+		if e != nil {
+			return nil, fmt.Errorf("%s: PGO error: %w", name, e)
+		}
+		if err = ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
 	finalizer := gc.NewContext(writer)
 	finalizer.BindPackage(pkginit.NewContext(nd))
-	finalizer.BindBackend(backend, walk.NewContext(nd, escape.NewContext(tc, nd.Inline.Log)))
-	finalizer.PrepareFrontend(syms, nil)
+	finalizer.BindBackend(backend, lowering)
+	finalizer.PrepareFrontend(syms, profile)
 	if errors() {
 		return nil, &Error{Diagnostics: diagnostics()}
 	}
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
-	finalizer.CompileDeclarations(syms, nil)
+	finalizer.CompileDeclarations(syms, profile)
 	if errors() {
 		return nil, &Error{Diagnostics: diagnostics()}
 	}

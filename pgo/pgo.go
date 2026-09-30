@@ -1,5 +1,5 @@
-// Package pgo exposes Go's native preprocessed profile data and stream format.
-// Raw pprof parsing and a complete PGO compiler pipeline are not provided.
+// Package pgo exposes native raw pprof processing, preprocessed profile data
+// and the compiler profile stream format. Each raw parse owns its decoder state.
 package pgo
 
 import (
@@ -15,3 +15,5 @@ type NamedEdgeMap = compiler.NamedEdgeMap
 func IsSerialized(r *bufio.Reader) (bool, error)    { return compiler.IsSerialized(r) }
 func FromSerialized(r io.Reader) (*Profile, error)  { return compiler.FromSerialized(r) }
 func WeightInPercentage(value, total int64) float64 { return compiler.WeightInPercentage(value, total) }
+
+func FromPProf(r io.Reader) (*Profile, error) { return compiler.NewContext().FromPProf(r) }

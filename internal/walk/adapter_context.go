@@ -33,16 +33,35 @@ type Context struct {
 	shapeConvSources                             map[*ir.Name]*types.Type
 }
 
-func NewContext(nd *noder.Context, esc *escape.Context) *Context {
-	if nd == nil || nd.Typecheck == nil || nd.Typecheck.IR == nil || nd.Types != nd.Typecheck.IR.Types || esc == nil || esc.Typecheck != nd.Typecheck || nd.ReflectData == nil || nd.ReflectData.Typecheck != nd.Typecheck || nd.StaticInit == nil || nd.StaticInit.Typecheck != nd.Typecheck || nd.StaticInit.ReflectData != nd.ReflectData || nd.Typecheck.IR.Base.Ctxt.Arch == nil {
-		panic("walk requires shared reader, escape, typecheck and static data contexts")
+// NewPackageState evaluates native walk package initializers before the local
+// package and builtin types are initialized. BindFrontend before lowering IR.
+func NewPackageState(tc *typecheck.Context) *Context {
+	if tc == nil || tc.IR == nil || tc.IR.Types == nil || tc.IR.Base.Ctxt.Arch == nil {
+		panic("walk requires a compiler graph with target architecture")
 	}
-	c := &Context{Noder: nd, Escape: esc, Typecheck: nd.Typecheck, Compare: compare.NewContext(nd.Typecheck), ptrSize: nd.Types.PointerSize(), regSize: nd.Types.RegisterSize()}
+	c := &Context{Typecheck: tc, Compare: compare.NewContext(tc), ptrSize: tc.IR.Types.PointerSize(), regSize: tc.IR.Types.RegisterSize()}
 	c.initialize()
 	return c
 }
+
+func NewContext(nd *noder.Context, esc *escape.Context) *Context {
+	if nd == nil {
+		panic("walk requires a reader")
+	}
+	c := NewPackageState(nd.Typecheck)
+	c.BindFrontend(nd, esc)
+	return c
+}
+
+// BindFrontend attaches the reader and escape contexts to the initialized state.
+func (c *Context) BindFrontend(nd *noder.Context, esc *escape.Context) {
+	if c == nil || c.Noder != nil || nd == nil || nd.Typecheck != c.Typecheck || nd.Typecheck.IR == nil || nd.Types != nd.Typecheck.IR.Types || esc == nil || esc.Typecheck != nd.Typecheck || nd.ReflectData == nil || nd.ReflectData.Typecheck != nd.Typecheck || nd.StaticInit == nil || nd.StaticInit.Typecheck != nd.Typecheck || nd.StaticInit.ReflectData != nd.ReflectData {
+		panic("walk requires shared reader, escape, typecheck and static data contexts")
+	}
+	c.Noder, c.Escape = nd, esc
+}
 func (c *Context) checkFunc(fn *ir.Func) {
-	if fn == nil || !c.Typecheck.IR.OwnsNode(fn) {
+	if c.Noder == nil || fn == nil || !c.Typecheck.IR.OwnsNode(fn) {
 		panic("walk function belongs to another compilation")
 	}
 }

@@ -4,9 +4,17 @@ import (
 	"fmt"
 	"go-backend-ssa/internal/cmd/obj"
 	"go-backend-ssa/internal/cmd/sys"
+	"go-backend-ssa/internal/escape"
 	"go-backend-ssa/internal/ir"
+	"go-backend-ssa/internal/noder"
+	"go-backend-ssa/internal/objw"
+	"go-backend-ssa/internal/reflectdata"
+	"go-backend-ssa/internal/rttype"
+	"go-backend-ssa/internal/staticdata"
+	"go-backend-ssa/internal/staticinit"
 	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
+	"go-backend-ssa/internal/types2"
 	"testing"
 )
 
@@ -98,7 +106,19 @@ func TestWalkTargetIsolation(t *testing.T) {
 }
 
 func TestWalkClearsFunctionCaches(t *testing.T) {
-	c := targetContext(8, sys.AMD64)
+	tc := targetContext(8, sys.AMD64).Typecheck
+	tc.IR.Base.Ctxt.Arch.Arch = sys.NewContext().ArchAMD64
+	nd, err := noder.NewContext(types2.NewContext(), tc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := objw.NewContext(tc.IR.Types, tc.IR.Base.Ctxt, "linux")
+	rt := rttype.NewContext(writer)
+	rt.Init()
+	nd.ReflectData = reflectdata.NewContext(tc, rt, staticdata.NewContext(tc.IR, writer))
+	nd.StaticInit = staticinit.NewContext(tc, nd.ReflectData)
+	c := NewPackageState(tc)
+	c.BindFrontend(nd, escape.NewContext(tc, nd.Inline.Log))
 	g := c.Typecheck.IR
 	u := g.Types
 	for _, name := range []string{"first", "second"} {

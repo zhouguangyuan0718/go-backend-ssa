@@ -57,7 +57,7 @@ func run() error {
         "complete": true, "buildid": true, "goversion": true,
         "trimpath": true, "nolocalimports": true, "D": true,
         "importcfg": true, "embedcfg": true, "symabis": true,
-        "pack": true, "asmhdr": true, "c": true, "N": true,
+        "pack": true, "asmhdr": true, "c": true, "N": true, "pgoprofile": true,
         "l": true, "dwarf": true,
     }
     var unsupported string
@@ -91,6 +91,10 @@ func run() error {
     if base.Flag.SymABIs != "" {
         data, err := os.ReadFile(base.Flag.SymABIs); if err != nil { return err }; req.SymABIs = data
     }
+    if base.Flag.PgoProfile != "" {
+        data, err := os.ReadFile(base.Flag.PgoProfile); if err != nil { return err }
+        req.PGOProfile = &compiler.ProfileInput{Name: base.Flag.PgoProfile, Data: data}
+    }
     result, err := compiler.Compile(context.Background(), req)
     if err != nil { return err }
     for _, d := range result.Diagnostics { fmt.Fprintln(os.Stderr, d.String()) }
@@ -100,7 +104,7 @@ func run() error {
     }
     // Explicit opt-in audit evidence records successful calls into the library.
     if path := os.Getenv("GO_SSA_BRIDGE_TRACE"); path != "" {
-        record, err := json.Marshal(struct{ Package, Library, Upstream string }{req.ImportPath, bridgeRevision, compiler.UpstreamCommit}); if err != nil { return err }
+        record, err := json.Marshal(struct{ Package, Library, Upstream, Profile string }{req.ImportPath, bridgeRevision, compiler.UpstreamCommit, base.Flag.PgoProfile}); if err != nil { return err }
         f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); if err != nil { return err }
         _, err = f.Write(append(record, '\n')); closeErr := f.Close(); if err != nil { return err }; return closeErr
     }
