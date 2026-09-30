@@ -70,7 +70,7 @@ func flushContext(pp *Progs) *Context {
 	if ir.ContextOf(pp.CurFunc) != c.IR || pp.Text.From.Sym != pp.CurFunc.LSym {
 		panic("flush function owner mismatch")
 	}
-	if c.Link.DWARF == nil || c.Link.DebugInfo == nil {
+	if c.Link.DWARF == nil || (c.IR.Base.Flag.Dwarf && c.Link.DebugInfo == nil) {
 		panic("instruction flush requires compiler DWARF callbacks")
 	}
 	return c

@@ -158,6 +158,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 					prov.Declarations = append(prov.Declarations, "function-region-end-before:"+name)
 				}
 				for i, anchor := range []SourceCallAnchor{r.First, r.Last} {
+					if anchor.Assignment != "" {
+						prov.Declarations = append(prov.Declarations, fmt.Sprintf("function-region-assignment:%s:%d:%s", name, i, anchor.Assignment))
+					}
 					if anchor.Enclosing != "" {
 						prov.Declarations = append(prov.Declarations, fmt.Sprintf("function-region-enclosing:%s:%d:%s", name, i, anchor.Enclosing))
 					}

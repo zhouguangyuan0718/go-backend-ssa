@@ -393,3 +393,13 @@ func (c *Context) CompilePackage(symABIs *ssagen.SymABIs, profile *pgoir.Profile
 	c.CompileDeclarations(symABIs, profile)
 	c.FinishPackage()
 }
+
+// CheckPackage runs Main's final large-frame, function-stack and queue checks.
+// The native driver invokes these after archive writing. Callers that buffer
+// archive output must withhold that output if these checks report diagnostics.
+func (c *Context) CheckPackage() {
+	if c == nil || c.Backend == nil || !c.finishStarted || c.finishRunning || c.finishFailed || !c.Writer.Link.ObjectNumbered() {
+		panic("final compiler checks require a completed package")
+	}
+	c.checkPackage()
+}

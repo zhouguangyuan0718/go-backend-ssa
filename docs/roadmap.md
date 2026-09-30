@@ -104,3 +104,7 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 ### 原生整包收尾
 
 `FinishPackage` 接通 Main 的声明编译后原生区间，`CompilePackage` 串起已加载 IR 的前端、声明固定点与最终符号编号。验证与边界见[阶段记录](m3-native-package-finish.md)。后续继续源码 Build、真实链接运行和工具链替换。
+
+### 源码到原生归档
+
+公开 `compiler.Compile` 已串起显式源码/依赖与原生完整编译，并在三种模式下完成官方归档逐字节比较和真实 Linux/amd64 链接运行，见[阶段记录](m3-native-source-compiler.md)。后续推进隔离官方驱动接入、标准库重建/自举、独立 Built/EarlyOptimized 边界和第二目标验收。

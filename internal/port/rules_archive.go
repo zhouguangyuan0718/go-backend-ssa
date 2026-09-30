@@ -14,7 +14,8 @@ func archiveMigration(units []Unit) []Unit {
 			u.Declarations = append(u.Declarations, "Writer.Close")
 			u.HostFields[0].Methods = append(u.HostFields[0].Methods, "Close")
 		case "src/internal/buildcfg/exp.go":
-			u.Declarations = append(u.Declarations, "ExperimentFlags.Enabled")
+			u.Declarations = append(u.Declarations, "ExperimentFlags.Enabled", "ExperimentFlags.String", "ExperimentFlags.All")
+			u.Functions = append(u.Functions, "ParseGOEXPERIMENT")
 			u.Functions = append(u.Functions, "expList")
 		case "src/internal/buildcfg/cfg.go":
 			u.Declarations = append(u.Declarations, "GoarmFeatures.String", "Goarm64Features.String", "gowasmFeatures", "gowasmFeatures.String")

@@ -10,6 +10,7 @@ import (
 // LinkContext owns the native linker-symbol namespace inputs. The Link and its
 // lookup maps stay intact; no second symbol representation is introduced.
 type LinkContext struct {
+	debugDefaults                                       DebugFlags
 	hashDebug                                           *HashDebug
 	ConvertHash, FmaHash, LoopVarHash, PGOHash          *HashDebug
 	LiteralAllocHash, MergeLocalsHash, VariableMakeHash *HashDebug
@@ -43,4 +44,12 @@ func (d *HashDebug) log(varname string, hash uint64, text string) {
 	}
 	fmt.Fprintf(file, "%s %s\n", text, bisect.Marker(hash))
 	fmt.Fprintf(file, "%s triggered %s %s\n", varname, text, hashString(hash))
+}
+
+// DefaultDebugFlags executes the pinned compiler's initial debug assignments,
+// before any command-line or environment overrides, into a detached value.
+func DefaultDebugFlags() DebugFlags {
+	c := newLinkContext()
+	c.initializeDebugDefaults()
+	return c.debugDefaults
 }

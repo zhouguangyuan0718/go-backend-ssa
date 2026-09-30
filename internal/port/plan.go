@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v67"
+const ToolVersion = "syncgo-m3-v68"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -91,6 +91,9 @@ type FunctionRegionRule struct {
 	EndBefore      bool
 }
 type SourceCallAnchor struct {
+	// Assignment anchors a direct assignment to a package variable or field.
+	// It is mutually exclusive with the imported-call anchor fields.
+	Assignment      string
 	Package, Member string
 	// Enclosing selects a complete top-level range or if containing the call.
 	// Empty requires a direct call statement.
@@ -288,6 +291,12 @@ func (p Plan) Validate() error {
 				return fmt.Errorf("invalid function region source: %s", r.SourceFunction)
 			}
 			for _, a := range []SourceCallAnchor{r.First, r.Last} {
+				if a.Assignment != "" {
+					if !memberPath(a.Assignment) || a.Package != "" || a.Member != "" || a.Enclosing != "" || a.StringArgument != nil {
+						return fmt.Errorf("invalid assignment region anchor: %s", name)
+					}
+					continue
+				}
 				if a.Package == "" || !safePath(a.Package) || !memberPath(a.Member) || (a.Enclosing != "" && a.Enclosing != "range" && a.Enclosing != "if") || (a.StringArgument != nil && a.StringArgument.Index < 0) {
 					return fmt.Errorf("invalid function region anchor: %s", name)
 				}

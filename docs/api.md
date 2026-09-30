@@ -1,6 +1,6 @@
 # 公共 API 与后端契约
 
-本文件的 Build/Package/SSA 接口仍是拟议设计。当前已实现的 position、diagnostic、target 及位置桥接接口见 [M2 记录](m2.md)；它们不构成可用的编译入口。
+本文件的 Build/Package/SSA 接口仍是拟议设计。已实现的完整原生源码编译入口为 `compiler.Compile`，见[源码到原生归档](m3-native-source-compiler.md)；它运行完整原生后端，不提供这里设计的 Built/EarlyOptimized 图结果。
 
 ## 入口
 

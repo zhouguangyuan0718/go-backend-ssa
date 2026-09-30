@@ -112,6 +112,7 @@
 95. [M3 完整原生 IR 诊断](docs/m3-ir-reports.md)：文本追加、HTML 阶段报告、实例输出提供器与关闭流程。
 96. [M3 原生包前端顺序](docs/m3-native-frontend-pipeline.md)：完整 Main 前端区间、独立阶段抽取及同实例编译入口。
 97. [M3 原生整包收尾](docs/m3-native-package-finish.md)：写屏障检查、map 保活重定位、数据与符号编号及包编译入口。
+98. [M3 源码到原生归档](docs/m3-native-source-compiler.md)：独立源码编译入口、显式依赖、原生最终检查和真实链接执行。
 
 ## 当前可运行的工具
 

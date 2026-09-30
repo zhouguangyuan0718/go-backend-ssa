@@ -310,6 +310,21 @@ func regionSelector(expr ast.Expr) (*ast.Ident, string) {
 	return root, strings.Join(members, ".")
 }
 func regionAnchor(file *ast.File, stmt ast.Stmt, anchor SourceCallAnchor) (bool, error) {
+	if anchor.Assignment != "" {
+		a, ok := stmt.(*ast.AssignStmt)
+		if !ok || a.Tok != token.ASSIGN || len(a.Lhs) != 1 || len(a.Rhs) != 1 {
+			return false, nil
+		}
+		root, member := regionSelector(a.Lhs[0])
+		if root == nil || regionImports(file)[root.Name] != "" || root.Obj != nil && root.Obj != file.Scope.Lookup(root.Name) {
+			return false, nil
+		}
+		name := root.Name
+		if member != "" {
+			name += "." + member
+		}
+		return name == anchor.Assignment, nil
+	}
 	match := func(call *ast.CallExpr) bool {
 		root, member := regionSelector(call.Fun)
 		if root == nil || root.Obj != nil || member != anchor.Member || regionImports(file)[root.Name] != anchor.Package {
