@@ -211,10 +211,12 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, sliceMigration()...)
 	plan.Units = append(plan.Units, abiMigration()...)
 	plan.Units = append(plan.Units, ssaObjectMigration()...)
+	plan.Units = append(plan.Units, Unit{Source: "src/cmd/compile/internal/abt/avlint32.go", Declarations: []string{"T", "node32"}})
 	plan.Units = append(plan.Units, ssaValueMigration()...)
 	plan.Units = append(plan.Units, walkMigration()...)
 	plan.Units = append(plan.Units, ssaTypesMigration()...)
 	plan.Units = append(plan.Units, ssaOpcodeMigration()...)
+	plan.Units = append(plan.Units, ssaGraphMigration()...)
 	for i := range plan.Units {
 		if plan.Units[i].Source == "src/cmd/internal/obj/link.go" {
 			plan.Units[i].Declarations = append(plan.Units[i].Declarations, "AXXX", "ABase386")

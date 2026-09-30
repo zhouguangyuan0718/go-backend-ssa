@@ -1,0 +1,61 @@
+package ssa
+import("fmt";"encoding/json";"encoding/binary";"os";"reflect";"strings";"testing";"IMPORT_TYPES";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_SRC";"IMPORT_IR";IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ var _ ir.Node
+ var out []string
+ // All fields, including private backend state, are part of the migrated native declarations.
+ for _,item:=range []any{Config{},Func{},Block{},Value{},Cache{},AuxCall{},pass{},LocalSlotSplitKey{},HTMLWriter{},dotWriter{},loop{},loopnest{},stackAllocState{},stackValState{},stackUseBlock{},valState{},use{},debugState{},BlockDebug{},LocListEntry{},pendingEntry{},stateAtPC{},VarLoc{},poset{},posetNode{},posetEdge(0),posetUndo{},limit{},sparseSet{},sparseMap{},biasedSparseMap{},xposmap{},SparseTreeNode{}} {
+  typ:=reflect.TypeOf(item)
+  normalize:=func(s string)string{return strings.NewReplacer("cmd/compile/internal/","compiler/","go-backend-ssa/internal/cmd/","cmd/internal/","go-backend-ssa/internal/","compiler/").Replace(s)}
+  out=append(out,"layout:"+normalize(typ.String()))
+  if typ.Kind()!=reflect.Struct{continue}
+  for i:=0;i<typ.NumField();i++{field:=typ.Field(i);out=append(out,fmt.Sprintf("field:%s:%s:%t:%q",field.Name,normalize(field.Type.String()),field.Anonymous,field.Tag))}
+ }
+ cfg:=&Config{PtrSize:int64(target.size),RegSize:int64(target.size),Types:*UP.NewTypes()}
+ cache:=new(Cache);cache.Reset();f:=cfg.NewFunc(nil,cache);f.Name="nativeGraph"
+ entry,left,right,join:=f.NewBlock(BlockIf),f.NewBlock(BlockPlain),f.NewBlock(BlockPlain),f.NewBlock(BlockRet);f.Entry=entry
+ pos:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase("graph.go","graph.go"),12,3)).WithIsStmt()
+ a:=entry.NewValue0I(pos,OpConst64,cfg.Types.Int64,17)
+ b:=entry.NewValue0I(pos,OpConst64,cfg.Types.Int64,-9)
+ cond:=entry.NewValue0I(pos,OpConstBool,cfg.Types.Bool,1);entry.SetControl(cond)
+ entry.AddEdgeTo(left);entry.AddEdgeTo(right);left.AddEdgeTo(join);right.AddEdgeTo(join)
+ l:=left.NewValue2(pos,OpAdd64,cfg.Types.Int64,a,b)
+ r:=right.NewValue2(pos,OpSub64,cfg.Types.Int64,a,b)
+ phi:=join.NewValue2(pos,OpPhi,cfg.Types.Int64,l,r)
+ out=append(out,fmt.Sprintf("graph:%d:%d:%d:%t:%t:%t",f.NumBlocks(),f.NumValues(),len(f.Blocks),f.Config==cfg,f.Cache==cache,f.OwnAux!=nil))
+ dump:=func(label string){for _,block:=range f.Blocks{out=append(out,fmt.Sprintf("%s:%s:%s:%v:%v:%v",label,block,block.Kind,block.Preds,block.Succs,block.ControlValues()));for _,v:=range block.Values{out=append(out,fmt.Sprintf("value:%s:%s:%v:%d:%d:%d:%v:%t",v,v.Op,v.Type,v.AuxInt,v.Uses,v.Pos.IsStmt(),v.Args,v.Block==block))}}}
+ dump("initial")
+ // Native edge maintenance includes parallel edges, self edges, swapping and removal.
+ join.AddEdgeTo(join);entry.AddEdgeTo(join);entry.AddEdgeTo(join)
+ entry.swapSuccessorsByIdx(0,3);e:=entry.Succs[1];e.b.removePred(e.i);entry.removeSucc(1)
+ for _,block:=range f.Blocks{for i,e:=range block.Succs{back:=e.b.Preds[e.i];if back.b!=block||back.i!=i{t.Fatal("broken reverse edge")}}}
+ join.CopyControls(entry);join.CopyControls(join);join.AddControl(a);join.ReplaceControl(1,b);join.Reset(BlockRet)
+ entry.resetWithControl2(BlockIf,cond,cond);entry.resetWithControl(BlockIf,cond)
+ phi.SetArgs4(a,b,a,b);phi.SetArg(0,l);phi.SetArgs3(r,l,r);phi.SetArgs2(l,r);phi.SetArgs1(a);phi.resetArgs()
+ phi.AddArg2(a,b);phi.AddArg3(a,b,a);phi.AddArg4(a,b,a,b);phi.AddArg5(a,b,a,b,a);phi.AddArg6(a,b,a,b,a,b);phi.AddArgs(a,b)
+ dump("edited")
+ // Exercise every native NewValue constructor variant with type-valued Aux.
+ aux:=Aux(cfg.Types.Int64)
+ values:=[]*Value{entry.NewValue0(pos,OpUnknown,cfg.Types.Int64),entry.NewValue0A(pos,OpAddr,cfg.Types.Int64,aux),entry.NewValue0IA(pos,OpAddr,cfg.Types.Int64,5,aux),
+ entry.NewValue1(pos,OpCopy,cfg.Types.Int64,a),entry.NewValue1I(pos,OpOffPtr,cfg.Types.Int64,2,a),entry.NewValue1A(pos,OpAddr,cfg.Types.Int64,aux,a),entry.NewValue1IA(pos,OpAddr,cfg.Types.Int64,3,aux,a),
+ entry.NewValue2A(pos,OpUnknown,cfg.Types.Int64,aux,a,b),entry.NewValue2I(pos,OpUnknown,cfg.Types.Int64,4,a,b),entry.NewValue2IA(pos,OpUnknown,cfg.Types.Int64,6,aux,a,b),
+ entry.NewValue3(pos,OpUnknown,cfg.Types.Int64,a,b,a),entry.NewValue3I(pos,OpUnknown,cfg.Types.Int64,7,a,b,a),entry.NewValue3A(pos,OpUnknown,cfg.Types.Int64,aux,a,b,a),
+ entry.NewValue4(pos,OpUnknown,cfg.Types.Int64,a,b,a,b),entry.NewValue4A(pos,OpUnknown,cfg.Types.Int64,aux,a,b,a,b),entry.NewValue4I(pos,OpUnknown,cfg.Types.Int64,8,a,b,a,b)}
+ for _,v:=range values{out=append(out,fmt.Sprintf("constructor:%s:%d:%t:%v:%d",v.Op,v.AuxInt,v.Aux==aux,v.Args,v.Pos.IsStmt()))}
+ detached:=f.newValueNoBlock(OpCopy,cfg.Types.Int64,pos);out=append(out,fmt.Sprintf("detached:%s:%t:%d",detached,detached.Block==nil,detached.Pos.IsStmt()))
+ out=append(out,fmt.Sprintf("first-stmt:%v:%v:%v",entry.FirstPossibleStmtValue(),join.FirstPossibleStmtValue(),new(Block).FirstPossibleStmtValue()))
+ for _,cpu:=range []CPUfeatures{CPUNone,CPUAll,CPUavx,CPUavx2|CPUgfni,CPUneon|CPUsve2}{out=append(out,fmt.Sprintf("cpu:%d:%s:%t",cpu,cpu,cpu.hasFeature(CPUavx)))}
+ // Cross both cache array boundaries; allocation must preserve graph identities.
+ for f.NumBlocks()<=202{f.NewBlock(BlockPlain)}
+ for f.NumValues()<=2002{entry.NewValue0I(pos,OpConst64,cfg.Types.Int64,1)}
+ for _,i:=range []int{0,197,198,199,200,201}{block:=f.Blocks[i];out=append(out,fmt.Sprintf("block-boundary:%d:%t",block.ID,int(block.ID)<len(cache.blocks)&&block==&cache.blocks[block.ID]))}
+ for _,i:=range []ID{1,1998,1999,2000,2001}{var found *Value;for _,v:=range entry.Values{if v.ID==i{found=v;break}};if found==nil{t.Fatalf("missing %d",i)};out=append(out,fmt.Sprintf("value-boundary:%d:%t:%t",found.ID,int(i)<len(cache.values)&&found==&cache.values[i],found.Block==entry))}
+ cache.locs[0]=&Register{};cache.regallocValues=make([]valState,2);cache.regallocValues[1].spill=a
+ cache.Reset()
+ out=append(out,fmt.Sprintf("reset:%t:%t:%t:%t",cache.values[1].ID==0,cache.blocks[1].ID==0,cache.locs[0]==nil,reflect.DeepEqual(cache.regallocValues[1],valState{})))
+ fresh:=cfg.NewFunc(nil,cache);fresh.Entry=fresh.NewBlock(BlockPlain);v:=fresh.Entry.NewValue0(pos,OpUnknown,cfg.Types.Int64)
+ out=append(out,fmt.Sprintf("reuse:%d:%d:%d:%d:%t:%t",fresh.Entry.ID,v.ID,len(fresh.Blocks),len(fresh.Entry.Values),len(fresh.NamedValues)==0,fresh.OwnAux!=f.OwnAux))
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(data))
+}

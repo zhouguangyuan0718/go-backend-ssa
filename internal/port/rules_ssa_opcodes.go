@@ -103,9 +103,9 @@ func ssaOpcodeMigration() []Unit {
 		u.ConstantFields = append(u.ConstantFields, ConstantFieldRule{Variable: "opcodeTable", Field: pair[0], Functions: []string{pair[1]}})
 	}
 	return []Unit{
-		{Source: root + "block.go", Declarations: []string{"BlockKind"}},
-		{Source: root + "op.go", Declarations: []string{"Op", "opInfo", "inputInfo", "outputInfo", "regInfo", "regInfo.String", "auxType", "auxNone", "SymEffect", "SymRead"}},
-		{Source: root + "regalloc.go", Declarations: []string{"register", "noRegister", "regMask", "regMask.intersect", "regMask.union", "regMask.minus", "regMask.empty", "regMask.pickReg", "regMask.addReg", "regMask.removeReg", "regMask.hasReg", "regMask.String"}, Functions: []string{"regMaskAt", "countRegs"}},
+		{Source: root + "block.go", Declarations: []string{"Block", "BranchPrediction", "CPUfeatures", "Edge", "Hotness", "BlockKind", "BranchUnlikely", "HotNotFlowIn", "CPUNone", "CPUfeatures.hasFeature", "CPUfeatures.String", "Edge.Block", "Edge.Index", "Edge.String", "Block.String", "Block.NumControls", "Block.ControlValues", "Block.SetControl", "Block.ResetControls", "Block.AddControl", "Block.ReplaceControl", "Block.CopyControls", "Block.Reset", "Block.resetWithControl", "Block.resetWithControl2", "Block.truncateValues", "Block.AddEdgeTo", "Block.removePred", "Block.removeSucc", "Block.swapSuccessorsByIdx", "Block.uniquePred", "Block.AuxIntString", "Block.likelyBranch", "Block.Logf", "Block.Log"}},
+		{Source: root + "op.go", Declarations: []string{"AuxCall", "Op", "opInfo", "inputInfo", "outputInfo", "regInfo", "regInfo.String", "auxType", "auxNone", "SymEffect", "SymRead"}},
+		{Source: root + "regalloc.go", Declarations: []string{"use", "valState", "register", "noRegister", "regMask", "regMask.intersect", "regMask.union", "regMask.minus", "regMask.empty", "regMask.pickReg", "regMask.addReg", "regMask.removeReg", "regMask.hasReg", "regMask.String"}, Functions: []string{"regMaskAt", "countRegs"}},
 		u,
 	}
 }

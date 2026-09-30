@@ -32,6 +32,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_types")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_objects")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_opcodes")
+	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_graph")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -100,7 +101,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		position = "u.Pos"
 	}
 
-	if snapshotName == "ssa_types" {
+	if snapshotName == "ssa_types" || snapshotName == "ssa_graph" {
 		setup = strings.Replace(setup, "typecheck.NewContext(ir.NewContext(u,link)).InitUniverse()", "graph:=ir.NewContext(u,link);typecheck.NewContext(graph).InitUniverse();c:=&Context{Types:u}", 1)
 	}
 
@@ -208,7 +209,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	overlay := map[string]string{}
 	packages := []string{"cmd/compile/internal/ir", "cmd/compile/internal/types", "cmd/compile/internal/base", "cmd/internal/obj", "cmd/compile/internal/typecheck", "cmd/compile/internal/noder", "cmd/compile/internal/dwarfgen", "cmd/compile/internal/objw", "cmd/compile/internal/bitvec", "cmd/internal/objabi", "internal/bisect", "internal/abi", "cmd/compile/internal/rttype", "cmd/compile/internal/reflectdata", "cmd/compile/internal/typebits", "cmd/compile/internal/staticdata", "cmd/internal/hash", "cmd/compile/internal/compare", "cmd/compile/internal/staticinit", "cmd/compile/internal/pgoir", "cmd/internal/pgo", "cmd/compile/internal/inline/inlheur", "cmd/compile/internal/inline", "cmd/compile/internal/logopt", "cmd/compile/internal/devirtualize", "cmd/compile/internal/inline/interleaved", "cmd/compile/internal/loopvar", "cmd/compile/internal/pkginit", "cmd/compile/internal/ssagen", "cmd/compile/internal/deadlocals", "cmd/compile/internal/escape", "cmd/compile/internal/slice"}
 	if pkgName == "ssa" {
-		packages = append(packages, "cmd/compile/internal/ssa")
+		packages = append(packages, "cmd/compile/internal/ssa", "cmd/compile/internal/abt")
 		if snapshotName == "ssa_objects" || snapshotName == "ssa_opcodes" {
 			for _, arch := range []string{"arm", "arm64", "loong64", "mips", "ppc64", "riscv", "s390x", "wasm", "x86"} {
 				packages = append(packages, "cmd/internal/obj/"+arch)

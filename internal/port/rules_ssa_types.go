@@ -5,7 +5,7 @@ package port
 func ssaTypesMigration() []Unit {
 	const root = "src/cmd/compile/internal/"
 	u := Unit{Source: root + "ssa/config.go",
-		Declarations: []string{"Types", "Types.SetTypPtrs", "Logger", "Frontend"},
+		Declarations: []string{"Config", "blockRewriter", "mulRecipe", "valueRewriter", "Types", "Types.SetTypPtrs", "Logger", "Frontend"},
 		Functions:    []string{"NewTypes"},
 		Context:      &ContextRule{Type: "Context", Constructor: "initialize", Initialize: true, Adapter: "adapter_context.go", Selective: true},
 		Owner:        &OwnerRule{Types: []string{"Types"}, Context: "Context", Field: "compilation"},
