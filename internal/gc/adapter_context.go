@@ -3,14 +3,18 @@ package gc
 import (
 	"fmt"
 	"go-backend-ssa/diagnostic"
+	"go-backend-ssa/internal/bloop"
 	"go-backend-ssa/internal/cmd/bio"
 	"go-backend-ssa/internal/cmd/objabi"
 	"go-backend-ssa/internal/cmd/src"
+	"go-backend-ssa/internal/deadlocals"
 	"go-backend-ssa/internal/go/buildcfg"
 	"go-backend-ssa/internal/ir"
+	"go-backend-ssa/internal/loopvar"
 	"go-backend-ssa/internal/objw"
 	"go-backend-ssa/internal/pgoir"
 	"go-backend-ssa/internal/pkginit"
+	"go-backend-ssa/internal/slice"
 	"go-backend-ssa/internal/ssagen"
 	"go-backend-ssa/internal/walk"
 	"io"
@@ -23,12 +27,17 @@ import (
 // finalization to the same compiler graph. Public stage calls are serialized;
 // CompileQueued runs the configured backend workers and joins them before return.
 type Context struct {
-	Backend         *ssagen.Context
-	Lowering        *walk.Context
-	compilequeue    []*ir.Func
-	enqueued        map[*ir.Func]bool
-	workerFailureMu sync.Mutex
-	workerFailure   any
+	bloop                                            *bloop.Context
+	loopvar                                          *loopvar.Context
+	deadlocals                                       *deadlocals.Context
+	slice                                            *slice.Context
+	frontendStarted, frontendRunning, frontendFailed bool
+	Backend                                          *ssagen.Context
+	Lowering                                         *walk.Context
+	compilequeue                                     []*ir.Func
+	enqueued                                         map[*ir.Func]bool
+	workerFailureMu                                  sync.Mutex
+	workerFailure                                    any
 	// RaceEnabled selects the native randomized scheduling used by race builds.
 	// Randomness is owned by this compilation and cannot affect another instance.
 	RaceEnabled bool
@@ -58,7 +67,7 @@ func NewContext(writer *objw.Context) *Context {
 // AddGCLocals runs the native sequential registration of all function auxiliary
 // data after Flush and before symbol numbering. Call once per compilation.
 func (c *Context) AddGCLocals() {
-	if c == nil || c.Writer == nil || c.functionDataDone || c.declarationsRunning || c.declarationsFailed || c.workerFailure != nil || len(c.compilequeue) != 0 {
+	if c == nil || c.Writer == nil || c.functionDataDone || c.frontendRunning || c.frontendFailed || c.declarationsRunning || c.declarationsFailed || c.workerFailure != nil || len(c.compilequeue) != 0 {
 		panic("function data finalization requires an unconsumed compiler context")
 	}
 	c.functionDataDone = true
@@ -69,7 +78,7 @@ func (c *Context) AddGCLocals() {
 // Call after the package type/function fixed point and DWARF finalization.
 // A started data stage is consumed even if an input provider fails.
 func (c *Context) DumpData() {
-	if c == nil || c.Package == nil || c.functionDataDone || c.declarationsRunning || c.declarationsFailed || c.workerFailure != nil || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.StaticInit == nil || c.Package.Noder.ReflectData.StaticData == nil || c.Package.Noder.ReflectData.StaticData.Writer != c.Writer || c.Package.Noder.ReflectData.StaticData.IR != c.Package.Noder.Typecheck.IR {
+	if c == nil || c.Package == nil || c.functionDataDone || c.frontendRunning || c.frontendFailed || c.declarationsRunning || c.declarationsFailed || c.workerFailure != nil || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.StaticInit == nil || c.Package.Noder.ReflectData.StaticData == nil || c.Package.Noder.ReflectData.StaticData.Writer != c.Writer || c.Package.Noder.ReflectData.StaticData.IR != c.Package.Noder.Typecheck.IR {
 		panic("package data requires an unconsumed matching compiler graph")
 	}
 	c.functionDataDone = true
@@ -87,7 +96,7 @@ func (c *Context) BindPackage(p *pkginit.Context) {
 	c.Package = p
 }
 func (c *Context) checkGlobal(n *ir.Name) {
-	if c == nil || c.Package == nil || c.functionDataDone || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || n == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(n) {
+	if c == nil || c.Package == nil || c.functionDataDone || c.frontendRunning || c.frontendFailed || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || n == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(n) {
 		panic("global belongs to another or finalized compilation")
 	}
 }
@@ -223,7 +232,7 @@ func (c *Context) errorExit() {
 
 // BindBackend attaches the initialized backend and frontend lowering graph.
 func (c *Context) BindBackend(backend *ssagen.Context, lowering *walk.Context) {
-	if c == nil || c.Package == nil || backend == nil || lowering == nil || c.Backend != nil || c.functionDataDone || backend.Typecheck != c.Package.Noder.Typecheck || backend.SSA == nil || backend.SSAConfig() == nil || backend.WorkerCount() != backend.Typecheck.IR.Base.Flag.LowerC || backend.SSA.ReflectData != c.Package.Noder.ReflectData || lowering.Noder != c.Package.Noder || backend.Inline != c.Package.Noder.Inline {
+	if c == nil || c.Package == nil || backend == nil || lowering == nil || c.Backend != nil || c.functionDataDone || backend.Typecheck != c.Package.Noder.Typecheck || backend.SSA == nil || backend.SSAConfig() == nil || backend.WorkerCount() != backend.Typecheck.IR.Base.Flag.LowerC || backend.SSA.ReflectData != c.Package.Noder.ReflectData || lowering.Noder != c.Package.Noder || lowering.Escape == nil || lowering.Escape.Typecheck != c.Package.Noder.Typecheck || backend.Inline != c.Package.Noder.Inline {
 		panic("compiler queue requires the same initialized backend and package graph")
 	}
 	c.Writer.IR = c.Package.Noder.Typecheck.IR
@@ -231,12 +240,16 @@ func (c *Context) BindBackend(backend *ssagen.Context, lowering *walk.Context) {
 	c.Lowering = lowering
 	c.enqueued = make(map[*ir.Func]bool)
 	c.random = rand.New(rand.NewSource(1))
+	c.bloop = bloop.NewContext(c.Package.Noder.Typecheck)
+	c.loopvar = loopvar.NewContext(c.Package.Noder.Typecheck, c.Package.Noder.Inline.Log)
+	c.deadlocals = deadlocals.NewContext(c.Package.Noder.Typecheck.IR)
+	c.slice = slice.NewContext(lowering.Escape, c.Package.Noder.ReflectData)
 }
 
 // EnqueueFunc preserves native handling of closures, bodyless declarations and
 // sequential frontend preparation. CompileQueued must finish before finalization.
 func (c *Context) EnqueueFunc(fn *ir.Func, symABIs *ssagen.SymABIs) {
-	if c == nil || c.Backend == nil || c.functionDataDone || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || fn == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(fn) || !c.Backend.OwnsSymABIs(symABIs) || c.enqueued[fn] || c.Package.Noder.Typecheck.IR.CurFunc != nil || c.Writer.Link.ObjectNumbered() || (fn.LSym != nil && !fn.IsClosure()) {
+	if c == nil || c.Backend == nil || c.functionDataDone || c.frontendRunning || c.frontendFailed || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || fn == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(fn) || !c.Backend.OwnsSymABIs(symABIs) || c.enqueued[fn] || c.Package.Noder.Typecheck.IR.CurFunc != nil || c.Writer.Link.ObjectNumbered() || (fn.LSym != nil && !fn.IsClosure()) {
 		panic("compiler queue requires an unconsumed owned function and ABI input")
 	}
 	c.enqueued[fn] = true
@@ -245,7 +258,7 @@ func (c *Context) EnqueueFunc(fn *ir.Func, symABIs *ssagen.SymABIs) {
 
 // CompileQueued executes the native worker queue, including nested closures.
 func (c *Context) CompileQueued(profile *pgoir.Profile) {
-	if c == nil || c.Backend == nil || c.functionDataDone || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || c.Package.Noder.Typecheck.IR.CurFunc != nil {
+	if c == nil || c.Backend == nil || c.functionDataDone || c.frontendRunning || c.frontendFailed || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || c.Package.Noder.Typecheck.IR.CurFunc != nil {
 		panic("compile queue is not ready")
 	}
 	if c.Backend.WorkerCount() != c.Package.Noder.Typecheck.IR.Base.Flag.LowerC || c.Backend.WorkerCount() < 1 || c.errors() != 0 || (profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile)) {
@@ -295,12 +308,57 @@ func (c *Context) compileWorker(fn *ir.Func, worker int, profile *pgoir.Profile)
 // The native final DWARF pass participates in that same fixed point. Call once
 // on a fresh bound backend; do not pre-enqueue functions or emit globals.
 func (c *Context) CompileDeclarations(symABIs *ssagen.SymABIs, profile *pgoir.Profile) {
-	if c == nil || c.Backend == nil || c.declarationsStarted || c.functionDataDone || c.workerFailure != nil || len(c.enqueued) != 0 || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.Typecheck.IR.CurFunc != nil || !c.Backend.OwnsSymABIs(symABIs) || c.Backend.WorkerCount() != c.Package.Noder.Typecheck.IR.Base.Flag.LowerC || c.Backend.WorkerCount() < 1 || c.errors() != 0 || profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile) {
+	if c == nil || c.Backend == nil || c.declarationsStarted || c.frontendRunning || c.frontendFailed || c.functionDataDone || c.workerFailure != nil || len(c.enqueued) != 0 || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.Typecheck.IR.CurFunc != nil || !c.Backend.OwnsSymABIs(symABIs) || c.Backend.WorkerCount() != c.Package.Noder.Typecheck.IR.Base.Flag.LowerC || c.Backend.WorkerCount() < 1 || c.errors() != 0 || profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile) {
 		panic("declaration compilation requires a fresh initialized backend and owned ABI/profile")
 	}
 	c.declarationsStarted, c.declarationsRunning = true, true
 	completed := false
 	defer func() { c.declarationsRunning = false; c.declarationsFailed = !completed }()
 	c.compileDeclarations(symABIs, profile)
+	completed = c.errors() == 0
+}
+
+// PrepareFrontend preserves Main's native pass order from the first IR report
+// through inlining, wrappers, capture, initialization, escape and slice analysis.
+// Call once after loading local IR and applying coverage fixups, before compiling
+// declarations. A started pass consumes this stage even if a provider panics.
+func (c *Context) PrepareFrontend(symABIs *ssagen.SymABIs, profile *pgoir.Profile) {
+	if c == nil || c.Backend == nil || c.frontendStarted || c.declarationsStarted || c.functionDataDone || c.workerFailure != nil || len(c.enqueued) != 0 || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.Typecheck.IR.CurFunc != nil || !c.Backend.OwnsSymABIs(symABIs) || c.errors() != 0 || profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile) {
+		panic("frontend preparation requires a fresh compiler graph and owned ABI/profile")
+	}
+	n := c.Package.Noder
+	if c.Backend.Typecheck != n.Typecheck || c.Backend.Inline != n.Inline || c.Lowering.Noder != n || c.Lowering.Escape.Typecheck != n.Typecheck || n.ReflectData.Typecheck != n.Typecheck || n.Interleaved.Inline != n.Inline || n.StaticInit.Typecheck != n.Typecheck || n.StaticInit.ReflectData != n.ReflectData || c.bloop.Typecheck != n.Typecheck || c.loopvar.Typecheck != n.Typecheck || c.loopvar.Log != n.Inline.Log || c.deadlocals.IR != n.Typecheck.IR || c.slice.Escape != c.Lowering.Escape || c.slice.ReflectData != n.ReflectData {
+		panic("frontend preparation requires matching compiler dependencies")
+	}
+	for _, fn := range n.Typecheck.Target.Funcs {
+		if fn == nil || !n.Typecheck.IR.OwnsNode(fn) {
+			panic("frontend function belongs to another compilation")
+		}
+	}
+	for _, v := range n.Typecheck.Target.Externs {
+		if v == nil || !n.Typecheck.IR.OwnsNode(v) {
+			panic("frontend declaration belongs to another compilation")
+		}
+	}
+	for _, fn := range n.Typecheck.Target.Inits {
+		if fn == nil || !n.Typecheck.IR.OwnsNode(fn) {
+			panic("frontend initializer belongs to another compilation")
+		}
+	}
+	for _, pkg := range n.Typecheck.Target.Imports {
+		if pkg == nil || pkg.Universe() != n.Typecheck.IR.Types {
+			panic("frontend import belongs to another compilation")
+		}
+		if sym := pkg.Syms[".inittask"]; sym != nil {
+			if task, ok := sym.Def.(*ir.Name); ok && !n.Typecheck.IR.OwnsNode(task) {
+				panic("frontend imported initializer belongs to another compilation")
+			}
+		}
+	}
+
+	c.frontendStarted, c.frontendRunning = true, true
+	completed := false
+	defer func() { c.frontendRunning = false; c.frontendFailed = !completed }()
+	c.prepareFrontend(symABIs, profile)
 	completed = c.errors() == 0
 }

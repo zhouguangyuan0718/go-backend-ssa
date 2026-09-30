@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v65"
+const ToolVersion = "syncgo-m3-v66"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -83,10 +83,24 @@ type Unit struct {
 // Inputs are original pointer locals/parameters; their types are inferred from
 // the pinned declarations. This is a stage boundary, not a body rewrite.
 type FunctionRegionRule struct {
-	First, Last SourceCallAnchor
-	Inputs      []string
+	// SourceFunction selects a second interval from an original function under
+	// this rule's key. Empty keeps the original declaration name.
+	SourceFunction string
+	First, Last    SourceCallAnchor
+	Inputs         []string
+	EndBefore      bool
 }
-type SourceCallAnchor struct{ Package, Member string }
+type SourceCallAnchor struct {
+	Package, Member string
+	// Enclosing selects a complete top-level range or if containing the call.
+	// Empty requires a direct call statement.
+	Enclosing      string
+	StringArgument *SourceStringArgument
+}
+type SourceStringArgument struct {
+	Index int
+	Value string
+}
 
 // ContextParamCallRule passes Field from the caller Context to a selected
 // ContextParamExports method. ContextType must match the defining unit.
@@ -270,8 +284,11 @@ func (p Plan) Validate() error {
 			if u.WholeFile || !selected || !token.IsIdentifier(name) || name == "init" || u.Context == nil {
 				return fmt.Errorf("invalid function region: %s", name)
 			}
+			if r.SourceFunction != "" && (!token.IsIdentifier(r.SourceFunction) || r.SourceFunction == "init" || r.SourceFunction == name) {
+				return fmt.Errorf("invalid function region source: %s", r.SourceFunction)
+			}
 			for _, a := range []SourceCallAnchor{r.First, r.Last} {
-				if a.Package == "" || !safePath(a.Package) || !memberPath(a.Member) {
+				if a.Package == "" || !safePath(a.Package) || !memberPath(a.Member) || (a.Enclosing != "" && a.Enclosing != "range" && a.Enclosing != "if") || (a.StringArgument != nil && a.StringArgument.Index < 0) {
 					return fmt.Errorf("invalid function region anchor: %s", name)
 				}
 			}

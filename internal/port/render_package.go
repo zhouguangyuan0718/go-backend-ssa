@@ -151,6 +151,20 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			prov.SignatureSources = regionSources[i]
 			for _, name := range sortedKeys(u.FunctionRegions) {
 				r := u.FunctionRegions[name]
+				if r.SourceFunction != "" {
+					prov.Declarations = append(prov.Declarations, "function-region-origin:"+name+":"+r.SourceFunction)
+				}
+				if r.EndBefore {
+					prov.Declarations = append(prov.Declarations, "function-region-end-before:"+name)
+				}
+				for i, anchor := range []SourceCallAnchor{r.First, r.Last} {
+					if anchor.Enclosing != "" {
+						prov.Declarations = append(prov.Declarations, fmt.Sprintf("function-region-enclosing:%s:%d:%s", name, i, anchor.Enclosing))
+					}
+					if arg := anchor.StringArgument; arg != nil {
+						prov.Declarations = append(prov.Declarations, fmt.Sprintf("function-region-string-argument:%s:%d:%d:%q", name, i, arg.Index, arg.Value))
+					}
+				}
 				prov.Declarations = append(prov.Declarations, "function-region:"+name+":"+r.First.Package+"."+r.First.Member+":"+r.Last.Package+"."+r.Last.Member+":"+strings.Join(r.Inputs, ","))
 			}
 		}

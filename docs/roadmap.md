@@ -96,3 +96,7 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 ### 完整原生 IR 诊断
 
 完整迁入 IR dump/html，报告流、状态和关闭顺序归属于编译实例，替换此前仅写 trace 的 AstDump 适配。生成器显式绑定计算文件模式所需的宿主常量，保留完整原生追加与 HTML 算法。验证与边界见 [阶段记录](m3-ir-reports.md)。后续继续整包阶段顺序、统一 Build 和真实链接运行。
+
+### 原生包前端阶段顺序
+
+`PrepareFrontend` 从固定 Main 抽取完整前端区间，连接现有包声明固定点与后端。阶段和输入归属于同一编译实例，失败后禁止输出；见[阶段记录](m3-native-frontend-pipeline.md)。后续补齐 Main 整包收尾、统一 Build 与替换验收。

@@ -112,6 +112,9 @@ func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.Fil
 	if err != nil {
 		return nil, err
 	}
+	if err := prepareFunctionRegions(fset, f, data, u); err != nil {
+		return nil, err
+	}
 	if u.BuildVariant != "" {
 		found := 0
 		var groups []*ast.CommentGroup

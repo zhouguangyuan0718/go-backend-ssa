@@ -12,6 +12,54 @@ import (
 	"strings"
 )
 
+// A second named region starts from an independent parse of the original
+// declaration, before selection or extraction can mutate either interval. This
+// retains lexical object identities and comments for boundary validation.
+func prepareFunctionRegions(fs *token.FileSet, file *ast.File, data []byte, unit Unit) error {
+	original := map[string]*ast.FuncDecl{}
+	for _, d := range file.Decls {
+		if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil {
+			original[fn.Name.Name] = fn
+		}
+	}
+	combined := append([]byte(nil), data...)
+	copied := false
+	for _, name := range sortedKeys(unit.FunctionRegions) {
+		rule := unit.FunctionRegions[name]
+		if rule.SourceFunction == "" {
+			continue
+		}
+		if file.Scope.Lookup(name) != nil {
+			return fmt.Errorf("function region name collides with native declaration: %s", name)
+		}
+		source := original[rule.SourceFunction]
+		if source == nil || source.Body == nil || source.Type.TypeParams != nil || source.Type.Results != nil {
+			return fmt.Errorf("function region source missing or unsupported: %s", rule.SourceFunction)
+		}
+		start, end := fs.Position(source.Pos()).Offset, fs.Position(source.End()).Offset
+		if source.Doc != nil {
+			start = fs.Position(source.Doc.Pos()).Offset
+		}
+		nameStart, nameEnd := fs.Position(source.Name.Pos()).Offset, fs.Position(source.Name.End()).Offset
+		combined = append(combined, '\n')
+		combined = append(combined, data[start:nameStart]...)
+		combined = append(combined, name...)
+		combined = append(combined, data[nameEnd:end]...)
+		combined = append(combined, '\n')
+		copied = true
+	}
+	if copied {
+		// One token file keeps comment lines ordered for go/printer. Parsing
+		// the combined source also resolves package identifiers in each copy.
+		parsed, e := parser.ParseFile(fs, unit.Source+"#regions", combined, parser.ParseComments)
+		if e != nil {
+			return e
+		}
+		*file = *parsed
+	}
+	return nil
+}
+
 // The source AST still carries lexical object identities here. Preserve each
 // selected statement verbatim, and make every non-package capture explicit.
 func extractFunctionRegions(s *Source, fs *token.FileSet, file *ast.File, unit Unit, importer *packageImporter) (map[string]string, error) {
@@ -32,18 +80,29 @@ func extractFunctionRegions(s *Source, fs *token.FileSet, file *ast.File, unit U
 		}
 		first, last := -1, -1
 		for i, stmt := range fn.Body.List {
-			if regionAnchor(file, stmt, rule.First) {
+			matches, e := regionAnchor(file, stmt, rule.First)
+			if e != nil {
+				return nil, e
+			}
+			if matches {
 				if first >= 0 {
 					return nil, fmt.Errorf("ambiguous first region anchor: %s", name)
 				}
 				first = i
 			}
-			if regionAnchor(file, stmt, rule.Last) {
+			matches, e = regionAnchor(file, stmt, rule.Last)
+			if e != nil {
+				return nil, e
+			}
+			if matches {
 				if last >= 0 {
 					return nil, fmt.Errorf("ambiguous last region anchor: %s", name)
 				}
 				last = i
 			}
+		}
+		if rule.EndBefore {
+			last--
 		}
 		if first < 0 || last < first {
 			return nil, fmt.Errorf("function region anchors not found in order: %s", name)
@@ -63,7 +122,7 @@ func extractFunctionRegions(s *Source, fs *token.FileSet, file *ast.File, unit U
 		for _, input := range rule.Inputs {
 			var obj *ast.Object
 			ast.Inspect(fn, func(n ast.Node) bool {
-				if id, ok := n.(*ast.Ident); ok && id.Name == input && id.Obj != nil && id.Obj.Kind == ast.Var && !inside[objectDeclaration(id.Obj)] && file.Scope.Lookup(id.Name) != id.Obj {
+				if id, ok := n.(*ast.Ident); ok && id.Name == input && id.Obj != nil && id.Obj.Kind == ast.Var && !regionDeclarationInside(id.Obj, inside) && file.Scope.Lookup(id.Name) != id.Obj {
 					if obj == nil {
 						obj = id.Obj
 					} else if obj != id.Obj {
@@ -135,7 +194,11 @@ func extractFunctionRegions(s *Source, fs *token.FileSet, file *ast.File, unit U
 					}
 				case *ast.Ident:
 					obj := n.Obj
-					if obj == nil || file.Scope.Lookup(n.Name) == obj || inside[objectDeclaration(obj)] {
+					if obj != nil && (obj == fn.Name.Obj || rule.SourceFunction != "" && obj == file.Scope.Lookup(rule.SourceFunction)) {
+						failure = fmt.Errorf("function region refers to its unextracted function: %s", name)
+						return false
+					}
+					if obj == nil || file.Scope.Lookup(n.Name) == obj || regionDeclarationInside(obj, inside) {
 						return true
 					}
 					if _, ok := inputs[obj]; !ok {
@@ -161,7 +224,7 @@ func extractFunctionRegions(s *Source, fs *token.FileSet, file *ast.File, unit U
 				continue
 			}
 			ast.Inspect(stmt, func(n ast.Node) bool {
-				if id, ok := n.(*ast.Ident); ok && id.Obj != nil && inside[objectDeclaration(id.Obj)] {
+				if id, ok := n.(*ast.Ident); ok && id.Obj != nil && regionDeclarationInside(id.Obj, inside) {
 					failure = fmt.Errorf("function region local escapes its boundary: %s", id.Name)
 				}
 				return true
@@ -191,7 +254,26 @@ func extractFunctionRegions(s *Source, fs *token.FileSet, file *ast.File, unit U
 	return hashes, nil
 }
 
-func objectDeclaration(obj *ast.Object) ast.Node { n, _ := obj.Decl.(ast.Node); return n }
+// go/parser retains the short-assignment declaration object used while
+// parsing a range clause, although its identifiers are moved into RangeStmt.
+// Recognize those same declaration identifiers, not unrelated spelling/positions.
+func regionDeclarationInside(obj *ast.Object, inside map[ast.Node]bool) bool {
+	if obj == nil {
+		return false
+	}
+	decl, _ := obj.Decl.(ast.Node)
+	if inside[decl] {
+		return true
+	}
+	if assignment, ok := decl.(*ast.AssignStmt); ok && assignment.Tok == token.DEFINE {
+		for _, lhs := range assignment.Lhs {
+			if id, ok := lhs.(*ast.Ident); ok && id.Obj == obj && inside[id] {
+				return true
+			}
+		}
+	}
+	return false
+}
 func regionInputIdent(expr ast.Expr, inputs map[*ast.Object]string) *ast.Ident {
 	if expr == nil {
 		return nil
@@ -227,17 +309,61 @@ func regionSelector(expr ast.Expr) (*ast.Ident, string) {
 	root, _ := ast.Unparen(expr).(*ast.Ident)
 	return root, strings.Join(members, ".")
 }
-func regionAnchor(file *ast.File, stmt ast.Stmt, anchor SourceCallAnchor) bool {
-	e, ok := stmt.(*ast.ExprStmt)
-	if !ok {
-		return false
+func regionAnchor(file *ast.File, stmt ast.Stmt, anchor SourceCallAnchor) (bool, error) {
+	match := func(call *ast.CallExpr) bool {
+		root, member := regionSelector(call.Fun)
+		if root == nil || root.Obj != nil || member != anchor.Member || regionImports(file)[root.Name] != anchor.Package {
+			return false
+		}
+		if arg := anchor.StringArgument; arg != nil {
+			if arg.Index < 0 || arg.Index >= len(call.Args) {
+				return false
+			}
+			lit, ok := ast.Unparen(call.Args[arg.Index]).(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				return false
+			}
+			value, e := strconv.Unquote(lit.Value)
+			if e != nil || value != arg.Value {
+				return false
+			}
+		}
+		return true
 	}
-	call, ok := ast.Unparen(e.X).(*ast.CallExpr)
-	if !ok {
-		return false
+	if anchor.Enclosing == "" {
+		e, ok := stmt.(*ast.ExprStmt)
+		if !ok {
+			return false, nil
+		}
+		call, ok := ast.Unparen(e.X).(*ast.CallExpr)
+		return ok && match(call), nil
 	}
-	root, member := regionSelector(call.Fun)
-	return root != nil && root.Obj == nil && member == anchor.Member && regionImports(file)[root.Name] == anchor.Package
+	switch anchor.Enclosing {
+	case "range":
+		if _, ok := stmt.(*ast.RangeStmt); !ok {
+			return false, nil
+		}
+	case "if":
+		if _, ok := stmt.(*ast.IfStmt); !ok {
+			return false, nil
+		}
+	default:
+		return false, fmt.Errorf("unsupported enclosing region statement: %s", anchor.Enclosing)
+	}
+	count := 0
+	ast.Inspect(stmt, func(n ast.Node) bool {
+		if _, ok := n.(*ast.FuncLit); ok {
+			return false
+		}
+		if call, ok := n.(*ast.CallExpr); ok && match(call) {
+			count++
+		}
+		return true
+	})
+	if count > 1 {
+		return false, fmt.Errorf("ambiguous call in enclosing region statement: %s.%s", anchor.Package, anchor.Member)
+	}
+	return count == 1, nil
 }
 
 func regionInputType(fs *token.FileSet, file *ast.File, obj *ast.Object, importer *packageImporter) (ast.Expr, string, error) {

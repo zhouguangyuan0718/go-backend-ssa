@@ -18,6 +18,9 @@ import (
 )
 
 func queueCompiler(t *testing.T, workers int, input string) (*gc.Context, *ssagen.SymABIs) {
+	return loadQueueCompiler(t, workers, input, false)
+}
+func loadQueueCompiler(t *testing.T, workers int, input string, nativeFrontend bool) (*gc.Context, *ssagen.SymABIs) {
 	t.Helper()
 	backend := testBackendWorkers(true, workers)
 	dwarfgen.NewContext(backend, backend.SSA.ReflectData)
@@ -46,15 +49,21 @@ func queueCompiler(t *testing.T, workers int, input string) (*gc.Context, *ssage
 	}
 	n.ReadLocalPackage(data)
 
-	n.MakeWrappers(n.Typecheck.Target)
-	c.Package.MakeTask()
+	if !nativeFrontend {
+		n.MakeWrappers(n.Typecheck.Target)
+		c.Package.MakeTask()
+	}
 	backend.Inline = n.Inline
 	backend.ReadFile = func(string) ([]byte, error) { return []byte("def example/p.Assembly ABI0\n"), nil }
 	symABIs := backend.NewSymABIs()
 	symABIs.ReadSymABIs("queue.symabis")
-	symABIs.GenABIWrappers()
+	if !nativeFrontend {
+		symABIs.GenABIWrappers()
+	}
 	esc := escape.NewContext(n.Typecheck, n.Inline.Log)
-	esc.Funcs(n.Typecheck.Target.Funcs)
+	if !nativeFrontend {
+		esc.Funcs(n.Typecheck.Target.Funcs)
+	}
 	c.BindBackend(backend, walk.NewContext(n, esc))
 	return c, symABIs
 }

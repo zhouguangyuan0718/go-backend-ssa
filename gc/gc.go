@@ -1,4 +1,4 @@
-// Package gc exposes native function preparation, backend worker scheduling,
+// Package gc exposes native package frontend passes, backend worker scheduling,
 // declaration fixed points, data finalization and package archive output.
 // The source driver is a separate stage; callers share one compiler graph.
 package gc

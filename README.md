@@ -110,6 +110,7 @@
 93. [M3 原生源码前端](docs/m3-native-source-frontend.md)：checkFiles、midway 二次检查、AST 诊断及完整 unified 构建。
 94. [M3 原生 B.Loop 与覆盖率](docs/m3-prepackage.md)：基准循环保活、覆盖率变量分类和初始化注册。
 95. [M3 完整原生 IR 诊断](docs/m3-ir-reports.md)：文本追加、HTML 阶段报告、实例输出提供器与关闭流程。
+96. [M3 原生包前端顺序](docs/m3-native-frontend-pipeline.md)：完整 Main 前端区间、独立阶段抽取及同实例编译入口。
 
 ## 当前可运行的工具
 

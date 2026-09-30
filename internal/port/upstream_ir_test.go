@@ -65,6 +65,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_queue")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_data")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_fixed")
+	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_pipeline")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -94,7 +95,8 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		snapshotName = snapshots[0]
 	}
 	isSource := snapshotName == "noder_source" || snapshotName == "noder_prepackage"
-	isFixedSSA := snapshotName == "ssagen_fixed"
+	isFrontendPipeline := snapshotName == "ssagen_pipeline"
+	isFixedSSA := snapshotName == "ssagen_fixed" || isFrontendPipeline
 	isDataSSA := snapshotName == "ssagen_data"
 	isQueueSSA := snapshotName == "ssagen_queue" || isDataSSA || isFixedSSA
 	isArchiveSSA := snapshotName == "ssagen_archive" || isQueueSSA
@@ -325,6 +327,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 				ported = queueSnapshotFixture(t, ported, false)
 				if isFixedSSA {
 					ported = fixedPointSnapshotFixture(t, ported, false)
+					if isFrontendPipeline {
+						ported = frontendPipelineSnapshotFixture(t, ported, false)
+					}
 				}
 				if isDataSSA {
 					ported = dataSnapshotFixture(t, ported, false)
@@ -359,6 +364,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		template = []byte(originalTemplate)
 	}
 	packages := []string{"cmd/compile/internal/ir", "cmd/compile/internal/types", "cmd/compile/internal/base", "cmd/internal/obj", "cmd/compile/internal/typecheck", "cmd/compile/internal/noder", "cmd/compile/internal/dwarfgen", "cmd/compile/internal/objw", "cmd/compile/internal/bitvec", "cmd/internal/objabi", "internal/bisect", "internal/abi", "cmd/compile/internal/rttype", "cmd/compile/internal/reflectdata", "cmd/compile/internal/typebits", "cmd/compile/internal/staticdata", "cmd/internal/hash", "cmd/compile/internal/compare", "cmd/compile/internal/staticinit", "cmd/compile/internal/pgoir", "cmd/internal/pgo", "cmd/compile/internal/inline/inlheur", "cmd/compile/internal/inline", "cmd/compile/internal/logopt", "cmd/compile/internal/devirtualize", "cmd/compile/internal/inline/interleaved", "cmd/compile/internal/loopvar", "cmd/compile/internal/pkginit", "cmd/compile/internal/ssagen", "cmd/compile/internal/deadlocals", "cmd/compile/internal/escape", "cmd/compile/internal/slice"}
+	if isFrontendPipeline {
+		packages = append(packages, "cmd/compile/internal/bloop")
+	}
 	if pkgName == "ssa" || snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssagen_sources" || isBuildSSA {
 		packages = append(packages, "cmd/compile/internal/ssa", "cmd/compile/internal/abt")
 		if snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssagen_sources" || isBuildSSA || snapshotName == "ssa_objects" || snapshotName == "ssa_opcodes" || snapshotName == "ssa_check" || snapshotName == "ssa_lower" || snapshotName == "ssa_generic" || snapshotName == "ssa_optimizer" || snapshotName == "ssa_calls" || snapshotName == "ssa_allocation" || snapshotName == "ssa_phases" || snapshotName == "ssa_compile" {
@@ -576,6 +584,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 				native = queueSnapshotFixture(t, native, true) + nativeGCQueueObserver(t, s)
 				if isFixedSSA {
 					native = fixedPointSnapshotFixture(t, native, true) + nativeGCDataObserver(t, s) + nativeGCFixedPointObserver(t, s)
+					if isFrontendPipeline {
+						native = frontendPipelineSnapshotFixture(t, native, true) + nativeGCFrontendObserver(t, s)
+					}
 				}
 				if isDataSSA {
 					native = dataSnapshotFixture(t, native, true) + nativeGCDataObserver(t, s)
