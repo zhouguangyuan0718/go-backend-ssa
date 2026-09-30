@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v53"
+const ToolVersion = "syncgo-m3-v54"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -117,7 +117,11 @@ type LiteralRule struct {
 
 // StateRule redirects typed host state to an instance. Variable may name a
 // whole variable, a literal bool feature, or a reviewed direct struct field.
-type StateRule struct{ Source, Variable, Field string }
+type StateRule struct {
+	Source, Variable, Field string
+	Input                   bool
+	TypeSource              string // Pinned generator for a bootstrap constant initializer.
+}
 
 // ConstantFieldRule preserves selected native query signatures while the full
 // table moves into its context. The initializer and every table use are checked
@@ -343,6 +347,12 @@ func (p Plan) Validate() error {
 			}
 		}
 		for _, state := range u.State {
+			if state.TypeSource != "" && !safePath(state.TypeSource) {
+				return fmt.Errorf("invalid generated constant type source")
+			}
+			if state.Input && (strings.TrimPrefix(path.Dir(state.Source), "src/") != u.sourcePackage() || !token.IsIdentifier(state.Variable) || !token.IsIdentifier(state.Field)) {
+				return fmt.Errorf("invalid local host input")
+			}
 			if u.Context == nil || !safePath(state.Source) || portPath(state.Source) == "" || !memberPath(state.Variable) || !memberPath(state.Field) {
 				return fmt.Errorf("invalid external state binding")
 			}

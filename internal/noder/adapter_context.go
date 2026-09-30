@@ -30,6 +30,7 @@ import (
 // Context owns the formerly process-wide inputs used by the selected noder
 // algorithms. The supplied Link and its position table belong to this instance.
 type Context struct {
+	exportDone                                       bool
 	Interleaved                                      *interleaved.Context
 	Inline                                           *inline.Context
 	StaticInit                                       *staticinit.Context
@@ -343,4 +344,51 @@ func (c *Context) checkWrapperTarget(target *ir.Package) {
 			panic("wrapper input belongs to another compilation")
 		}
 	}
+}
+
+// checkExport protects the native reader relocation caches and ensures exported
+// symbol indices come from completed object numbering.
+func (c *Context) checkExport(out io.Writer) {
+	if c == nil || out == nil || !c.ExportAvailable() || !c.Ctxt.ObjectNumbered() || c.Ctxt.ObjectWritten() {
+		panic("export requires a local package and unconsumed numbered symbols")
+	}
+	c.exportDone = true
+}
+
+// ExportUnified writes the native finalized Unified IR bitstream and updates
+// the Link fingerprint. Number symbols first; this phase is single-use.
+func (c *Context) ExportUnified(out io.Writer) (err error) {
+	if out == nil {
+		return fmt.Errorf("export output is nil")
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			if failure, ok := p.(*exportOutputFailure); ok {
+				err = failure.cause
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	c.writeUnifiedExport(exportOutput{out})
+	return nil
+}
+
+type exportOutput struct{ io.Writer }
+type exportOutputFailure struct{ cause error }
+
+func (w exportOutput) Write(p []byte) (int, error) {
+	n, err := w.Writer.Write(p)
+	if err == nil && n != len(p) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		panic(&exportOutputFailure{err})
+	}
+	return n, nil
+}
+
+// ExportAvailable reports whether a local reader has an unused export phase.
+func (c *Context) ExportAvailable() bool {
+	return c != nil && c.localPkgReader != nil && !c.exportDone && c.Ctxt != nil
 }

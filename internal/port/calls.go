@@ -45,8 +45,18 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 		}
 		hashes[source] = hash(data)
 		if strings.TrimPrefix(path.Dir(source), "src/") == units[0].sourcePackage() {
-			if len(variables[source]) != 0 {
-				return nil, fmt.Errorf("local state must use context fields")
+			for name := range variables[source] {
+				reviewed := false
+				for _, u := range units {
+					for _, state := range u.State {
+						if state.Source == source && state.Variable == name {
+							reviewed = state.Input
+						}
+					}
+				}
+				if !reviewed {
+					return nil, fmt.Errorf("local state must use context fields or explicit host inputs")
+				}
 			}
 			continue // Checked with selected declarations by localCallSignatures.
 		}
@@ -150,6 +160,19 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 							}
 							if v.Type == nil {
 								typ, err := externalValueType(f, v, importer)
+								if err != nil {
+									for _, u := range units {
+										for _, state := range u.State {
+											if state.Source == source && state.Variable == name.Name && state.TypeSource != "" {
+												var proofHash string
+												typ, proofHash, err = generatedConstantType(s, v, state.TypeSource)
+												if err == nil {
+													hashes[state.TypeSource] = proofHash
+												}
+											}
+										}
+									}
+								}
 								if err != nil {
 									return nil, fmt.Errorf("external state %s: %w", name.Name, err)
 								}

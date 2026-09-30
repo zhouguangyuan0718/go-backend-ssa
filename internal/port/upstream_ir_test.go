@@ -60,6 +60,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_assemble")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_flush")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_object")
+	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_archive")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -85,7 +86,8 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if len(snapshots) > 0 {
 		snapshotName = snapshots[0]
 	}
-	isObjectSSA := snapshotName == "ssagen_object"
+	isArchiveSSA := snapshotName == "ssagen_archive"
+	isObjectSSA := snapshotName == "ssagen_object" || isArchiveSSA
 	isFlushSSA := snapshotName == "ssagen_flush" || isObjectSSA
 	isAssembleSSA := snapshotName == "ssagen_assemble"
 	isEmitSSA := snapshotName == "ssagen_emit" || isAssembleSSA || isFlushSSA
@@ -295,6 +297,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	if isObjectSSA {
 		ported = objectSnapshotFixture(t, ported, false)
+		if isArchiveSSA {
+			ported = archiveSnapshotFixture(t, ported, false, s.Pin.BuildToolchain)
+		}
 	}
 	writeTestFile(t, dir, "internal/"+pkgName+"/adapter_snapshot_test.go", ported)
 	snapshotTarget := ""
@@ -335,6 +340,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		packages = append(packages, "cmd/compile/internal/amd64", "cmd/internal/dwarf")
 		if isObjectSSA {
 			packages = append(packages, "cmd/internal/goobj", "cmd/internal/bio")
+			if isArchiveSSA {
+				packages = append(packages, "cmd/internal/archive")
+			}
 		}
 	}
 	for _, pkg := range packages {
@@ -502,6 +510,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	if isObjectSSA {
 		native = objectSnapshotFixture(t, native, true) + nativeGCObjectObserver(t, s)
+		if isArchiveSSA {
+			native = archiveSnapshotFixture(t, native, true, s.Pin.BuildToolchain) + nativeGCArchiveObserver(t, s)
+		}
 	}
 	writeTestFile(t, dir, "reference/"+pkgName+"_snapshot_test.go", native)
 	overlay[filepath.Join(goroot, "src/cmd/compile/internal/"+pkgName+"/syncgo_snapshot_test.go")] = filepath.Join(dir, "reference/"+pkgName+"_snapshot_test.go")
@@ -714,6 +725,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	if isEmitSSA {
 		targets = []string{"amd64", "amd64-noopt", "amd64-race", "amd64-noregabi", "amd64-dwarf4", "amd64-dwarf4-baseentries", "amd64-nolocations", "amd64-largephi", "amd64-inline"}
+	}
+	if isArchiveSSA {
+		targets = append(targets, "amd64-archive-split", "amd64-archive-cgo", "amd64-archive-buildid")
 	}
 	for _, snapshotTarget = range targets {
 		if snapshotName == "escape" {

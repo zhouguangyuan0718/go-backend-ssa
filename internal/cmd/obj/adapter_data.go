@@ -12,6 +12,7 @@ import (
 // supplied before writing symbols; the architecture remains Link.Arch.
 type dataState struct {
 	objectNumbered, objectWritten bool
+	objectNumberingDone           bool
 	ObjectBuiltins                *goobj.Context
 	OpenObjectInput               func(string) (io.ReadCloser, error)
 	inlHashLen                    int
@@ -121,3 +122,15 @@ func (link *Link) checkWriteObjFile(ctxt *Link, b *bio.Writer) {
 	b.Validate()
 	link.objectWritten = true
 }
+
+// ObjectNumbered reports successful completion of native symbol numbering.
+func (link *Link) ObjectNumbered() bool { return link != nil && link.objectNumberingDone }
+
+// NumberObjectSymbols configures builtin indices and commits the completion
+// state only after the complete native NumberSyms call succeeds.
+func (link *Link) NumberObjectSymbols(regabiWrappers bool) {
+	link.PrepareObject(regabiWrappers)
+	link.NumberSyms()
+	link.objectNumberingDone = true
+}
+func (link *Link) ObjectWritten() bool { return link != nil && link.objectWritten }

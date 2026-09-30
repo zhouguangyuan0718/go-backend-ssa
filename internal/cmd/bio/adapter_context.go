@@ -37,6 +37,11 @@ func NewWriter(out io.WriteSeeker) *Writer {
 	if out == nil {
 		panic("object output is nil")
 	}
-	return &Writer{f: out, Writer: bufio.NewWriter(out)}
+	return &Writer{f: borrowedOutput{out}, Writer: bufio.NewWriter(out)}
 }
 func (w *Writer) Validate() { _ = writerContext(w) }
+
+// A borrowed stream remains owned by the caller after native Writer.Close.
+type borrowedOutput struct{ io.WriteSeeker }
+
+func (borrowedOutput) Close() error { return nil }

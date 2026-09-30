@@ -44,10 +44,18 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	if err != nil {
 		return nil, nil, err
 	}
+	inputSignatures, err := localInputSignatures(s, units, fs, before)
+	if err != nil {
+		return nil, nil, err
+	}
+	signatures = append(signatures, inputSignatures...)
 	checkedFiles := append(append([]*ast.File(nil), original...), signatures...)
 	pkg, info, err := checkTypesImports(fs, sourcePkg, checkedFiles, before, true)
 	if err != nil {
 		return nil, nil, fmt.Errorf("selected package %s: %w", sourcePkg, err)
+	}
+	if err := checkLocalInputs(original, info, pkg, units); err != nil {
+		return nil, nil, err
 	}
 	before.packages[sourcePkg] = pkg
 	for _, file := range original {
@@ -129,6 +137,13 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 				prov.SignatureSources = map[string]string{}
 			}
 			prov.SignatureSources[state.Source] = signatureSources[state.Source]
+			if state.TypeSource != "" {
+				data, err := s.Read(state.TypeSource)
+				if err != nil {
+					return nil, nil, err
+				}
+				prov.SignatureSources[state.TypeSource] = hash(data)
+			}
 		}
 		for _, call := range u.Calls {
 			if prov.SignatureSources == nil {
@@ -169,6 +184,11 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		}
 		for _, rule := range u.FixedSizeof {
 			prov.Declarations = append(prov.Declarations, "fixed-sizeof:"+rule.Function+":"+rule.Type)
+		}
+		for _, state := range u.State {
+			if state.Input {
+				prov.Declarations = append(prov.Declarations, "host-input:"+state.Variable+":"+state.Field)
+			}
 		}
 		for _, rule := range u.HostFields {
 			prov.Declarations = append(prov.Declarations, "host-stream-field:"+rule.Type+"."+rule.Field+":"+strings.Join(rule.Methods, ","))

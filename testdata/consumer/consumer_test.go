@@ -501,14 +501,27 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 		graph.CurFunc = nil
 	}
 
+	finalizer := compilergc.NewContext(writer.ReflectData.Runtime.Writer)
+	finalizer.BindPackage(initialization)
+	for _, decl := range result.Externs {
+		switch decl.Op() {
+		case ir.ONAME:
+			finalizer.DumpGlobal(decl)
+		case ir.OLITERAL:
+			finalizer.DumpGlobalConst(decl)
+		}
+	}
+	writer.ReflectData.WriteGCSymbols()
+	writer.ReflectData.StaticData.WriteFuncSyms()
 	link.DwFixups.Finalize(link.Pkgpath, false)
-	compilergc.NewContext(writer.ReflectData.Runtime.Writer).AddGCLocals()
+	finalizer.AddGCLocals()
+	finalizer.SetObjectHeader(compilergc.ObjectConfig{GOOS: "linux", GOARCH: "amd64", GOAMD64: backend.SSA.GOAMD64, Version: "go1.27.1"})
 	var artifact consumerObjectOutput
-	if err := writer.ReflectData.Runtime.Writer.WriteObject(&artifact); err != nil {
+	if err := finalizer.WriteArchive(&artifact, compilergc.CombinedObject); err != nil {
 		t.Fatal(err)
 	}
-	if len(artifact.data) < 8 || string(artifact.data[:8]) != "\x00go120ld" {
-		t.Fatal("public native object output missing")
+	if !bytes.HasPrefix(artifact.data, []byte("!<arch>\n")) || !bytes.Contains(artifact.data, []byte("__.PKGDEF")) || !bytes.Contains(artifact.data, []byte("\x00go120ld")) {
+		t.Fatal("public native archive output missing")
 	}
 
 	if len(seen) == 0 {

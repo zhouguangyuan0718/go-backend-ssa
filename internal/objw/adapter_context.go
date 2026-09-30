@@ -74,7 +74,7 @@ func flushContext(pp *Progs) *Context {
 	return c
 }
 
-// WriteObject numbers symbols and writes the native Go object payload. Finish
+// WriteObject numbers symbols if needed and writes the native Go object payload. Finish
 // all functions, static/type data and DWARF fixups first. Each Link can be
 // serialized once; failure also consumes this stage. The caller owns output,
 // including any partial bytes after failure, and supplies file-backed data via
@@ -107,8 +107,9 @@ func (c *Context) WriteObject(output io.WriteSeeker) (err error) {
 			}
 		}
 	}()
-	link.PrepareObject(c.Types.Experiment.RegabiWrappers)
-	link.NumberSyms()
+	if !link.ObjectNumbered() {
+		c.NumberSymbols()
+	}
 	obj.WriteObjFile(link, b)
 	if e := b.Flush(); e != nil {
 		return e
@@ -117,4 +118,13 @@ func (c *Context) WriteObject(output io.WriteSeeker) (err error) {
 		return fmt.Errorf("object writing: %s", strings.Join(messages, "; "))
 	}
 	return nil
+}
+
+// NumberSymbols assigns native object indices before finalized package export.
+// The complete object graph must be ready, and numbering is single-use.
+func (c *Context) NumberSymbols() {
+	if c == nil || c.Link == nil || c.Types == nil {
+		panic("symbol numbering requires a compiler writer")
+	}
+	c.Link.NumberObjectSymbols(c.Types.Experiment.RegabiWrappers)
 }
