@@ -2,19 +2,38 @@ package gc
 
 import (
 	"fmt"
+	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/internal/cmd/bio"
 	"go-backend-ssa/internal/cmd/objabi"
+	"go-backend-ssa/internal/cmd/src"
 	"go-backend-ssa/internal/go/buildcfg"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/objw"
+	"go-backend-ssa/internal/pgoir"
 	"go-backend-ssa/internal/pkginit"
+	"go-backend-ssa/internal/ssagen"
+	"go-backend-ssa/internal/walk"
 	"io"
+	"math/rand"
 	"strings"
+	"sync"
 )
 
-// Context binds the compiler's sequential object-finalization operations.
-// Later driver stages share the same writer and compiler graph.
+// Context binds native function preparation, backend scheduling and object
+// finalization to the same compiler graph. Public stage calls are serialized;
+// CompileQueued runs the configured backend workers and joins them before return.
 type Context struct {
+	Backend         *ssagen.Context
+	Lowering        *walk.Context
+	compilequeue    []*ir.Func
+	enqueued        map[*ir.Func]bool
+	workerFailureMu sync.Mutex
+	workerFailure   any
+	// RaceEnabled selects the native randomized scheduling used by race builds.
+	// Randomness is owned by this compilation and cannot affect another instance.
+	RaceEnabled bool
+	random      *rand.Rand
+
 	header           *objabi.Context
 	archiveModes     ObjectMode
 	archiveFailed    bool
@@ -35,7 +54,7 @@ func NewContext(writer *objw.Context) *Context {
 // AddGCLocals runs the native sequential registration of all function auxiliary
 // data after Flush and before symbol numbering. Call once per compilation.
 func (c *Context) AddGCLocals() {
-	if c == nil || c.Writer == nil || c.functionDataDone {
+	if c == nil || c.Writer == nil || c.functionDataDone || c.workerFailure != nil || len(c.compilequeue) != 0 {
 		panic("function data finalization requires an unconsumed compiler context")
 	}
 	c.functionDataDone = true
@@ -51,7 +70,7 @@ func (c *Context) BindPackage(p *pkginit.Context) {
 	c.Package = p
 }
 func (c *Context) checkGlobal(n *ir.Name) {
-	if c == nil || c.Package == nil || c.functionDataDone || n == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(n) {
+	if c == nil || c.Package == nil || c.functionDataDone || c.workerFailure != nil || n == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(n) {
 		panic("global belongs to another or finalized compilation")
 	}
 }
@@ -183,4 +202,73 @@ func (c *Context) errorExit() {
 		cause = c.output.failure
 	}
 	panic(&bio.OutputError{Message: strings.Join(c.outputMessages, "; "), Cause: cause})
+}
+
+// BindBackend attaches the initialized backend and frontend lowering graph.
+func (c *Context) BindBackend(backend *ssagen.Context, lowering *walk.Context) {
+	if c == nil || c.Package == nil || backend == nil || lowering == nil || c.Backend != nil || c.functionDataDone || backend.Typecheck != c.Package.Noder.Typecheck || backend.SSA == nil || backend.SSAConfig() == nil || backend.WorkerCount() != backend.Typecheck.IR.Base.Flag.LowerC || backend.SSA.ReflectData != c.Package.Noder.ReflectData || lowering.Noder != c.Package.Noder || backend.Inline != c.Package.Noder.Inline {
+		panic("compiler queue requires the same initialized backend and package graph")
+	}
+	c.Writer.IR = c.Package.Noder.Typecheck.IR
+	c.Backend = backend
+	c.Lowering = lowering
+	c.enqueued = make(map[*ir.Func]bool)
+	c.random = rand.New(rand.NewSource(1))
+}
+
+// EnqueueFunc preserves native handling of closures, bodyless declarations and
+// sequential frontend preparation. CompileQueued must finish before finalization.
+func (c *Context) EnqueueFunc(fn *ir.Func, symABIs *ssagen.SymABIs) {
+	if c == nil || c.Backend == nil || c.functionDataDone || c.workerFailure != nil || fn == nil || !c.Package.Noder.Typecheck.IR.OwnsNode(fn) || !c.Backend.OwnsSymABIs(symABIs) || c.enqueued[fn] || c.Package.Noder.Typecheck.IR.CurFunc != nil || c.Writer.Link.ObjectNumbered() || (fn.LSym != nil && !fn.IsClosure()) {
+		panic("compiler queue requires an unconsumed owned function and ABI input")
+	}
+	c.enqueued[fn] = true
+	c.enqueueFunc(fn, symABIs)
+}
+
+// CompileQueued executes the native worker queue, including nested closures.
+func (c *Context) CompileQueued(profile *pgoir.Profile) {
+	if c == nil || c.Backend == nil || c.functionDataDone || c.workerFailure != nil || c.Package.Noder.Typecheck.IR.CurFunc != nil {
+		panic("compile queue is not ready")
+	}
+	if c.Backend.WorkerCount() != c.Package.Noder.Typecheck.IR.Base.Flag.LowerC || c.Backend.WorkerCount() < 1 || c.errors() != 0 || (profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile)) {
+		panic("compiler queue has invalid workers, profile or diagnostics")
+	}
+	c.compileFunctions(profile)
+	if c.workerFailure != nil {
+		panic(c.workerFailure)
+	}
+}
+func (c *Context) QueuedFunctions() int    { return len(c.compilequeue) }
+func (c *Context) permutation(n int) []int { return c.random.Perm(n) }
+func (c *Context) fatalfAt(pos src.XPos, f string, a ...any) {
+	panic(fmt.Errorf("%s: %s", c.Package.Noder.Typecheck.IR.Base.FmtPos(pos), fmt.Sprintf(f, a...)))
+}
+func (c *Context) errors() int {
+	n := 0
+	g := c.Package.Noder.Typecheck.IR
+	for _, ds := range [][]diagnostic.Diagnostic{g.Diagnostics.Diagnostics(), g.Types.Diagnostics.Diagnostics()} {
+		for _, d := range ds {
+			if d.Severity == diagnostic.Error {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// compileWorker transfers backend panics to the calling goroutine after the
+// native queue has joined all workers and restored its parallel-phase flags.
+// Any such failure consumes the compiler; partial output cannot be finalized.
+func (c *Context) compileWorker(fn *ir.Func, worker int, profile *pgoir.Profile) {
+	defer func() {
+		if failure := recover(); failure != nil {
+			c.workerFailureMu.Lock()
+			if c.workerFailure == nil {
+				c.workerFailure = failure
+			}
+			c.workerFailureMu.Unlock()
+		}
+	}()
+	c.Backend.Compile(fn, worker, profile)
 }

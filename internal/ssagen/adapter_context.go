@@ -10,14 +10,17 @@ import (
 	"go-backend-ssa/internal/go/buildcfg"
 	runtimegc "go-backend-ssa/internal/go/runtime/gc"
 	errorspkg "go-backend-ssa/internal/go/types/errors"
+	"go-backend-ssa/internal/inline"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/liveness"
 	"go-backend-ssa/internal/objw"
+	"go-backend-ssa/internal/pgoir"
 	"go-backend-ssa/internal/ssa"
 	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
 	"io"
 	"io/fs"
+	"sync"
 )
 
 // Context binds native ABI wrappers, target initialization and SSA frontend
@@ -25,6 +28,10 @@ import (
 // type and runtime declarations have been initialized. Phase operations within
 // one graph are serialized; separate contexts can compile independently.
 type Context struct {
+	Inline                               *inline.Context
+	globalMapInitLsyms                   map[*obj.LSym]struct{}
+	largeStackFramesMu                   sync.Mutex
+	largeStackFrames                     []largeStack
 	nowritebarrierrecCheck               *nowritebarrierrecChecker
 	pkgSpecials                          *objabi.Context
 	mallocGC                             *runtimegc.Context
@@ -335,3 +342,16 @@ func (c *Context) checkGenSSA(f *ssa.Func, pp *objw.Progs) {
 // metadata into pp. Consume or assemble the instructions before freeing pp or
 // reusing its worker cache. This operation does not assemble machine-code bytes.
 func (c *Context) GenSSA(f *ssa.Func, pp *objw.Progs) { c.genssa(f, pp) }
+
+func (c *Context) checkCompile(fn *ir.Func, worker int, profile *pgoir.Profile) {
+	c.checkBuildSSA(fn, worker, false)
+	if c.Inline == nil || c.Inline.Typecheck != c.Typecheck || (profile != nil && !c.Inline.PGO.OwnsProfile(profile)) {
+		panic("function compilation requires matching inline services")
+	}
+}
+
+// OwnsSymABIs reports whether ABI input belongs to this backend.
+func (c *Context) OwnsSymABIs(s *SymABIs) bool { return s != nil && s.compilation == c }
+
+// WorkerCount returns the cache count fixed by InitConfig.
+func (c *Context) WorkerCount() int { return len(c.ssaCaches) }

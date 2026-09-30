@@ -271,11 +271,6 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	graph.Base.Flag.LowerL = 1
 	writer.Inline.CanInlineFuncs(result.Funcs, nil)
 	link.DwFixups = gcbridge.NewDwarfFixupTable(link)
-	graph.InitLSym(sum, true)
-	link.DwFixups.SetPrecursorFunc(sum.LSym, sum)
-	if sum.LSym.Func() == nil || link.DwFixups.GetPrecursorFunc(sum.LSym) != sum {
-		t.Fatal("native function symbol or DWARF precursor lost")
-	}
 	caller, err := writer.LookupFunc("example/p.UseId")
 	if err != nil {
 		t.Fatal(err)
@@ -439,70 +434,30 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	backend.InitConfig()
 	dwarfgen.NewContext(backend, backend.SSA.ReflectData)
 	backend.InitTables()
+
 	lowering := walk.NewContext(writer, analysis)
-	seen := map[*ir.Func]bool{}
-	var prepared []*ir.Func
-	for _, root := range result.Funcs {
-		// Native gc.enqueueFunc prepares closures through their enclosing function.
-		// Inlined closures can remain in the package list without executable captures.
-		if root.IsClosure() {
-			continue
-		}
-		todo := []*ir.Func{root}
-		for len(todo) > 0 {
-			fn := todo[len(todo)-1]
-			todo = todo[:len(todo)-1]
-			if seen[fn] {
-				continue
-			}
-			seen[fn] = true
-			if fn.LSym == nil {
-				graph.InitLSym(fn, true)
-			}
-			graph.Types.CalcSize(fn.Type())
-			lowering.Walk(fn)
-
-			if graph.CurFunc != fn {
-				t.Fatal("public Walk lost current function")
-			}
-			graph.CurFunc = nil
-			prepared = append(prepared, fn)
-			todo = append(todo, fn.Closures...)
-		}
-	}
-	// Match native preparation: finish Walk for all reachable functions before SSA.
-	for _, fn := range prepared {
-		compiled := backend.BuildSSA(fn, 0, false)
-		if compiled == nil || compiled.RegAlloc == nil || compiled.Frontend().Func() != fn {
-			t.Fatal("public source-to-SSA pipeline", fn)
-		}
-		for _, block := range compiled.Blocks {
-			for _, value := range block.Values {
-				if value.Op == ssa.OpFwdRef {
-					t.Fatal("unresolved SSA variable", fn)
-				}
-			}
-		}
-		pp := writer.ReflectData.Runtime.Writer.NewProgs(fn, 0)
-		backend.GenSSA(compiled, pp)
-		pp.Flush()
-		if len(fn.LSym.P) == 0 || fn.LSym.Func().Pcln.Pcsp == nil {
-			t.Fatal("full native flush did not emit machine code and PCLN")
-		}
-		if pp.Text == nil || pp.Text.Link == nil || (fn.Type().NumRecvs()+fn.Type().NumParams() != 0 && fn.LSym.Func().ArgInfo == nil) {
-			t.Fatal("public native instruction emission", fn)
-		}
-		for p := pp.Text; p != nil; p = p.Link {
-			if p.InstructionString() == "" {
-				t.Fatal("instruction formatting", fn)
-			}
-		}
-		pp.Free()
-		graph.CurFunc = nil
-	}
-
+	backend.Inline = writer.Inline
 	finalizer := compilergc.NewContext(writer.ReflectData.Runtime.Writer)
 	finalizer.BindPackage(initialization)
+	finalizer.BindBackend(backend, lowering)
+	for _, fn := range result.Funcs {
+		finalizer.EnqueueFunc(fn, symABIs)
+	}
+	finalizer.CompileQueued(nil)
+	backend.CheckLargeStacks()
+	if finalizer.QueuedFunctions() != 0 || graph.Diagnostics.HasErrors() {
+		t.Fatal("public compile queue did not finish")
+	}
+	compiledCount := 0
+	for _, fn := range result.Funcs {
+		if fn.IsClosure() || len(fn.Body) == 0 {
+			continue
+		}
+		if fn.LSym == nil || len(fn.LSym.P) == 0 || fn.LSym.Func().Pcln.Pcsp == nil {
+			t.Fatal("public compiler did not emit machine code and PCLN", fn)
+		}
+		compiledCount++
+	}
 	for _, decl := range result.Externs {
 		switch decl.Op() {
 		case ir.ONAME:
@@ -524,8 +479,8 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 		t.Fatal("public native archive output missing")
 	}
 
-	if len(seen) == 0 {
-		t.Fatal("public Walk did not process functions")
+	if compiledCount == 0 {
+		t.Fatal("public compiler did not process functions")
 	}
 }
 

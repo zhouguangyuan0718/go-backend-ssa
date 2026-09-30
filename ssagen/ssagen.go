@@ -4,7 +4,10 @@
 // InitTables before Walk and BuildSSA. BuildSSA includes phi placement, SSA
 // optimization, register allocation, frame layout and defer metadata. Install
 // target handlers before InitConfig; GenSSA then emits instructions and GC/debug
-// metadata into an owned objw.Progs buffer. Consume results before worker reuse.
+// metadata into an owned objw.Progs buffer. Compile performs the full native
+// build, emission and Flush sequence, including field/map relocations and large
+// frame collection. Bind Inline to the same compiler graph before Compile and
+// call CheckLargeStacks after workers complete. Consume graphs before cache reuse.
 package ssagen
 
 import (

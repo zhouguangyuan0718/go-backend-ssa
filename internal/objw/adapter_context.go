@@ -49,7 +49,9 @@ func (c *Context) checkNewProgs(fn *ir.Func, worker int) {
 	if c.IR != nil && c.IR != g {
 		panic("instruction writer graph mismatch")
 	}
-	c.IR = g
+	if c.IR == nil {
+		c.IR = g
+	}
 }
 func (c *Context) warn(format string, args ...any) {
 	c.IR.Diagnostics.Add(diagnostic.Warning, "", c.Link.OutermostPos(c.Types.Pos), fmt.Sprintf(format, args...))

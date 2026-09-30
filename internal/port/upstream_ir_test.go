@@ -61,6 +61,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_flush")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_object")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_archive")
+	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_queue")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -86,7 +87,8 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if len(snapshots) > 0 {
 		snapshotName = snapshots[0]
 	}
-	isArchiveSSA := snapshotName == "ssagen_archive"
+	isQueueSSA := snapshotName == "ssagen_queue"
+	isArchiveSSA := snapshotName == "ssagen_archive" || isQueueSSA
 	isObjectSSA := snapshotName == "ssagen_object" || isArchiveSSA
 	isFlushSSA := snapshotName == "ssagen_flush" || isObjectSSA
 	isAssembleSSA := snapshotName == "ssagen_assemble"
@@ -299,6 +301,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		ported = objectSnapshotFixture(t, ported, false)
 		if isArchiveSSA {
 			ported = archiveSnapshotFixture(t, ported, false, s.Pin.BuildToolchain)
+			if isQueueSSA {
+				ported = queueSnapshotFixture(t, ported, false)
+			}
 		}
 	}
 	writeTestFile(t, dir, "internal/"+pkgName+"/adapter_snapshot_test.go", ported)
@@ -512,6 +517,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		native = objectSnapshotFixture(t, native, true) + nativeGCObjectObserver(t, s)
 		if isArchiveSSA {
 			native = archiveSnapshotFixture(t, native, true, s.Pin.BuildToolchain) + nativeGCArchiveObserver(t, s)
+			if isQueueSSA {
+				native = queueSnapshotFixture(t, native, true) + nativeGCQueueObserver(t, s)
+			}
 		}
 	}
 	writeTestFile(t, dir, "reference/"+pkgName+"_snapshot_test.go", native)
@@ -721,6 +729,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		if err != nil {
 			t.Fatal(err)
 		}
+		if isQueueSSA {
+			fixture = []byte(strings.ReplaceAll(strings.Replace(string(fixture), "source:=`package p", "source:=`package p\nfunc _(){}\nfunc Bodyless(p *int)int", 1), "g.Base.Flag.Complete=true", "g.Base.Flag.Complete=false"))
+		}
 		writeTestFile(t, dir, "internal/noder/adapter_fixture_test.go", strings.ReplaceAll(string(fixture), "BODY_INPUT_PATH", fmt.Sprintf("%q", filepath.Join(dir, "reader-input"))))
 	}
 	if isEmitSSA {
@@ -728,6 +739,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	if isArchiveSSA {
 		targets = append(targets, "amd64-archive-split", "amd64-archive-cgo", "amd64-archive-buildid")
+	}
+	if isQueueSSA {
+		targets = append(targets, "amd64-workers4")
 	}
 	for _, snapshotTarget = range targets {
 		if snapshotName == "escape" {

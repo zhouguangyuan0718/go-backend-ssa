@@ -4,6 +4,7 @@ package diagnostic
 import (
 	"fmt"
 	"go-backend-ssa/position"
+	"sync"
 )
 
 type Severity uint8
@@ -38,16 +39,29 @@ func (d Diagnostic) String() string {
 }
 
 // Collector is owned by one compilation. Its zero value is ready for use.
-// A compilation serializes its own writes; separate collectors are independent.
-type Collector struct{ entries []Diagnostic }
+// Backend workers may emit concurrently; separate collectors are independent.
+// Do not copy a Collector after first use.
+type Collector struct {
+	mu      sync.Mutex
+	entries []Diagnostic
+}
 
 func (c *Collector) Add(severity Severity, code string, pos position.Pos, message string) {
-	c.entries = append(c.entries, Diagnostic{severity, code, pos.RelFilename(), pos.RelLine(), pos.RelCol(), message})
+	entry := Diagnostic{severity, code, pos.RelFilename(), pos.RelLine(), pos.RelCol(), message}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = append(c.entries, entry)
 }
 
 // Diagnostics returns a detached snapshot in emission order.
-func (c *Collector) Diagnostics() []Diagnostic { return append([]Diagnostic(nil), c.entries...) }
+func (c *Collector) Diagnostics() []Diagnostic {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]Diagnostic(nil), c.entries...)
+}
 func (c *Collector) HasErrors() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for _, d := range c.entries {
 		if d.Severity == Error {
 			return true
@@ -59,6 +73,8 @@ func (c *Collector) HasErrors() bool {
 // RewriteLast refines an existing diagnostic only if it is still the last entry
 // and matches the supplied snapshot. Earlier detached snapshots remain valid.
 func (c *Collector) RewriteLast(expected Diagnostic, message string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	i := len(c.entries) - 1
 	if i < 0 || c.entries[i] != expected {
 		return false

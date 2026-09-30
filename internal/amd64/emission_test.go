@@ -24,7 +24,8 @@ import (
 	"go-backend-ssa/internal/types"
 )
 
-func testBackend(locations bool) *ssagen.Context {
+func testBackend(locations bool) *ssagen.Context { return testBackendWorkers(locations, 1) }
+func testBackendWorkers(locations bool, workers int) *ssagen.Context {
 	a := sys.NewContext().ArchAMD64
 	link := &obj.Link{Arch: &obj.LinkArch{Arch: a}, Pkgpath: "example/p", Pathname: "/src", Flag_locationlists: locations}
 	if err := link.Headtype.Set("linux"); err != nil {
@@ -38,7 +39,7 @@ func testBackend(locations bool) *ssagen.Context {
 	tc := typecheck.NewContext(g)
 	tc.InitUniverse()
 	tc.InitRuntime()
-	g.Base.Flag.LowerC = 1
+	g.Base.Flag.LowerC = workers
 	g.Base.Flag.WB = true
 	g.Base.Flag.Dwarf = true
 	rt := rttype.NewContext(objw.NewContext(u, link, "linux"))

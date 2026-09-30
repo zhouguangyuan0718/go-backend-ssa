@@ -95,3 +95,37 @@ func TestProviders(t *testing.T){var wg sync.WaitGroup;for i:=range 8{wg.Go(func
 		}
 	}
 }
+
+func TestBoundQueuePermutation(t *testing.T) {
+	const path = "src/cmd/compile/internal/p/p.go"
+	const source = `package p; import "math/rand";func Order(n int)[]int{return rand.Perm(n)}`
+	const adapter = `package p;import "math/rand";type Context struct{R *rand.Rand};func(c *Context)perm(n int)[]int{return c.R.Perm(n)}`
+	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", path: source})
+	s, err := OpenSource(context.Background(), repo, pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := Unit{Source: path, WholeFile: true, Context: &ContextRule{Type: "Context", Constructor: "initialize", Initialize: true, Selective: true, Adapter: "adapter_context.go"}, HostCalls: []HostCallRule{{Package: "math/rand", Function: "Perm", Method: "perm"}}}
+	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{unit}}
+	dir := t.TempDir()
+	writeTestFile(t, dir, "internal/p/adapter_context.go", adapter)
+	r, err := Render(s, plan, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = Install(dir, r); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
+	writeTestFile(t, dir, "internal/p/check_test.go", `package p;import("math/rand";"slices";"testing");func TestOrder(t *testing.T){for i:=range 8{t.Run(string(rune('a'+i)),func(t *testing.T){t.Parallel();a:=&Context{R:rand.New(rand.NewSource(int64(i)))};b:=&Context{R:rand.New(rand.NewSource(int64(i)))};want:=a.Order(31);saved:=slices.Clone(want);_ =a.Order(71);if !slices.Equal(want,saved)||!slices.Equal(b.Order(31),saved){t.Fatal("random stream or retained permutation shared")}})}}`)
+	cmd := exec.Command("go", "test", "-race", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.27.1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	writeTestFile(t, dir, "internal/p/adapter_context.go", strings.Replace(adapter, "perm(n int)[]int", "perm(n int)[]int64", 1))
+	if _, err := Render(s, plan, dir); err == nil {
+		t.Fatal("incorrect permutation result accepted")
+	}
+}
