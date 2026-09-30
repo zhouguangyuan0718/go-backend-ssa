@@ -52,3 +52,8 @@ const (
 	ABIInternal    = obj.ABIInternal
 	ABISetCallable = obj.ABISetCallable
 )
+
+// Architectures owns the native architecture descriptors for a compiler setup.
+type Architectures = sys.Context
+
+func NewArchitectures() *Architectures { return sys.NewContext() }

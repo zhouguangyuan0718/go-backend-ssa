@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v42"
+const ToolVersion = "syncgo-m3-v43"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -55,6 +55,7 @@ type Unit struct {
 	ZeroValues             []string            // Reviewed zero-valued struct globals replaced by fresh values.
 	ReadTables             []string            // Constant array/slice/map lookups localized in their consuming functions.
 	ConstantFields         []ConstantFieldRule // Stateless reads of immutable scalar fields in an instance-owned array.
+	FixedSizeof            []FixedSizeofRule
 	SliceReinterpretations []SliceReinterpretationRule
 	HostResources          []HostResourceRule
 	State                  []StateRule
@@ -234,6 +235,18 @@ func (p Plan) Validate() error {
 				}
 				seen[field] = true
 			}
+		}
+
+		seenSizes := map[FixedSizeofRule]bool{}
+		for _, rule := range u.FixedSizeof {
+			validFunction := token.IsIdentifier(rule.Function)
+			if receiver, method, ok := strings.Cut(rule.Function, "."); ok {
+				validFunction = token.IsIdentifier(receiver) && token.IsIdentifier(method)
+			}
+			if !validFunction || !token.IsIdentifier(rule.Type) || seenSizes[rule] {
+				return fmt.Errorf("invalid fixed sizeof rule: %s", rule.Function)
+			}
+			seenSizes[rule] = true
 		}
 
 		seenAdapters := map[string]bool{}

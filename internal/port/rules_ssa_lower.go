@@ -15,7 +15,7 @@ func ssaLoweringMigration(units []Unit) []Unit {
 		{Source: root + "types/size.go", Variable: "PtrSize", Field: "ptrSize"},
 		{Source: root + "rttype/rttype.go", Variable: "Type", Field: "ReflectData.Runtime.Type"},
 		{Source: root + "rttype/rttype.go", Variable: "PtrType", Field: "ReflectData.Runtime.PtrType"},
-		{Source: "src/internal/buildcfg/cfg.go", Variable: "GOOS", Field: "IR.Base.Ctxt.TargetOS"},
+		{Source: "src/internal/buildcfg/cfg.go", Variable: "GOOS", Field: "targetOS"},
 		{Source: "src/internal/buildcfg/cfg.go", Variable: "GOAMD64", Field: "GOAMD64"},
 		{Source: "src/internal/buildcfg/cfg.go", Variable: "GOARM", Field: "GOARM"},
 		{Source: "src/internal/buildcfg/cfg.go", Variable: "GOPPC64", Field: "GOPPC64"},

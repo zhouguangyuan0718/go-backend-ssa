@@ -902,7 +902,11 @@ func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	link := &gcbridge.Link{Arch: &gcbridge.LinkArch{Arch: &gcbridge.Arch{Name: "amd64", PtrSize: 8, RegSize: 8, ByteOrder: binary.LittleEndian}}}
+	archs := gcbridge.NewArchitectures()
+	link := &gcbridge.Link{Arch: &gcbridge.LinkArch{Arch: archs.ArchAMD64}}
+	if len(archs.Archs) != 14 || !archs.ArchAMD64.InFamily(archs.ArchAMD64.Family) {
+		t.Fatal("public native architecture descriptors")
+	}
 	u, err := types.NewUniverseWithPositions(layout, &link.PosTable)
 	if err != nil {
 		t.Fatal(err)

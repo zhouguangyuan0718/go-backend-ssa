@@ -87,6 +87,7 @@
 70. [M3 SSA 通用重写与拆分](docs/m3-ssa-generic.md)：原生 generic/除法规则、复合值与软浮点拆分、SIMD 真值表及数值执行验证。
 71. [M3 SSA 优化阶段](docs/m3-ssa-optimizer.md)：CSE、条件证明、常量传播、内存优化、CPU 特征与双版本图差分。
 72. [M3 原生 SSA 调用和内存阶段](docs/m3-ssa-calls.md)：ABI 调用展开、写屏障、循环抢占检查及真实临时变量。
+73. [M3 原生 SSA 调度和分配](docs/m3-ssa-allocation.md)：后期优化、调度、寄存器/栈槽分配及原生架构身份。
 
 ## 当前可运行的工具
 

@@ -21,9 +21,12 @@ func (fe *callsFrontend) Func() *ir.Func             { return fe.fn }
 func (fe *callsFrontend) Syslook(n string) *obj.LSym { return fe.link.Lookup("runtime." + n) }
 func (fe *callsFrontend) UseWriteBarrier() bool      { return fe.wb }
 func callsFunc(c *Context, stack bool) (*Func, *callsFrontend) {
+	return callsFuncType(c, c.Types.NewSignature(nil, nil, nil), stack)
+}
+func callsFuncType(c *Context, signature *types.Type, stack bool) (*Func, *callsFrontend) {
 	cfg := c.NewConfig(c.IR.Base.Ctxt.Arch.Name, *c.NewTypes(), c.IR.Base.Ctxt, true, false)
 	pos := cfg.ctxt.PosTable.XPos(src.MakePos(src.NewFileBase("calls.go", "calls.go"), 10, 1))
-	fn := c.IR.NewFunc(pos, pos, c.Types.LocalPkg.Lookup("fixture"), c.Types.NewSignature(nil, nil, nil))
+	fn := c.IR.NewFunc(pos, pos, c.Types.LocalPkg.Lookup("fixture"), signature)
 	fn.DeclareParams(true)
 	fe := &callsFrontend{genericFrontend: &genericFrontend{diagnosticFrontend: &diagnosticFrontend{}}, fn: fn, link: cfg.ctxt, wb: true}
 	cache := new(Cache)

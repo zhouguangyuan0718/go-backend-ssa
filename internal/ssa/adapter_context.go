@@ -6,6 +6,7 @@ import (
 	"go-backend-ssa/internal/abi"
 	"go-backend-ssa/internal/cmd/obj"
 	"go-backend-ssa/internal/cmd/src"
+	"go-backend-ssa/internal/cmd/sys"
 	"go-backend-ssa/internal/go/buildcfg"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/logopt"
@@ -18,6 +19,19 @@ import (
 // This adapter binds native SSA type operations to their compilation's universe.
 // It introduces no separate public session or process-global state.
 type Context struct {
+	archWasm       *sys.Arch
+	noRegisters    [32]register
+	pairableLoads  map[Op]pairableLoadInfo
+	pairableStores map[Op]pairableStoreInfo
+	archRISCV64    *sys.Arch
+	combineFirst   map[Op]bool
+	combine        map[[2]Op]Op
+	needSplit      map[Op]bool
+	faultOnLoad    bool
+	tmpVal         Value
+	targetOS       string
+	// FramePointerEnabled is the native platform frame-pointer policy supplied by the driver.
+	FramePointerEnabled bool
 	checkpointBound     limitFact
 	checkEnabled        bool
 	debugPoset          bool
@@ -276,6 +290,11 @@ func NewContext(a *abi.Context, rd *reflectdata.Context, log *logopt.Context) *C
 	c.checkInputs()
 	c.checkTypes()
 	c.ptrSize = c.Types.PointerSize()
+	c.targetOS = c.IR.Base.Ctxt.TargetOS
+	if archs := sys.ContextOfArch(c.IR.Base.Ctxt.Arch.Arch); archs != nil {
+		c.archRISCV64 = archs.ArchRISCV64
+		c.archWasm = archs.ArchWasm
+	}
 	c.opcodeTables = new(opcodeTables)
 	c.initialize()
 	return c
@@ -296,7 +315,7 @@ func (c *Context) checkInputs() {
 }
 func (c *Context) checkConfig(arch string, ts Types, link *obj.Link, optimize, softfloat bool) {
 	c.checkInputs()
-	if c.opcodeTables == nil || ts.compilation != c || link != c.IR.Base.Ctxt || link.Arch.Name != arch {
+	if link != c.IR.Base.Ctxt || c.targetOS != link.TargetOS || c.opcodeTables == nil || ts.compilation != c || link.Arch.Name != arch {
 		panic("SSA configuration requires matching compiler inputs")
 	}
 	// Validate the complete native collection, including all pointer fields.

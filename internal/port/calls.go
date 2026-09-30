@@ -288,11 +288,15 @@ func checkStateAdapters(units []Unit, before *packageImporter, out *types.Packag
 	return nil
 }
 
-// Infer a host variable's type from a direct call's declared single result.
+// Infer a host variable's type from a direct call's declared single result
+// or an untyped boolean comparison expression.
 // Its environment-reading initializer and arguments never enter the output.
 func externalValueType(file *ast.File, spec *ast.ValueSpec, importer *packageImporter) (ast.Expr, error) {
 	if len(spec.Values) != 1 {
 		return nil, fmt.Errorf("requires an explicit type or single call initializer")
+	}
+	if comparisonBoolean(spec.Values[0]) {
+		return ast.NewIdent("bool"), nil
 	}
 	call, ok := spec.Values[0].(*ast.CallExpr)
 	if !ok {
@@ -415,6 +419,26 @@ func externalStateObject(obj types.Object) bool {
 	case *types.Const:
 		typ, ok := obj.Type().Underlying().(*types.Basic)
 		return ok && typ.Info()&types.IsBoolean != 0
+	}
+	return false
+}
+
+// Comparisons yield untyped bool, and boolean operators on those results retain
+// that type. Do not infer arbitrary logical operands, which may be named bools.
+// Only the signature is retained; no host expression is evaluated or emitted.
+func comparisonBoolean(expr ast.Expr) bool {
+	switch e := expr.(type) {
+	case *ast.ParenExpr:
+		return comparisonBoolean(e.X)
+	case *ast.UnaryExpr:
+		return e.Op == token.NOT && comparisonBoolean(e.X)
+	case *ast.BinaryExpr:
+		switch e.Op {
+		case token.EQL, token.NEQ, token.LSS, token.LEQ, token.GTR, token.GEQ:
+			return true
+		case token.LAND, token.LOR:
+			return comparisonBoolean(e.X) && comparisonBoolean(e.Y)
+		}
 	}
 	return false
 }

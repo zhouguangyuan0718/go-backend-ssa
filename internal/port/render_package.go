@@ -136,6 +136,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			prov.Rule = "whole-file-and-zero-values-v1"
 			prov.Declarations = append(append([]string{"*"}, u.ZeroValues...), u.ReadTables...)
 		}
+		for _, rule := range u.FixedSizeof {
+			prov.Declarations = append(prov.Declarations, "fixed-sizeof:"+rule.Function+":"+rule.Type)
+		}
 		for _, name := range u.AdapterMethods {
 			prov.Declarations = append(prov.Declarations, "adapter-method:"+name)
 		}
@@ -192,7 +195,11 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := auditOutput(outpkg, output, outinfo, sliceOperations, resourceOperations); err != nil {
+	sizeOperations, err := reviewedFixedSizeof(outfs, output, outinfo, outpkg, units)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := auditOutput(outpkg, output, outinfo, sliceOperations, resourceOperations, sizeOperations); err != nil {
 		return nil, nil, err
 	}
 	for _, u := range units {
