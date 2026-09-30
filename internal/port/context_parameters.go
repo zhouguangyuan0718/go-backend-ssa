@@ -34,7 +34,13 @@ func contextParameterMethods(files []*ast.File, info *types.Info, units []Unit) 
 	return methods, nil
 }
 
-func threadMethodContext(fs *token.FileSet, files []*ast.File, node ast.Node, info *types.Info, methods map[types.Object]bool, ctx ast.Expr, contextType string) error {
+type contextMethodBinding struct {
+	expr     ast.Expr
+	typeName string
+	recovers bool
+}
+
+func threadContextMethodBindings(fs *token.FileSet, files []*ast.File, node ast.Node, info *types.Info, bindings map[types.Object]contextMethodBinding) error {
 	// Direct calls receive the extra argument. Method values use a typed
 	// closure retaining the original callback signature and receiver binding.
 	calls := map[*ast.SelectorExpr]*ast.CallExpr{}
@@ -61,9 +67,14 @@ func threadMethodContext(fs *token.FileSet, files []*ast.File, node ast.Node, in
 			return false
 		}
 		sel, ok := n.(*ast.SelectorExpr)
-		if !ok || !methods[info.Uses[sel.Sel]] {
+		if !ok {
 			return true
 		}
+		binding, ok := bindings[info.Uses[sel.Sel]]
+		if !ok {
+			return true
+		}
+		ctx, contextType := binding.expr, binding.typeName
 		call := calls[sel]
 		selection := info.Selections[sel]
 		if selection == nil {
@@ -72,11 +83,11 @@ func threadMethodContext(fs *token.FileSet, files []*ast.File, node ast.Node, in
 		}
 		if call == nil {
 			receiver := &ast.ParenExpr{X: sel.X}
-			if err = threadMethodContext(fs, files, receiver, info, methods, ctx, contextType); err != nil {
+			if err = threadContextMethodBindings(fs, files, receiver, info, bindings); err != nil {
 				return false
 			}
 			sel.X = receiver.X
-			if methodRecovers(files, info, selection.Obj()) {
+			if binding.recovers || methodRecovers(files, info, selection.Obj()) {
 				err = fmt.Errorf("context method value with direct recover requires explicit adaptation: %s", sel.Sel.Name)
 				return false
 			}
@@ -125,7 +136,7 @@ func bindContextMethod(fs *token.FileSet, file *ast.File, sel *ast.SelectorExpr,
 		return nil, fmt.Errorf("promoted context method value requires explicit adaptation: %s", sel.Sel.Name)
 	}
 	sig := selection.Type().(*types.Signature)
-	qualifier := typeQualifier(file, info, selection.Obj().Pkg())
+	qualifier := typeQualifier(file, info, contextMethodCallerPackage(file, info))
 	var params, results, args []string
 	for i := 0; i < sig.Params().Len(); i++ {
 		typ := sig.Params().At(i).Type()
@@ -187,24 +198,25 @@ func bindContextMethod(fs *token.FileSet, file *ast.File, sel *ast.SelectorExpr,
 func methodRecovers(files []*ast.File, info *types.Info, method types.Object) bool {
 	for _, file := range files {
 		for _, d := range file.Decls {
-			fn, ok := d.(*ast.FuncDecl)
-			if !ok || info.Defs[fn.Name] != method {
-				continue
+			if fn, ok := d.(*ast.FuncDecl); ok && info.Defs[fn.Name] == method {
+				return functionRecovers(fn, info)
 			}
-			found := false
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				if _, ok := n.(*ast.FuncLit); ok {
-					return false
-				}
-				if id, ok := n.(*ast.Ident); ok {
-					if b, ok := info.Uses[id].(*types.Builtin); ok && b.Name() == "recover" {
-						found = true
-					}
-				}
-				return true
-			})
-			return found
 		}
 	}
 	return false
+}
+func functionRecovers(fn *ast.FuncDecl, info *types.Info) bool {
+	found := false
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		if _, ok := n.(*ast.FuncLit); ok {
+			return false
+		}
+		if id, ok := n.(*ast.Ident); ok {
+			if b, ok := info.Uses[id].(*types.Builtin); ok && b.Name() == "recover" {
+				found = true
+			}
+		}
+		return true
+	})
+	return found
 }

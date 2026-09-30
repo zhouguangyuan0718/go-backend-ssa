@@ -16,7 +16,11 @@ import (
 // selected files. Initialization helpers stay in their original files, so file
 // scoped import aliases retain their meaning. The constructor follows InitOrder,
 // then runs reviewed init bodies in lexical file/declaration order.
-func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Info, units []Unit) error {
+func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Info, units []Unit, externalRecovering ...map[types.Object]bool) error {
+	recovering := map[types.Object]bool{}
+	if len(externalRecovering) > 0 {
+		recovering = externalRecovering[0]
+	}
 	var context *ContextRule
 	first := -1
 	states := map[types.Object]string{}
@@ -191,6 +195,13 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	for obj, field := range projectedDependencies {
 		contextExternal[obj] = field
 	}
+	externalMethods, err := externalContextMethods(files, info, units)
+	if err != nil {
+		return err
+	}
+	for obj, call := range externalMethods {
+		contextExternal[obj] = call.Field
+	}
 	parameterMethods, err := contextParameterMethods(files, info, units)
 	if err != nil {
 		return err
@@ -296,7 +307,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			}
 			rewriteExprs(node, map[ast.Node]ast.Expr{lit: &ast.CallExpr{Fun: binding(ctx, nil, literals[lit], lit.Pos()), Args: []ast.Expr{lit.(ast.Expr)}}})
 		}
-		return threadMethodContext(fs, files, node, info, parameterMethods, ctx, context.Type)
+		return threadExternalMethodContexts(fs, files, node, info, externalMethods, parameterMethods, ctx, context.Type, recovering)
 	}
 	// Include receiver methods in the dependency closure: a pure helper is safe
 	// during allocation, but an indirect read of moved state is not.

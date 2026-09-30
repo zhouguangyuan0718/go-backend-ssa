@@ -24,6 +24,7 @@ func nodeText(fset *token.FileSet, n ast.Node) string {
 }
 
 type packageImporter struct {
+	recovering  map[types.Object]bool
 	projections map[string]map[string]map[string]bool
 	packages    map[string]*types.Package
 	sources     map[types.Object]string
@@ -34,7 +35,7 @@ type packageImporter struct {
 }
 
 func newImporter() *packageImporter {
-	return &packageImporter{packages: map[string]*types.Package{}, sources: map[types.Object]string{}, standard: importer.Default(), zeros: map[types.Object]string{}, loading: map[string]bool{}}
+	return &packageImporter{recovering: map[types.Object]bool{}, packages: map[string]*types.Package{}, sources: map[types.Object]string{}, standard: importer.Default(), zeros: map[types.Object]string{}, loading: map[string]bool{}}
 }
 func (i *packageImporter) Import(p string) (*types.Package, error) {
 	if pkg := i.packages[p]; pkg != nil {

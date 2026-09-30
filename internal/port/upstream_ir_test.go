@@ -57,6 +57,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_frames")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_build")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_emit")
+	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_assemble")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -82,7 +83,8 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if len(snapshots) > 0 {
 		snapshotName = snapshots[0]
 	}
-	isEmitSSA := snapshotName == "ssagen_emit"
+	isAssembleSSA := snapshotName == "ssagen_assemble"
+	isEmitSSA := snapshotName == "ssagen_emit" || isAssembleSSA
 	isBuildSSA := snapshotName == "ssagen_build" || isEmitSSA
 	observerFile := "ssagen_build_observer.go.txt"
 	if isEmitSSA {
@@ -90,7 +92,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	var template []byte
 	var err error
-	if snapshotName == "ssa_objects" {
+	if isAssembleSSA {
+		template, err = os.ReadFile(filepath.Join(root, "internal/port/testdata/ssagen_emit_snapshot.go.txt"))
+	} else if snapshotName == "ssa_objects" {
 		template, err = ssaObjectsSnapshot(s)
 	} else {
 		template, err = os.ReadFile(filepath.Join(root, "internal/port/testdata/"+snapshotName+"_snapshot.go.txt"))
@@ -272,6 +276,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		if isEmitSSA {
 			code = strings.NewReplacer("EMIT_IMPORT", `"go-backend-ssa/internal/cmd/obj";`, "EMIT_PROGS", "c.SSA.ReflectData.Runtime.Writer.NewProgs", "EMIT_GEN", "c.GenSSA", "EMIT_CONTEXT", "c,", "EMIT_ONLY", "c").Replace(code)
 		}
+		code = assemblySnapshotObserver(code, isAssembleSSA)
 		writeTestFile(t, dir, "internal/ssagen/export_snapshot_test.go", code)
 	}
 	writeTestFile(t, dir, "internal/"+pkgName+"/adapter_snapshot_test.go", ported)
@@ -439,6 +444,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		if isEmitSSA {
 			code = strings.NewReplacer("EMIT_IMPORT", `"cmd/internal/obj";"cmd/compile/internal/objw";`, "EMIT_PROGS", "objw.NewProgs", "EMIT_GEN", "genssa", "EMIT_CONTEXT", "", "EMIT_ONLY", "").Replace(code)
 		}
+		code = assemblySnapshotObserver(code, isAssembleSSA)
 		writeTestFile(t, dir, observer, code)
 		overlay[filepath.Join(goroot, "src/cmd/compile/internal/ssagen/syncgo_build_observer_test.go")] = filepath.Join(dir, observer)
 		native = strings.ReplaceAll(native, ";Arch.", ";ssagen.Arch.")
@@ -451,6 +457,14 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if isEmitSSA {
 		native = strings.Replace(native, "ssagen.InitConfig();", "amd64.Init(&ssagen.Arch);base.Ctxt.Arch=ssagen.Arch.LinkArch;ssagen.InitConfig();", 1)
 		native = strings.NewReplacer("EMIT_IMPORT", `"cmd/compile/internal/amd64";`, "EMIT_RUN", "ssagen.SyncgoEmitSnapshot(compiled)").Replace(native)
+	}
+	if isAssembleSSA {
+		native = strings.Replace(native, "base.Ctxt.Arch=ssagen.Arch.LinkArch;", "base.Ctxt.Arch=ssagen.Arch.LinkArch;base.Ctxt.Arch.Init(base.Ctxt);", 1)
+		code := nativeAssemblyStageObserver(t, s)
+		writeTestFile(t, dir, "reference/assembler_observer.go", code)
+		overlay[filepath.Join(goroot, "src/cmd/internal/obj/syncgo_assembler_observer.go")] = filepath.Join(dir, "reference/assembler_observer.go")
+		portedCode := strings.NewReplacer(`"cmd/internal/objabi"`, `"go-backend-ssa/internal/cmd/objabi"`, `"internal/abi"`, `"go-backend-ssa/internal/go/abi"`).Replace(code)
+		writeTestFile(t, dir, "internal/cmd/obj/adapter_assembler_observer.go", portedCode)
 	}
 	writeTestFile(t, dir, "reference/"+pkgName+"_snapshot_test.go", native)
 	overlay[filepath.Join(goroot, "src/cmd/compile/internal/"+pkgName+"/syncgo_snapshot_test.go")] = filepath.Join(dir, "reference/"+pkgName+"_snapshot_test.go")

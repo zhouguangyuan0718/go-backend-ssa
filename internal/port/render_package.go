@@ -50,6 +50,16 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		return nil, nil, fmt.Errorf("selected package %s: %w", sourcePkg, err)
 	}
 	before.packages[sourcePkg] = pkg
+	for _, file := range original {
+		for _, decl := range file.Decls {
+			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv != nil {
+				obj := info.Defs[fn.Name]
+				if functionRecovers(fn, info) {
+					before.recovering[obj] = true
+				}
+			}
+		}
+	}
 	for _, f := range checkedFiles {
 		ast.Inspect(f, func(n ast.Node) bool {
 			if id, ok := n.(*ast.Ident); ok {
@@ -84,7 +94,7 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	if err := moveReceiverState(fs, original, info, units); err != nil {
 		return nil, nil, err
 	}
-	if err := rewritePackageContext(fs, original, info, units); err != nil {
+	if err := rewritePackageContext(fs, original, info, units, before.recovering); err != nil {
 		return nil, nil, err
 	}
 	if err := extendNativeContext(original, info, units); err != nil {
@@ -122,6 +132,17 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 				prov.SignatureSources = map[string]string{}
 			}
 			prov.SignatureSources[call.Source] = signatureSources[call.Source]
+		}
+		for _, call := range u.ContextParamCalls {
+			data, err := s.Read(call.Source)
+			if err != nil {
+				return nil, nil, err
+			}
+			if prov.SignatureSources == nil {
+				prov.SignatureSources = map[string]string{}
+			}
+			prov.SignatureSources[call.Source] = hash(data)
+			prov.Declarations = append(prov.Declarations, "external-context-parameter:"+call.Method+":"+call.Field)
 		}
 		for _, literal := range u.Literals {
 			if literal.MakeSlice {

@@ -62,6 +62,7 @@ func SyncgoEmitSnapshot(OBS_CONTEXT f *ssa.Func)[]string {
  fn:=f.Frontend().Func()
  pp:=EMIT_PROGS(fn,0);EMIT_GEN(f,pp)
  var out []string
+ ASSEMBLE_RUN
  for p:=pp.Text;p!=nil;p=p.Link {out=append(out,fmt.Sprintf("prog:%s",p.String()))}
  fi:=fn.LSym.Func()
  out=append(out,fmt.Sprintf("funcmeta:%d:%d:%d:%d:%d",fi.Args,fi.Locals,fi.FuncID,fi.FuncFlag,len(fi.InlMarks)))
@@ -70,6 +71,7 @@ func SyncgoEmitSnapshot(OBS_CONTEXT f *ssa.Func)[]string {
   out=append(out,fmt.Sprintf("meta:%s:%s:%d:%x",kind,sym.Name,sym.Size,sym.P))
   for _,r:=range sym.R{name:="";if r.Sym!=nil{name=r.Sym.Name};out=append(out,fmt.Sprintf("metareloc:%d:%d:%d:%s:%d",r.Type,r.Off,r.Siz,name,r.Add))}
  }
+ ASSEMBLE_SYMBOL
  for i,sym:=range []*obj.LSym{fi.GCArgs,fi.GCLocals,fi.StackObjects,fi.OpenCodedDeferInfo,fi.ArgInfo,fi.ArgLiveInfo,fi.WrapInfo}{appendSym(fmt.Sprint(i),sym)}
  for _,jt:=range fi.JumpTables {out=append(out,"jumptable:"+jt.Sym.Name);for _,p:=range jt.Targets{out=append(out,fmt.Sprintf("target:%d",p.Pc))}}
  d:=fn.DebugInfo.(*ssa.FuncDebug)

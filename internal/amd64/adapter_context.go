@@ -37,9 +37,10 @@ func NewContext(b *ssagen.Context) *Context {
 	c := &Context{Backend: b, LinkAMD64: *link.Arch, ptrSize: 8}
 	c.initialize()
 	c.x86 = x86.NewContext(link)
-	c.LinkAMD64.DWARFRegisters = c.x86.AMD64DWARFRegisters
+	c.LinkAMD64 = c.x86.Linkamd64
 	c.Init(&b.Arch)
 	link.Arch = b.Arch.LinkArch
+	link.Arch.Init(link)
 	return c
 }
 func (c *Context) fatalf(f string, a ...any) { panic(fmt.Errorf(f, a...)) }

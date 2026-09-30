@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v50"
+const ToolVersion = "syncgo-m3-v51"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -62,14 +62,19 @@ type Unit struct {
 	State                  []StateRule
 	ReceiverState          *ReceiverStateRule
 	Context                *ContextRule
-	ContextMethods         map[string]string   // Free function -> method name when the native Context already uses that name.
-	ContextParamExports    []string            // Explicit signature adaptations for public value methods without an owner.
-	ContextParams          []string            // Reviewed receiver methods that take an explicit context parameter.
-	Literals               []LiteralRule       // Reviewed external struct values bound to an instance.
-	Calls                  []CallRule          // Reviewed external functions bound to context methods.
-	Nullable               map[string][]string // Reviewed owned pointers/receivers that accept nil.
-	Checks                 map[string]string   // Selected function/method -> context argument validator.
+	ContextMethods         map[string]string      // Free function -> method name when the native Context already uses that name.
+	ContextParamCalls      []ContextParamCallRule // Explicit bindings for exported value methods in another package.
+	ContextParamExports    []string               // Explicit signature adaptations for public value methods without an owner.
+	ContextParams          []string               // Reviewed receiver methods that take an explicit context parameter.
+	Literals               []LiteralRule          // Reviewed external struct values bound to an instance.
+	Calls                  []CallRule             // Reviewed external functions bound to context methods.
+	Nullable               map[string][]string    // Reviewed owned pointers/receivers that accept nil.
+	Checks                 map[string]string      // Selected function/method -> context argument validator.
 }
+
+// ContextParamCallRule passes Field from the caller Context to a selected
+// ContextParamExports method. ContextType must match the defining unit.
+type ContextParamCallRule struct{ Source, Method, Field, ContextType string }
 
 // HostResourceRule binds a reviewed standard-library resource factory to a
 // compilation method. Only listed members on its nonescaping local result are
@@ -308,6 +313,26 @@ func (p Plan) Validate() error {
 				return fmt.Errorf("invalid exported context parameter method: %s", name)
 			}
 			parameterMethods[name] = true
+		}
+		seenParamCalls := map[string]bool{}
+		for _, call := range u.ContextParamCalls {
+			receiver, method, ok := strings.Cut(call.Method, ".")
+			key := call.Source + ":" + call.Method
+			if u.Context == nil || !safePath(call.Source) || portPath(call.Source) == "" || !ok || !token.IsIdentifier(receiver) || !token.IsIdentifier(method) || !memberPath(call.Field) || !token.IsIdentifier(call.ContextType) || seenParamCalls[key] {
+				return fmt.Errorf("invalid external context method: %s", key)
+			}
+			seenParamCalls[key] = true
+			declared := false
+			for _, target := range p.Units {
+				if target.Source == call.Source && target.Context != nil && target.Context.Type == call.ContextType {
+					for _, export := range target.ContextParamExports {
+						declared = declared || export == call.Method
+					}
+				}
+			}
+			if !declared {
+				return fmt.Errorf("external context method is not an explicit export: %s", key)
+			}
 		}
 		for _, state := range u.State {
 			if u.Context == nil || !safePath(state.Source) || portPath(state.Source) == "" || !memberPath(state.Variable) || !memberPath(state.Field) {

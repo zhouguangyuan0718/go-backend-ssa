@@ -1,4 +1,4 @@
-// Package amd64 exposes the native AMD64 instruction generator.
+// Package amd64 exposes the native AMD64 instruction generator and assembler.
 package amd64
 
 import (
@@ -8,5 +8,6 @@ import (
 
 type Context = compiler.Context
 
-// NewContext installs the native handlers before backend.InitConfig.
+// NewContext installs and initializes native compiler/assembler handlers before
+// backend.InitConfig. Full object output is a later operation.
 func NewContext(backend *ssagen.Context) *Context { return compiler.NewContext(backend) }
