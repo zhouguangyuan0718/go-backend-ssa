@@ -20,7 +20,7 @@ func ssaGraphMigration() []Unit {
 		{Source: "src/cmd/compile/internal/ssa/likelyadjust.go", Declarations: []string{"loop", "loopnest"}},
 		{Source: "src/cmd/compile/internal/ssa/poset.go", Declarations: []string{"bitset", "poset", "posetEdge", "posetNode", "posetUndo", "undoType"}},
 		{Source: "src/cmd/compile/internal/ssa/prove.go", Declarations: []string{"limit"}},
-		{Source: "src/cmd/compile/internal/ssa/rewrite.go", Declarations: []string{"Aux"}},
+		{Source: "src/cmd/compile/internal/ssa/rewrite.go", Declarations: []string{"Aux", "stringAux", "stringAux.CanBeAnSSAAux"}, Functions: []string{"auxToString", "auxToSym", "auxToType", "auxToCall", "StringToAux", "symToAux", "typeToAux", "callToAux"}},
 		{Source: "src/cmd/compile/internal/ssa/sparsemap.go", WholeFile: true},
 		{Source: "src/cmd/compile/internal/ssa/sparseset.go", WholeFile: true},
 		{Source: "src/cmd/compile/internal/ssa/sparsetree.go", WholeFile: true},

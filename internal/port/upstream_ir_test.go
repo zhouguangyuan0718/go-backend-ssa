@@ -36,6 +36,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_containers")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_allocators")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_dom")
+	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_aux")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -104,7 +105,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		position = "u.Pos"
 	}
 
-	if snapshotName == "ssa_types" || snapshotName == "ssa_graph" {
+	if snapshotName == "ssa_types" || snapshotName == "ssa_graph" || snapshotName == "ssa_aux" {
 		setup = strings.Replace(setup, "typecheck.NewContext(ir.NewContext(u,link)).InitUniverse()", "graph:=ir.NewContext(u,link);typecheck.NewContext(graph).InitUniverse();c:=&Context{Types:u}", 1)
 	}
 
@@ -167,6 +168,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		setup = strings.Replace(setup, "c,err:=NewContext(types2.NewContext(),tc)", "c,err:=noder.NewContext(types2.NewContext(),tc)", 1)
 	}
 	ported := strings.NewReplacer(
+		"IMPORT_ABI", "go-backend-ssa/internal/abi", "ABI_SETUP", "ac:=abi.NewContext(graph)", "ABI_NEW", "ac.NewABIConfig",
 		"SSA_OBJ_ROOT", "go-backend-ssa/internal/cmd/obj", "OPCODE_SETUP", "c:=newOpcodeContext()",
 		"IMPORT_WALK", "go-backend-ssa/internal/walk", "WALK_SETUP", "w:=walk.NewContext(c,esc)", "WALK_SET_SOFT", `w.SoftFloat=strings.HasSuffix(mode,"-soft")`, "WALK_RUN", "w.Walk(f)",
 		"ZERO_BIND", "s=c.BindSchedule(s)", "ZERO_IMPORT", `"go-backend-ssa/internal/rttype";"go-backend-ssa/internal/objw";"go-backend-ssa/internal/reflectdata";"go-backend-ssa/internal/staticdata";`,
@@ -276,6 +278,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		nativeSetup = `Ctxt=&obj.Link{}`
 	}
 	native := strings.NewReplacer(
+		"IMPORT_ABI", "cmd/compile/internal/abi", "ABI_SETUP", "", "ABI_NEW", "abi.NewABIConfig",
 		"SSA_OBJ_ROOT", "cmd/internal/obj", "OPCODE_SETUP", "",
 		"IMPORT_WALK", "cmd/compile/internal/walk", "WALK_SETUP", "ssagen.Arch.LinkArch=base.Ctxt.Arch", "WALK_SET_SOFT", `ssagen.Arch.SoftFloat=strings.HasSuffix(mode,"-soft")`, "WALK_RUN", "walk.Walk(f)",
 		"ZERO_BIND", "", "ZERO_IMPORT", "",

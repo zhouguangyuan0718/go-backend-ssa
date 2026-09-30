@@ -79,3 +79,12 @@ func assignmentContext(a *ABIParamAssignment) *Context {
 	}
 	return c
 }
+
+// Universe identifies the compilation that owns the ABI configuration, including
+// configurations whose signatures have no inputs or results.
+func (c *ABIConfig) Universe() *types.Universe {
+	if c == nil || c.compilation == nil {
+		return nil
+	}
+	return c.compilation.IR.Types
+}

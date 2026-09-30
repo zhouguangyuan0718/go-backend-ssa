@@ -821,7 +821,8 @@ func TestNativeCanSSAFromPublicModule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	typecheck.NewContext(ir.NewContext(u, link)).InitUniverse()
+	graph := ir.NewContext(u, link)
+	typecheck.NewContext(graph).InitUniverse()
 	native := ssa.NewTypes(u)
 	if native.Int != u.Types[types.Int] || native.BytePtrPtr.Elem() != native.BytePtr {
 		t.Fatal("public SSA types lost canonical identity")
@@ -846,6 +847,26 @@ func TestNativeCanSSAFromPublicModule(t *testing.T) {
 	}
 	if ssa.SymRdWr != ssa.SymRead|ssa.SymWrite || op.SymEffect() != ssa.SymNone {
 		t.Fatal("public native SSA symbol effects")
+	}
+
+	cfg := abi.NewContext(graph).NewABIConfig(2, 2, 0, 1)
+	info := cfg.ABIAnalyzeTypes([]*types.Type{native.Int}, []*types.Type{native.Int})
+	symbol := &gcbridge.LinkSymbol{Name: "example/p.F"}
+	call := ssa.StaticAuxCall(symbol, info)
+	var aux ssa.Aux = call
+	var sym ssa.Sym = symbol
+	result := call.LateExpansionResultType()
+	if aux != call || sym != symbol || call.ABI() != cfg || cfg.Universe() != u || call.NArgs() != 1 || call.NResults() != 1 || result.FieldType(0) != native.Int || result.FieldType(1) != u.TypeMem {
+		t.Fatal("public SSA call ABI ownership")
+	}
+	for _, other := range []*ssa.AuxCall{ssa.InterfaceAuxCall(info), ssa.ClosureAuxCall(info), ssa.OwnAuxCall(symbol, info)} {
+		if other.ABIInfo() != info || other.TypeOfResult(0) != native.Int {
+			t.Fatal("public call constructor")
+		}
+	}
+	empty := ssa.ClosureAuxCall(cfg.ABIAnalyzeTypes(nil, nil))
+	if empty.LateExpansionResultType() != u.TypeResultMem || fmt.Sprint(ssa.StringToAux("text")) != "text" {
+		t.Fatal("public zero-result call or string aux")
 	}
 
 	i := u.Types[types.Int]

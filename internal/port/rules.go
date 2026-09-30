@@ -220,7 +220,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, ssaGraphMigration()...)
 	for i := range plan.Units {
 		if plan.Units[i].Source == "src/cmd/internal/obj/link.go" {
-			plan.Units[i].Declarations = append(plan.Units[i].Declarations, "AXXX", "ABase386")
+			plan.Units[i].Declarations = append(plan.Units[i].Declarations, "AXXX", "ABase386", "LSym.CanBeAnSSASym", "LSym.CanBeAnSSAAux")
 		}
 	}
 	// base's symbol helpers now consume the native obj package. Keep their

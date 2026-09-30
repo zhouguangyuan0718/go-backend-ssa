@@ -151,3 +151,16 @@ func newOpcodeContext() *Context {
 	c.initialize()
 	return c
 }
+
+// AuxCall already retains its ABI configuration. Derive type ownership there so
+// zero-result late calls use the right memory type without another owner field.
+func auxCallContext(a *AuxCall) *Context {
+	if a == nil || a.abiInfo == nil {
+		panic("SSA call has no ABI analysis")
+	}
+	u := a.abiInfo.Config().Universe()
+	if u == nil {
+		panic("SSA call ABI has no compilation owner")
+	}
+	return &Context{Types: u}
+}

@@ -1,0 +1,129 @@
+package ssa
+
+import (
+	"IMPORT_ABI"
+	IMPORT_BASE
+	"IMPORT_IR"
+	"IMPORT_OBJ"
+	"IMPORT_SRC"
+	"IMPORT_SYS"
+	"IMPORT_TYPECHECK"
+	"IMPORT_TYPES"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"os"
+	"testing"
+)
+
+func TestSyncgoNativeSnapshot(t *testing.T) {
+	target := struct {
+		arch  string
+		size  int
+		order binary.ByteOrder
+	}{os.Getenv("SYNCGO_TARGET"), 8, binary.LittleEndian}
+	switch target.arch {
+	case "386":
+		target.size = 4
+	case "mips":
+		target.size = 4
+		target.order = binary.BigEndian
+	case "ppc64":
+		target.order = binary.BigEndian
+	}
+	SETUP
+	ABI_SETUP
+	var out []string
+	ty := UP.NewTypes()
+	pos := LINK.PosTable.XPos(src.MakePos(src.NewFileBase("call.go", "call.go"), 7, 2))
+	name := GRAPH.NewNameAt(pos, TY.LocalPkg.Lookup("result"), ty.Int)
+	name.Class = ir.PPARAMOUT
+	name.SetFrameOffset(29)
+	auxname := &AuxNameOffset{Name: name, Offset: -3}
+	out = append(out, fmt.Sprintf("name:%s:%d", auxname, auxname.FrameOffset()))
+	record := TY.NewStruct([]*types.Field{TY.NewField(pos, nil, ty.Int), TY.NewField(pos, nil, ty.Float64)})
+	cases := [][]*types.Type{nil, {ty.Int}, {ty.Int64, ty.Float64, ty.String}, {record, TY.NewArray(ty.Int, 0), TY.NewSlice(ty.Int)}}
+	for _, budget := range [][2]int{{0, 0}, {2, 2}, {9, 15}} {
+		cfg := ABI_NEW(budget[0], budget[1], int64(target.size)*2, 1)
+		machine := &Config{Types: *ty, intParamRegs: make([]int8, budget[0]), floatParamRegs: make([]int8, budget[1]), registers: make([]Register, 64)}
+		for i := range machine.intParamRegs {
+			machine.intParamRegs[i] = int8(i * 2)
+		}
+		for i := range machine.floatParamRegs {
+			machine.floatParamRegs[i] = int8(32 + i)
+		}
+		for i := range machine.registers {
+			machine.registers[i] = Register{num: int32(i), objNum: int16(100 + i), name: fmt.Sprint("R", i)}
+		}
+		for n, params := range cases {
+			results := cases[(n+1)%len(cases)]
+			info := cfg.ABIAnalyzeTypes(params, results)
+			symbol := &obj.LSym{Name: "example/p.F"}
+			calls := []*AuxCall{StaticAuxCall(symbol, info), InterfaceAuxCall(info), ClosureAuxCall(info), OwnAuxCall(symbol, info)}
+			for kind, call := range calls {
+				late := call.LateExpansionResultType()
+				out = append(out, fmt.Sprintf("call:%v:%d:%d:%s:%d:%d:%d:%t:%t:late=%v:memonly=%t", budget, n, kind, call, call.ArgWidth(), call.NArgs(), call.NResults(), call.ABI() == cfg, call.ABIInfo() == info, late, late == TY.TypeResultMem))
+				for i := int64(0); i < call.NArgs(); i++ {
+					regs := call.RegsOfArg(i)
+					out = append(out, fmt.Sprintf("arg:%d:%v:%d:%v", i, call.TypeOfArg(i), call.SizeOfArg(i), regs))
+					if len(regs) == 0 {
+						out = append(out, fmt.Sprintf("argoff:%d", call.OffsetOfArg(i)))
+					}
+				}
+				for i := int64(0); i < call.NResults(); i++ {
+					regs := call.RegsOfResult(i)
+					out = append(out, fmt.Sprintf("result:%d:%v:%d:%v:%t:%t", i, call.TypeOfResult(i), call.SizeOfResult(i), regs, call.NameOfResult(i) == nil, call.ParamAssignmentForResult(i) == info.OutParam(int(i))))
+					if len(regs) == 0 {
+						out = append(out, fmt.Sprintf("resultoff:%d", call.OffsetOfResult(i)))
+					}
+				}
+				if kind == 3 {
+					out = append(out, fmt.Sprintf("own-reg:%#v", call.ResultReg(machine)))
+					continue
+				}
+				if info.InRegistersUsed()+info.OutRegistersUsed() > 0 {
+					input := &regInfo{inputs: []inputInfo{{idx: 0, regs: regMaskAt(5)}}, outputs: []outputInfo{{idx: 0, regs: regMaskAt(6)}}, clobbers: regMaskAt(31)}
+					got := call.Reg(input, machine)
+					out = append(out, fmt.Sprintf("reg:%#v:cached=%t", got, call.Reg(input, machine) == got))
+				}
+			}
+			for _, side := range [][]abi.ABIParamAssignment{info.InParams(), info.OutParams()} {
+				for _, param := range side {
+					for _, r := range param.Registers {
+						out = append(out, fmt.Sprintf("mapreg:%d:%d:%d", r, archRegForAbiReg(r, machine), ObjRegForAbiReg(r, machine)))
+					}
+				}
+			}
+		}
+		field := TY.NewField(pos, name.Sym(), ty.Int)
+		field.Nname = name
+		named := cfg.ABIAnalyze(TY.NewSignature(nil, nil, []*types.Field{field}), false)
+		out = append(out, fmt.Sprintf("named:%t", OwnAuxCall(nil, named).NameOfResult(0) == name))
+		empty := ClosureAuxCall(cfg.ABIAnalyzeTypes(nil, nil))
+		out = append(out, fmt.Sprintf("empty:%t:%v", empty.LateExpansionResultType() == TY.TypeResultMem, empty.ResultReg(machine)))
+	}
+	for _, pair := range [][2]int32{{0, 0}, {-1, -1}, {1<<31 - 1, -1 << 31}, {-1 << 31, 1<<31 - 1}, {32768, 17}} {
+		v := makeValAndOff(pair[0], pair[1])
+		out = append(out, fmt.Sprintf("packed:%s:%d:%d:%d:%d:%d:%t", v, v.Val(), v.Val64(), v.Val16(), v.Val8(), v.Off64(), validVal(v.Val64())))
+		for _, off := range []int64{-1 << 32, -1, 0, 1, 1 << 32} {
+			out = append(out, fmt.Sprintf("add:%d:%t:%t", off, v.canAdd32(int32(off)), v.canAdd64(off)))
+			if v.canAdd64(off) {
+				out = append(out, fmt.Sprint(v.addOffset64(off)))
+			}
+		}
+		if v.canAdd32(1) {
+			out = append(out, fmt.Sprint(v.addOffset32(1)))
+		}
+	}
+	var sym Sym = &obj.LSym{Name: "global"}
+	out = append(out, fmt.Sprintf("conversions:%q:%t:%t:%t", auxToString(StringToAux("x\x00中")), auxToSym(symToAux(sym)) == sym, auxToType(typeToAux(ty.Int)) == ty.Int, auxToSym(nil) == nil))
+	func() {
+		defer func() { out = append(out, fmt.Sprint("nil-static:", recover())) }()
+		StaticAuxCall(nil, nil)
+	}()
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("SYNCGO_IR=" + string(data))
+}
