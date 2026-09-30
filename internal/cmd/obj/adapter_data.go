@@ -6,6 +6,7 @@ import (
 	"go-backend-ssa/internal/cmd/dwarf"
 	"go-backend-ssa/internal/cmd/goobj"
 	"io"
+	"sort"
 )
 
 // dataState holds host inputs absent from the original Link. TargetOS must be
@@ -134,3 +135,46 @@ func (link *Link) NumberObjectSymbols(regabiWrappers bool) {
 	link.objectNumberingDone = true
 }
 func (link *Link) ObjectWritten() bool { return link != nil && link.objectWritten }
+
+// Symbols snapshots the interned symbols and all emitted definitions/references.
+// It does not number symbols. Calls must be serialized with linker mutations.
+func (link *Link) Symbols() []*LSym {
+	if link == nil || link.InParallel {
+		panic("symbol snapshot requires an idle linker context")
+	}
+	seen := map[*LSym]bool{}
+	var out []*LSym
+	add := func(s *LSym) {
+		if s != nil && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	link.hash.Range(func(_, v any) bool { add(&v.(*symOnce).sym); return true })
+	link.funchash.Range(func(_, v any) bool { add(&v.(*symOnce).sym); return true })
+	for _, s := range link.statichash {
+		add(s)
+	}
+	link.traverseSyms(traverseDefs|traverseRefs|traverseAux|traversePcdata, add)
+	for _, s := range link.constSyms {
+		add(s)
+	}
+	for i := 0; i < len(out); i++ {
+		s := out[i]
+		add(s.Gotype)
+		for _, r := range s.R {
+			add(r.Sym)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		if a.ABI() != b.ABI() {
+			return a.ABI() < b.ABI()
+		}
+		return !a.Static() && b.Static()
+	})
+	return out
+}

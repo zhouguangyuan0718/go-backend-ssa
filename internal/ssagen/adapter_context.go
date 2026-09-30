@@ -369,6 +369,7 @@ type Construction struct{ state *constructionState }
 type constructionState struct {
 	owner        *Context
 	function     *ssa.Func
+	openDefers   OpenDeferLayout
 	continuation func() *ssa.Func
 	started      bool
 	complete     bool
@@ -440,6 +441,11 @@ func (c *Context) finishSSAConstruction(s *state, continuation func() *ssa.Func)
 		panic("invalid SSA construction capture")
 	}
 	capture.function = s.f
+	capture.openDefers.Bits = s.deferBitsTemp
+	for _, d := range s.openDefers {
+		capture.openDefers.Closures = append(capture.openDefers.Closures, d.closureNode)
+	}
+
 	// buildssa's original deferred popLine executes when construction returns.
 	// Restore exactly that saved scope during the delayed native suffix, without
 	// rerunning construction or introducing another source-position update.
@@ -451,4 +457,20 @@ func (c *Context) finishSSAConstruction(s *state, continuation func() *ssa.Func)
 		return continuation()
 	}
 	return s.f
+}
+
+// OpenDeferLayout describes the native open-defer slots before frame allocation.
+// Closure slot i corresponds to bit i in Bits. A backend lays them out in this
+// order and emits its runtime metadata after choosing frame offsets.
+type OpenDeferLayout struct {
+	Bits     *ir.Name
+	Closures []*ir.Name
+}
+
+// OpenDefers returns a copied list with original compilation-owned slot identities.
+func (c *Construction) OpenDefers() OpenDeferLayout {
+	c.Func()
+	d := c.state.openDefers
+	d.Closures = append([]*ir.Name(nil), d.Closures...)
+	return d
 }

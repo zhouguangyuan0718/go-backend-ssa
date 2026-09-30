@@ -20,6 +20,7 @@ import (
 
 type Context = compiler.Context
 type Construction = compiler.Construction
+type OpenDeferLayout = compiler.OpenDeferLayout
 type SymABIs = compiler.SymABIs
 type ArchInfo = compiler.ArchInfo
 

@@ -2,9 +2,9 @@
 
 将 Go 1.27 官方编译器从源码解析到 SSA 的实现移植为可嵌入进程的 Go 库，供其他编译器后端直接消费。
 
-库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。目标是每次编译拥有独立状态，并让统一 Build 的返回结果跨后续调用保活。当前低层 SSA 和指令接口使用原生 worker 缓存，须在同一 worker 复用前消费结果。
+库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。目标是每次编译拥有独立状态，并让统一 Build 的返回结果跨后续调用保活。低层 BuildSSA 和指令接口使用原生 worker 缓存，须在同一 worker 复用前消费结果；源码级 compiler.Build 和 ConstructSSA 使用独立 cache 保留图。
 
-当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化；M3 已接通从显式源码/依赖到完整前端、SSA、AMD64 机器码及原生归档的 `compiler.Compile`。固定 Go 1.27.1 的真实驱动替换、无 cgo 标准库和工具重建、默认 PGO 及正式 dist bootstrap 均已验证，强制重编后的编译器达到二进制固定点。** 独立 Built/EarlyOptimized SSA API、Linux/arm64、cgo/race 驱动和其余规定回归尚待完成；尚不能视为全部替换目标完成。详细验收范围见下列阶段记录。
+当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化；M3 已接通从显式源码/依赖到完整前端、SSA、AMD64 机器码及原生归档的 `compiler.Compile`。固定 Go 1.27.1 的真实驱动替换、无 cgo 标准库和工具重建、默认 PGO 及正式 dist bootstrap 均已验证，强制重编后的编译器达到二进制固定点。** 源码级 `compiler.Build` 已返回独立保活的 Built SSA 和包元数据。严格 import artifact、EarlyOptimized、Linux/arm64、cgo/race 驱动和其余规定回归尚待完成；尚不能视为全部替换目标完成。详细验收范围见下列阶段记录。
 
 - 语言范围：默认 Go 1.27；原生 Compile 提供显式语言版本选项，独立 Build 的首个设计基线仍为 Go 1.27。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
@@ -117,6 +117,7 @@
 100. [M3 原生 PGO 输入](docs/m3-native-profile-input.md)：原生 pprof/预处理输入、实例解码状态、热点机器码及带 PGO 的真实自编译。
 101. [M3 正式 dist bootstrap](docs/m3-dist-bootstrap.md)：隔离导入映射、bootstrap 复制、完整自举和编译器二进制固定点。
 102. [M3 SSA 构建分界](docs/m3-ssa-construction.md)：Phi 后的独立函数图、每图专属 cache、保留原生后半段及一次性恢复执行。
+103. [M3 源码到 Built SSA](docs/m3-source-build.md)：整包阶段分界、独立图与类型/初始化/静态数据、官方构图和全局数据对照。
 
 ## 当前可运行的工具
 

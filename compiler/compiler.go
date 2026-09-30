@@ -60,6 +60,8 @@ type SourceFile struct {
 	Data []byte
 }
 type Options struct {
+	// Stage applies to Build only; the empty value selects Built.
+	Stage                                              Stage
 	Workers                                            int
 	DisableInlining, DisableOptimization, DisableDwarf bool
 	Complete, Standard, CompilingRuntime               bool
@@ -125,7 +127,12 @@ func (e *Error) Error() string {
 // or opens dependencies implicitly. Cancellation is checked between synchronous
 // stages; backend workers finish before this call returns. This native output
 // entry point does not implement the independent Built/EarlyOptimized SSA API.
-func Compile(ctx context.Context, req Request) (result *Result, err error) {
+func Compile(ctx context.Context, req Request) (*Result, error) { return compile(ctx, req, nil) }
+
+func compile(ctx context.Context, req Request, built **Package) (result *Result, err error) {
+	if err = validateStage(req, built != nil); err != nil {
+		return nil, err
+	}
 	if ctx == nil {
 		return nil, fmt.Errorf("compiler requires a context")
 	}
@@ -158,7 +165,7 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 		return nil, e
 	}
 	arch := sys.NewContext().ArchAMD64
-	link := &obj.Link{Arch: &obj.LinkArch{Arch: arch}, Pkgpath: req.ImportPath, Pathname: workingDirectory, UseBASEntries: true, Flag_locationlists: !req.Options.DisableDwarf}
+	link := &obj.Link{Arch: &obj.LinkArch{Arch: arch}, Pkgpath: req.ImportPath, Pathname: workingDirectory, UseBASEntries: true, Flag_locationlists: !req.Options.DisableDwarf && built == nil}
 	link.TargetOS = req.Target.GOOS
 	if e = link.Headtype.Set(req.Target.GOOS); e != nil {
 		return nil, e
@@ -203,9 +210,9 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 	flags.Std = req.Options.Standard
 	flags.CompilingRuntime = req.Options.CompilingRuntime
 	flags.WB = true
-	flags.Dwarf = !req.Options.DisableDwarf
+	flags.Dwarf = !req.Options.DisableDwarf && built == nil
 	flags.LowerC = req.Options.Workers
-	if flags.LowerC == 0 {
+	if flags.LowerC == 0 || built != nil {
 		flags.LowerC = 1
 	}
 	flags.LowerL = 1
@@ -271,7 +278,7 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 	if req.Options.DisableInlining {
 		_ = producer.Set("l", "1")
 	}
-	if req.Options.DisableDwarf {
+	if req.Options.DisableDwarf || built != nil {
 		_ = producer.Set("dwarf", "false")
 		flags.GenDwarfInl = 0
 		link.DwFixups = nil
@@ -349,6 +356,37 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 	}
 	if err = ctx.Err(); err != nil {
 		return nil, err
+	}
+	if built != nil {
+		held, e := finalizer.BuildDeclarations(syms, profile, ctx.Err)
+		if e != nil {
+			return nil, e
+		}
+		if errors() {
+			return nil, &Error{Diagnostics: diagnostics()}
+		}
+		if graph.Debug.WrapGlobalMapCtl != 1 {
+			nd.StaticInit.AddKeepRelocations()
+		}
+		finalizer.DumpData()
+		if errors() {
+			return nil, &Error{Diagnostics: diagnostics()}
+		}
+		if err = ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err = ownEmbeddedData(ctx, req, link.Data); err != nil {
+			return nil, err
+		}
+		pkg := builtPackage(req, language, finalizer, held, diagnostics())
+		if errors() {
+			return nil, &Error{Diagnostics: diagnostics()}
+		}
+		if err = ctx.Err(); err != nil {
+			return nil, err
+		}
+		*built = pkg
+		return nil, nil
 	}
 	finalizer.CompileDeclarations(syms, profile)
 	if errors() {

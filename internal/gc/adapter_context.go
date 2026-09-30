@@ -37,6 +37,10 @@ type Context struct {
 	Backend                                          *ssagen.Context
 	Lowering                                         *walk.Context
 	compilequeue                                     []*ir.Func
+	buildMode                                        bool
+	constructed                                      []*ssagen.Construction
+	buildCheck                                       func() error
+	buildError                                       error
 	enqueued                                         map[*ir.Func]bool
 	workerFailureMu                                  sync.Mutex
 	workerFailure                                    any
@@ -131,7 +135,7 @@ const (
 
 // SetObjectHeader freezes target/header inputs after compiler data finalization.
 func (c *Context) SetObjectHeader(config ObjectConfig) {
-	if c == nil || c.Writer == nil || !c.functionDataDone || c.finishRunning || c.finishFailed || c.dataFailed || c.header != nil || config.GOOS != c.Writer.Link.TargetOS || config.GOARCH != c.Writer.Link.Arch.Name || config.Version == "" {
+	if c == nil || c.buildMode || c.Writer == nil || !c.functionDataDone || c.finishRunning || c.finishFailed || c.dataFailed || c.header != nil || config.GOOS != c.Writer.Link.TargetOS || config.GOARCH != c.Writer.Link.Arch.Name || config.Version == "" {
 		panic("object header requires finalized, matching target inputs")
 	}
 	exp := c.Writer.Types.Experiment
@@ -310,6 +314,20 @@ func (c *Context) compileWorker(fn *ir.Func, worker int, profile *pgoir.Profile)
 			c.workerFailureMu.Unlock()
 		}
 	}()
+	if c.buildMode {
+		if c.buildError != nil {
+			return
+		}
+		if c.buildCheck != nil {
+			if err := c.buildCheck(); err != nil {
+				c.buildError = err
+				return
+			}
+		}
+		held := c.Backend.ConstructSSA(fn, c.Backend.Inline.IsPgoHotFunc(fn, profile) || c.Backend.Inline.HasPgoHotInline(fn))
+		c.constructed = append(c.constructed, held)
+		return
+	}
 	c.Backend.Compile(fn, worker, profile)
 }
 
@@ -377,7 +395,7 @@ func (c *Context) PrepareFrontend(symABIs *ssagen.SymABIs, profile *pgoir.Profil
 // map keep relocations, data finalization and symbol numbering. Call once after
 // PrepareFrontend and CompileDeclarations. Archive output remains caller-owned.
 func (c *Context) FinishPackage() {
-	if c == nil || c.Backend == nil || !c.frontendStarted || c.frontendRunning || c.frontendFailed || !c.declarationsStarted || c.declarationsRunning || c.declarationsFailed || c.finishStarted || c.functionDataDone || c.dataFailed || c.workerFailure != nil || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.Typecheck.IR.CurFunc != nil || c.errors() != 0 {
+	if c == nil || c.buildMode || c.Backend == nil || !c.frontendStarted || c.frontendRunning || c.frontendFailed || !c.declarationsStarted || c.declarationsRunning || c.declarationsFailed || c.finishStarted || c.functionDataDone || c.dataFailed || c.workerFailure != nil || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.Typecheck.IR.CurFunc != nil || c.errors() != 0 {
 		panic("package finalization requires completed frontend and declaration stages")
 	}
 	c.finishStarted, c.finishRunning = true, true
@@ -434,4 +452,31 @@ func (c *Context) WriteAssemblyHeader(output io.WriteSeeker) (err error) {
 	}()
 	c.dumpasmhdr()
 	return nil
+}
+
+// BuildDeclarations runs the same native declaration fixed point and queue,
+// retaining independently cached graphs after Phi insertion. It requires one
+// worker because construction shares the frontend Context. The compiler is
+// consumed even on cancellation; native FinishPackage is unavailable afterward.
+// check may be nil, and otherwise runs before each function on the joined worker.
+func (c *Context) BuildDeclarations(symABIs *ssagen.SymABIs, profile *pgoir.Profile, check func() error) ([]*ssagen.Construction, error) {
+	if c == nil || c.Backend == nil || c.buildMode || c.Backend.WorkerCount() != 1 || c.Package.Noder.Flag.LowerC != 1 || !c.frontendStarted || c.frontendFailed || c.frontendRunning || c.declarationsStarted {
+		panic("SSA package construction requires a fresh prepared single-worker compiler")
+	}
+	c.buildMode = true
+	c.buildCheck = check
+	defer func() { c.buildCheck = nil; c.constructed = nil }()
+	c.CompileDeclarations(symABIs, profile)
+	if c.buildError != nil {
+		c.declarationsFailed = true
+		return nil, c.buildError
+	}
+	if check != nil {
+		if err := check(); err != nil {
+			c.declarationsFailed = true
+			return nil, err
+		}
+	}
+	c.Package.Noder.Typecheck.CheckFuncStack()
+	return append([]*ssagen.Construction(nil), c.constructed...), nil
 }

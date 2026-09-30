@@ -1,8 +1,8 @@
 # 公共 API 与后端契约
 
-本文件的 Build/Package/SSA 接口仍是拟议设计。已实现的完整原生源码编译入口为 `compiler.Compile`，见[源码到原生归档](m3-native-source-compiler.md)；它运行完整原生后端，不提供这里设计的 Built/EarlyOptimized 图结果。
+已实现源码级 `compiler.Build(ctx, Request)`，返回 Built 阶段的 `compiler.Package`，见[源码到 Built SSA](m3-source-build.md)。它复用 `compiler.Compile` 的显式输入，只运行构图前的原生流程，独立保留每张图及包元数据；当前支持 Linux/amd64，依赖通过显式原生归档适配器传入。
 
-新增的低层 `ssagen.Context.ConstructSSA` 已提供 Phi 完成、SSA Compile 之前的函数图及一次性原生 continuation，使用独立 cache 保留图；它要求已准备好的 IR 和目标服务。源码级 `Build`、包元数据和 EarlyOptimized 仍按本文设计推进，见[SSA 构建分界](m3-ssa-construction.md)。
+下文是完整目标契约；其中严格 import artifact、EarlyOptimized 和能力集仍属拟议设计。当前实际声明以 `compiler/build.go` 与 `compiler/compiler.go` 为准。原生归档输出继续使用 `compiler.Compile`；低层 `ssagen.Context.ConstructSSA` 另提供一次性原生 continuation，见[SSA 构建分界](m3-ssa-construction.md)。
 
 ## 入口
 

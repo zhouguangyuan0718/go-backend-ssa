@@ -10,6 +10,7 @@ import (
 	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
 	"io"
+	"sort"
 	"sync"
 )
 
@@ -92,3 +93,17 @@ func (c *Context) tracePrintf(f string, a ...any) (int, error) {
 func (c *Context) checkITabTypes(typ, iface *types.Type)            { c.checkType(typ); c.checkType(iface) }
 func (c *Context) checkITabAt(pos src.XPos, typ, iface *types.Type) { c.checkITabTypes(typ, iface) }
 func (c *Context) checkMethodOffset(typ *types.Type, i int64)       { c.checkType(typ) }
+
+// RuntimeTypes lists every requested runtime type after declaration construction.
+// Serialize this snapshot with compiler mutations; the returned types retain
+// their compilation identities and the list order is canonical.
+func (c *Context) RuntimeTypes() []*types.Type {
+	out := make([]*types.Type, 0, len(c.signatset))
+	for t := range c.signatset {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return c.Typecheck.IR.Types.TypeSymName(out[i]) < c.Typecheck.IR.Types.TypeSymName(out[j])
+	})
+	return out
+}
