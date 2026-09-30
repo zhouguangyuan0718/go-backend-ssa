@@ -82,6 +82,7 @@
 65. [M3 SSA 原生诊断](docs/m3-ssa-diagnostics.md)：存活性、文本/HTML、崩溃输出及实例绑定的 DOT/SVG 管线。
 66. [M3 SSA 值改写](docs/m3-ssa-mutations.md)：完整 Value/Block、常量缓存、类型比较与原生 Copy/Phi 消除。
 67. [M3 SSA 死代码清理](docs/m3-ssa-deadcode.md)：原生 numberLines/deadcode、语句位置迁移与死图回收。
+68. [M3 SSA 完整校验](docs/m3-ssa-check.md)：原生 verifier、内存检查、循环嵌套与分支预测。
 
 ## 当前可运行的工具
 

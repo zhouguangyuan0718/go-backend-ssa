@@ -2,6 +2,7 @@ package ssa
 
 import (
 	"fmt"
+	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/types"
 	"io"
 	"os/exec"
@@ -12,6 +13,7 @@ import (
 type Context struct {
 	*opcodeTables
 	Types       *types.Universe
+	IR          *ir.Context
 	ptrSize     int
 	TraceWriter io.Writer
 	Command     func(string, ...string) *exec.Cmd
@@ -221,3 +223,13 @@ func valueContext(v *Value) *Context {
 	}
 	return typeContextOf(v.Type)
 }
+
+// Names retain their existing IR owner, which owns merge policy and target flags.
+func nameContext(n *ir.Name) *Context {
+	graph := ir.ContextOf(n)
+	if n.Type() != nil && n.Type().Universe() != graph.Types {
+		panic("SSA local belongs to another type universe")
+	}
+	return &Context{Types: graph.Types, IR: graph, ptrSize: graph.Types.PointerSize()}
+}
+func (c *Context) tracePrint(args ...any) (int, error) { return fmt.Fprint(c.traceWriter(), args...) }

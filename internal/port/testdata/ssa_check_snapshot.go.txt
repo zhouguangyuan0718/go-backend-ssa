@@ -1,0 +1,431 @@
+package ssa
+
+import (
+	"IMPORT_ABI"
+	IMPORT_BASE
+	"IMPORT_IR"
+	"IMPORT_OBJ"
+	"IMPORT_S390X"
+	"IMPORT_SRC"
+	"IMPORT_SYS"
+	"IMPORT_TYPECHECK"
+	"IMPORT_TYPES"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"math"
+	"os"
+	"testing"
+)
+
+type snapshotCheckFrontend struct {
+	Frontend
+	warnings []string
+}
+
+func (f *snapshotCheckFrontend) Log() bool { return false }
+func (f *snapshotCheckFrontend) Fatalf(pos src.XPos, format string, args ...any) {
+	panic(fmt.Sprintf("%d:%s", pos.Line(), fmt.Sprintf(format, args...)))
+}
+func (f *snapshotCheckFrontend) Warnl(pos src.XPos, format string, args ...any) {
+	f.warnings = append(f.warnings, fmt.Sprintf("%d:%s", pos.Line(), fmt.Sprintf(format, args...)))
+}
+
+func TestSyncgoNativeSnapshot(t *testing.T) {
+	target := struct {
+		arch  string
+		size  int
+		order binary.ByteOrder
+	}{os.Getenv("SYNCGO_TARGET"), 8, binary.LittleEndian}
+	switch target.arch {
+	case "386":
+		target.size = 4
+	case "mips":
+		target.size = 4
+		target.order = binary.BigEndian
+	case "ppc64":
+		target.order = binary.BigEndian
+	}
+	SETUP
+	ABI_SETUP
+	DIAG_METADATA
+	var out []string
+	add := func(label string, args ...any) { out = append(out, label+":"+fmt.Sprint(args...)) }
+	trapped := func(label string, fn func()) {
+		func() {
+			defer func() {
+				v := recover()
+				if v == nil {
+					t.Fatalf("%s did not fail", label)
+				}
+				add(label, v)
+			}()
+			fn()
+		}()
+	}
+	file := src.NewFileBase("deadcode.go", "deadcode.go")
+	position := func(line uint) src.XPos { return LINK.PosTable.XPos(src.MakePos(file, line, 2)) }
+	pos := position(10)
+
+	cfg := &Config{PtrSize: int64(target.size), RegSize: int64(target.size), Types: *UP.NewTypes(), ctxt: LINK}
+	fresh := func() (*Func, *snapshotCheckFrontend) {
+		fe := &snapshotCheckFrontend{}
+		cache := new(Cache)
+		cache.Reset()
+		f := cfg.NewFunc(fe, cache)
+		f.Name = "deadcode"
+		f.Type = TY.NewSignature(nil, nil, nil)
+		f.ABISelf = ABI_NEW(0, 0, 0, 1)
+		f.pass = &pass{name: "deadcode phase", stats: 0}
+		f.Entry = f.NewBlock(BlockRet)
+		f.Entry.Pos = pos
+		return f, fe
+	}
+	dump := func(label string, f *Func) {
+		for _, b := range f.Blocks {
+			add(label+"-block", b.ID, " ", b.Kind, " ", b.Likely, " ", b.Preds, " ", b.Succs, " ", b.ControlValues())
+			for _, v := range b.Values {
+				add(label+"-value", v.ID, " ", v.Op, " ", v.Type, " ", v.AuxInt, " ", v.Aux, " ", v.Uses, " ", v.Args, " ", v.InCache, " ", v.Pos.Line(), " ", v.Pos.IsStmt())
+			}
+		}
+	}
+	check := func(f *Func) {
+		uses := map[*Value]int32{}
+		for _, b := range f.Blocks {
+			for i, e := range b.Succs {
+				back := e.b.Preds[e.i]
+				if back.b != b || back.i != i {
+					t.Fatal("reverse edge")
+				}
+			}
+			for _, v := range b.ControlValues() {
+				uses[v]++
+			}
+			for _, v := range b.Values {
+				for _, a := range v.Args {
+					uses[a]++
+				}
+			}
+		}
+		for _, b := range f.Blocks {
+			for _, v := range b.Values {
+				if uses[v] != v.Uses {
+					t.Fatalf("%s uses=%d want=%d", v, v.Uses, uses[v])
+				}
+			}
+		}
+	}
+	baseGraph := func() (*Func, *Value, *Value, *Value, *snapshotCheckFrontend) {
+		f, fe := fresh()
+		m := f.Entry.NewValue0(pos, OpInitMem, TY.TypeMem)
+		a := f.ConstInt64(cfg.Types.Int64, 7)
+		sp := f.Entry.NewValue0(pos, OpSP, cfg.Types.Uintptr)
+		p := f.Entry.NewValue1I(pos, OpOffPtr, TY.NewPtr(a.Type), 8, sp)
+		f.Entry.SetControl(m)
+		return f, m, a, p, fe
+	}
+	it := cfg.Types.Int64
+	// Check the complete verifier, including memory and loop checks, on well-formed graphs.
+	f, m, a, p, fe := baseGraph()
+	checkFunc(f)
+	check(f)
+	add("straight", "ok")
+	f.scheduled = true
+	checkFunc(f)
+	add("scheduled-straight", "ok")
+	diamond := func() (*Func, *Value, *Value, *Value, *Value) {
+		f, m, a, p, _ := baseGraph()
+		e := f.Entry
+		e.Reset(BlockIf)
+		cond := f.ConstBool(cfg.Types.Bool, true)
+		e.SetControl(cond)
+		l, r, j := f.NewBlock(BlockPlain), f.NewBlock(BlockPlain), f.NewBlock(BlockRet)
+		e.AddEdgeTo(l)
+		e.AddEdgeTo(r)
+		l.AddEdgeTo(j)
+		r.AddEdgeTo(j)
+		for _, b := range f.Blocks {
+			b.Pos = pos
+		}
+		ml := l.NewValue3A(pos, OpStore, TY.TypeMem, it, p, a, m)
+		mr := r.NewValue3A(pos, OpStore, TY.TypeMem, it, p, a, m)
+		mp := j.NewValue2(pos, OpPhi, TY.TypeMem, ml, mr)
+		j.SetControl(mp)
+		return f, mp, ml, mr, p
+	}
+	f, mp, ml, mr, p := diamond()
+	checkFunc(f)
+	f.scheduled = true
+	checkFunc(f)
+	add("diamond", "ok")
+	mp.SetArg(0, mr)
+	memCheck(f)
+	add("unused-memory-skips-check", "ok")
+	ml.Block.NewValue2(pos, OpLoad, it, p, ml)
+	trapped("memory-phi", func() { memCheck(f) })
+	mp.SetArg(0, ml)
+	// Cases cover nested and irreducible loops, exits, calls and pre-existing predictions.
+	for _, shape := range []string{"nested", "irreducible", "exit", "call", "defer"} {
+		f, m, a, p, fe = baseGraph()
+		e := f.Entry
+		e.Reset(BlockIf)
+		cond := f.ConstBool(cfg.Types.Bool, true)
+		e.SetControl(cond)
+		x, y, z, ret := f.NewBlock(BlockIf), f.NewBlock(BlockIf), f.NewBlock(BlockPlain), f.NewBlock(BlockRet)
+		for _, b := range f.Blocks {
+			b.Pos = pos
+		}
+		x.SetControl(cond)
+		y.SetControl(cond)
+		ret.SetControl(m)
+		switch shape {
+		case "nested":
+			e.AddEdgeTo(x)
+			e.AddEdgeTo(ret)
+			x.AddEdgeTo(y)
+			x.AddEdgeTo(ret)
+			y.AddEdgeTo(z)
+			y.AddEdgeTo(x)
+			z.AddEdgeTo(y)
+		case "irreducible":
+			e.AddEdgeTo(x)
+			e.AddEdgeTo(y)
+			x.AddEdgeTo(y)
+			x.AddEdgeTo(ret)
+			y.AddEdgeTo(x)
+			y.AddEdgeTo(ret)
+			z.AddEdgeTo(z)
+		default:
+			e.AddEdgeTo(x)
+			e.AddEdgeTo(y)
+			x.Reset(BlockPlain)
+			y.Reset(BlockPlain)
+			x.AddEdgeTo(z)
+			y.AddEdgeTo(ret)
+			z.AddEdgeTo(ret)
+			if shape == "exit" {
+				z.Reset(BlockExit)
+				z.removeSucc(0)
+				ret.removePred(1)
+				z.SetControl(m)
+			}
+			if shape == "call" {
+				x.NewValue1A(pos, OpStaticCall, TY.TypeMem, &AuxCall{Fn: &obj.LSym{Name: "called"}}, m)
+				e.Likely = BranchLikely
+			}
+			if shape == "defer" {
+				x.Reset(BlockDefer)
+				x.SetControl(m)
+				x.AddEdgeTo(ret)
+			}
+		}
+		f.pass = &pass{name: "loop prediction", debug: 1, stats: 1}
+		checkFunc(f)
+		ln := f.loopnest()
+		add("loop-cache", shape, " ", ln == f.loopnest(), " ", ln.hasIrreducible)
+		for _, b := range f.Blocks {
+			add("loop-depth", shape, " ", b.ID, " ", ln.depth(b.ID))
+		}
+		for _, l := range ln.loops {
+			add("loop", shape, " ", l.LongString(), " ", l.depth, " ", l.nBlocks, " ", l.isInner)
+		}
+		likelyadjust(f)
+		checkFunc(f)
+		dump(shape, f)
+		add("loop-warnings", shape, " ", fe.warnings)
+		f.invalidateCFG()
+		add("loop-recompute", ln != f.loopnest())
+	}
+	// Negative input must produce the same native diagnostic; use a fresh graph per mutation.
+	cases := []struct {
+		name   string
+		mutate func(*Func, *Value, *Value, *Value)
+	}{
+		{"duplicate-block", func(f *Func, m, a, p *Value) { f.Blocks = append(f.Blocks, f.Entry) }},
+		{"block-owner", func(f *Func, m, a, p *Value) { other, _ := fresh(); f.Entry.Func = other }},
+		{"ret-successor", func(f *Func, m, a, p *Value) { f.Entry.AddEdgeTo(f.Entry) }},
+		{"ret-no-control", func(f *Func, m, a, p *Value) { f.Entry.ResetControls() }},
+		{"ret-control-type", func(f *Func, m, a, p *Value) { f.Entry.SetControl(a) }},
+		{"plain-successors", func(f *Func, m, a, p *Value) { f.Entry.Reset(BlockPlain) }},
+		{"if-successors", func(f *Func, m, a, p *Value) { f.Entry.Reset(BlockIf) }},
+		{"defer-successors", func(f *Func, m, a, p *Value) { f.Entry.Reset(BlockDefer) }},
+		{"first-successors", func(f *Func, m, a, p *Value) { f.Entry.Reset(BlockFirst) }},
+		{"jumptable-control", func(f *Func, m, a, p *Value) { f.Entry.Reset(BlockJumpTable) }},
+		{"prediction-count", func(f *Func, m, a, p *Value) { f.Entry.Likely = BranchLikely }},
+		{"argument-count", func(f *Func, m, a, p *Value) { f.Entry.NewValue1(pos, OpAdd64, it, a) }},
+		{"bool-aux", func(f *Func, m, a, p *Value) { f.Entry.NewValue0I(pos, OpConstBool, cfg.Types.Bool, 2) }},
+		{"int8-aux", func(f *Func, m, a, p *Value) { f.Entry.NewValue0I(pos, OpConst8, cfg.Types.Int8, 128) }},
+		{"int16-aux", func(f *Func, m, a, p *Value) { f.Entry.NewValue0I(pos, OpConst16, cfg.Types.Int16, 32768) }},
+		{"int32-aux", func(f *Func, m, a, p *Value) { f.Entry.NewValue0I(pos, OpConst32, cfg.Types.Int32, 2147483648) }},
+		{"nan32", func(f *Func, m, a, p *Value) {
+			f.Entry.NewValue0I(pos, OpConst32F, cfg.Types.Float32, int64(math.Float64bits(math.NaN())))
+		}},
+		{"inexact32", func(f *Func, m, a, p *Value) {
+			f.Entry.NewValue0I(pos, OpConst32F, cfg.Types.Float32, int64(math.Float64bits(1.0/3)))
+		}},
+		{"nan64", func(f *Func, m, a, p *Value) {
+			f.Entry.NewValue0I(pos, OpConst64F, cfg.Types.Float64, int64(math.Float64bits(math.NaN())))
+		}},
+		{"string-aux", func(f *Func, m, a, p *Value) { f.Entry.NewValue0(pos, OpConstString, cfg.Types.String) }},
+		{"call-aux", func(f *Func, m, a, p *Value) { f.Entry.NewValue1(pos, OpStaticCall, TY.TypeMem, m) }},
+		{"call-symbol", func(f *Func, m, a, p *Value) { f.Entry.NewValue1A(pos, OpStaticCall, TY.TypeMem, &AuxCall{}, m) }},
+		{"unexpected-aux", func(f *Func, m, a, p *Value) { a.Aux = &obj.LSym{Name: "bad"} }},
+		{"unexpected-auxint", func(f *Func, m, a, p *Value) { m.AuxInt = 1 }},
+		{"nil-arg", func(f *Func, m, a, p *Value) { v := f.Entry.NewValue2(pos, OpAdd64, it, a, a); v.Args[1] = nil }},
+		{"memory-not-last", func(f *Func, m, a, p *Value) { f.Entry.NewValue2(pos, OpAdd64, it, m, a) }},
+		{"duplicate-value", func(f *Func, m, a, p *Value) { f.Entry.Values = append(f.Entry.Values, a) }},
+		{"value-block", func(f *Func, m, a, p *Value) { a.Block = nil }},
+		{"phi-count", func(f *Func, m, a, p *Value) { f.Entry.NewValue1(pos, OpPhi, it, a) }},
+		{"address-base", func(f *Func, m, a, p *Value) { f.Entry.NewValue1A(pos, OpAddr, p.Type, &obj.LSym{Name: "addr"}, p) }},
+		{"local-base", func(f *Func, m, a, p *Value) { f.Entry.NewValue2(pos, OpLocalAddr, p.Type, p, m) }},
+		{"local-memory", func(f *Func, m, a, p *Value) { f.Entry.NewValue2(pos, OpLocalAddr, p.Type, p.Args[0], a) }},
+		{"empty-struct", func(f *Func, m, a, p *Value) { f.Entry.NewValue0(pos, OpStructMake, TY.NewStruct(nil)) }},
+		{"sp-type", func(f *Func, m, a, p *Value) { p.Args[0].Type = it }},
+		{"strlen-type", func(f *Func, m, a, p *Value) {
+			str := f.ConstEmptyString(cfg.Types.String)
+			f.Entry.NewValue1(pos, OpStringLen, cfg.Types.Bool, str)
+		}},
+		{"load-memory", func(f *Func, m, a, p *Value) { f.Entry.NewValue2(pos, OpLoad, it, p, a) }},
+		{"store-result", func(f *Func, m, a, p *Value) { f.Entry.NewValue3A(pos, OpStore, it, it, p, a, m) }},
+		{"store-memory", func(f *Func, m, a, p *Value) { f.Entry.NewValue3A(pos, OpStore, TY.TypeMem, it, p, a, a) }},
+		{"select-condition", func(f *Func, m, a, p *Value) { f.Entry.NewValue3(pos, OpCondSelect, it, a, a, a) }},
+		{"ptr-base", func(f *Func, m, a, p *Value) { f.Entry.NewValue2(pos, OpAddPtr, p.Type, a, a) }},
+		{"ptr-offset", func(f *Func, m, a, p *Value) { f.Entry.NewValue2(pos, OpAddPtr, p.Type, p, p) }},
+		{"nilcheck-result", func(f *Func, m, a, p *Value) { f.Entry.NewValue2(pos, OpNilCheck, it, p, m) }},
+		{"nilcheck-base", func(f *Func, m, a, p *Value) { f.Entry.NewValue2(pos, OpNilCheck, p.Type, a, m) }},
+		{"nilcheck-memory", func(f *Func, m, a, p *Value) { f.Entry.NewValue2(pos, OpNilCheck, p.Type, p, a) }},
+		{"arg-width", func(f *Func, m, a, p *Value) { f.Entry.NewValue2(pos, OpAdd32, cfg.Types.Int32, a, a) }},
+		{"missing-value", func(f *Func, m, a, p *Value) {
+			x := f.newValueNoBlock(OpConst64, it, pos)
+			x.Block = f.Entry
+			f.Entry.NewValue2(pos, OpAdd64, it, a, x)
+		}},
+		{"missing-control", func(f *Func, m, a, p *Value) { f.Entry.Values = f.Entry.Values[1:] }},
+		{"used-free-value", func(f *Func, m, a, p *Value) { f.freeValues = a }},
+		{"used-free-block", func(f *Func, m, a, p *Value) { f.freeBlocks = f.Entry }},
+		{"uses", func(f *Func, m, a, p *Value) { a.Uses++ }},
+		{"memory-first-tuple", func(f *Func, m, a, p *Value) { f.Entry.NewValue0(pos, OpUnknown, TY.NewTuple(TY.TypeMem, it)) }},
+		{"two-memories", func(f *Func, m, a, p *Value) {
+			other := f.Entry.NewValue0(pos, OpInitMem, TY.TypeMem)
+			f.Entry.NewValue2(pos, OpLoad, it, p, other)
+		}},
+		{"softfloat-after-regalloc", func(f *Func, m, a, p *Value) {
+			f.Config.SoftFloat = true
+			f.Entry.NewValue0(pos, OpConst64F, cfg.Types.Float64)
+			f.RegAlloc = make([]Location, f.NumValues())
+		}},
+	}
+	for _, c := range cases {
+		f, m, a, p, _ = baseGraph()
+		c.mutate(f, m, a, p)
+		trapped(c.name, func() { checkFunc(f) })
+		cfg.SoftFloat = false
+	}
+	// Dominance and scheduled memory checks have distinct native paths.
+	f, mp, ml, mr, p = diamond()
+	mp.SetArg(0, mr)
+	trapped("dominance", func() { checkFunc(f) })
+	f, m, a, p, _ = baseGraph()
+	s1 := f.Entry.NewValue3A(pos, OpStore, TY.TypeMem, it, p, a, m)
+	f.Entry.NewValue2(pos, OpLoad, it, p, m)
+	f.Entry.SetControl(s1)
+	f.scheduled = true
+	trapped("scheduled-memory", func() { checkFunc(f) })
+	// Policy comes from the Name's existing IR compilation.
+	for _, size := range []int64{1, 3, 4} {
+		n := GRAPH.NewNameAt(pos, TY.LocalPkg.Lookup(fmt.Sprintf("local%d", size)), TY.NewArray(cfg.Types.Uintptr, size))
+		n.Class = ir.PAUTO
+		for _, enabled := range []int{0, 1} {
+			MERGE_DEBUG.MergeLocals = enabled
+			for _, noopt := range []int{0, 1} {
+				if noopt == 0 {
+					MERGE_FLAG.N = 0
+				} else {
+					MERGE_FLAG.N = 1
+				}
+				add("merge", size, " ", enabled, " ", noopt, " ", IsMergeCandidate(n))
+			}
+		}
+		MERGE_DEBUG.MergeLocals = 1
+		MERGE_FLAG.N = 0
+		n.SetAddrtaken(true)
+		add("merge-address", size, " ", IsMergeCandidate(n))
+		n.SetAddrtaken(false)
+		n.SetNonMergeable(true)
+		add("merge-disabled", size, " ", IsMergeCandidate(n))
+		n.SetNonMergeable(false)
+		n.SetOpenDeferSlot(true)
+		add("merge-defer", size, " ", IsMergeCandidate(n))
+	}
+	MERGE_DEBUG.MergeLocals = 1
+	MERGE_FLAG.N = 0
+	f, m, _, _, _ = baseGraph()
+	n := GRAPH.NewNameAt(pos, TY.LocalPkg.Lookup("large"), TY.NewArray(cfg.Types.Uintptr, 4))
+	n.Class = ir.PAUTO
+	vd := f.Entry.NewValue1A(pos, OpVarDef, TY.TypeMem, n, m)
+	f.Entry.SetControl(vd)
+	checkFunc(f)
+	MERGE_DEBUG.MergeLocals = 0
+	trapped("vardef-policy", func() { checkFunc(f) })
+	// Architecture-specific auxiliary type and immediate checks use actual native table identities.
+	for _, kind := range []auxType{auxUInt8, auxInt128, auxCCop, auxNameOffsetInt8, auxS390XCCMask, auxS390XRotateParams, auxFlagConstant} {
+		selected := OpInvalid
+		for op, info := range DIAG_TABLE {
+			if info.auxType == kind {
+				selected = Op(op)
+				break
+			}
+		}
+		if selected == OpInvalid {
+			add("aux-unused", kind)
+			continue
+		}
+		f, _, a, _, _ = baseGraph()
+		v := f.Entry.NewValue0(pos, selected, it)
+		for i := int32(0); i < DIAG_TABLE[selected].argLen; i++ {
+			v.AddArg(a)
+		}
+		switch kind {
+		case auxUInt8:
+			v.AuxInt = 127
+		case auxCCop:
+			v.AuxInt = int64(OpAdd64)
+		case auxNameOffsetInt8:
+			v.Aux = &AuxNameOffset{Name: GRAPH.NewNameAt(pos, TY.LocalPkg.Lookup("aux"), it), Offset: 4}
+		case auxS390XCCMask:
+			v.Aux = s390x.Equal
+		case auxS390XRotateParams:
+			v.Aux = s390x.NewRotateParams(60, 3, 17)
+		case auxFlagConstant:
+			v.AuxInt = 15
+		}
+		checkFunc(f)
+		add("aux-valid", kind, " ", selected)
+		switch kind {
+		case auxUInt8:
+			v.AuxInt = 128
+		case auxInt128:
+			v.AuxInt = 1
+		case auxCCop:
+			v.AuxInt = int64(OpInvalid)
+		case auxFlagConstant:
+			v.AuxInt = 16
+		default:
+			v.Aux = StringToAux("invalid")
+		}
+		trapped(fmt.Sprintf("aux-invalid-%d", kind), func() { checkFunc(f) })
+	}
+	// Native S390X auxiliary objects remain concrete values, including mask operations.
+	for i := 0; i < 16; i++ {
+		cc := s390x.CCMask(i)
+		add("ccmask", i, " ", cc, " ", cc.Inverse(), " ", cc.ReverseComparison())
+	}
+	for _, r := range []s390x.RotateParams{s390x.NewRotateParams(0, 63, 0), s390x.NewRotateParams(60, 3, 17), s390x.NewRotateParams(5, 23, 63)} {
+		add("rotate", r, " ", r.OutMask(), " ", r.InMask(), " ", r.RotateLeft(3), " ", r.OutMerge(0xf00000000000000f), " ", r.InMerge(0xff))
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("SYNCGO_IR=" + string(data))
+}

@@ -196,3 +196,12 @@ func (c *Context) checkInitLSym(f *Func, hasBody bool) {
 		panic("function symbol belongs to another compilation")
 	}
 }
+
+// ContextOf returns the existing owner of an initialized native IR node for
+// compiler packages that derive their policy from a node. It creates no owner.
+func ContextOf(n Node) *Context {
+	if n == nil {
+		panic("IR node has no compiler context")
+	}
+	return nodeContext(n)
+}

@@ -13,6 +13,8 @@ func ssaObjectMigration() []Unit {
 		{Source: root + "ppc64/a.out.go", Declarations: []string{"REG_R0", "AADD"}},
 		{Source: root + "ppc64/asm9_gtables.go", Declarations: []string{"AXXSETACCZ"}},
 		{Source: root + "riscv/cpu.go", Declarations: []string{"REG_X0", "AADDI"}},
+		{Source: root + "s390x/condition_code.go", WholeFile: true},
+		{Source: root + "s390x/rotate.go", WholeFile: true},
 		{Source: root + "s390x/a.out.go", Declarations: []string{"REG_R0", "AADD"}},
 		{Source: root + "wasm/a.out.go", Declarations: []string{"AGet", "REG_SP"}},
 		{Source: root + "x86/a.out.go", Declarations: []string{"REG_AL"}},

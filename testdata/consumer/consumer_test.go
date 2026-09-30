@@ -879,3 +879,20 @@ func TestNativeCanSSAFromPublicModule(t *testing.T) {
 		t.Fatal("public native SSA representation predicate")
 	}
 }
+
+func TestNativeS390XAuxFromPublicModule(t *testing.T) {
+	var cc ssa.S390XCCMask = 8
+	var aux ssa.Aux = cc
+	if got := aux.(ssa.S390XCCMask); got.String() != "Equal" || got.Inverse() != 7 || got.ReverseComparison() != 8 {
+		t.Fatal("native condition mask")
+	}
+	r := ssa.NewS390XRotateParams(60, 3, 17)
+	aux = r
+	got := aux.(ssa.S390XRotateParams)
+	if got.OutMask() != 0xf00000000000000f || got.RotateLeft(50).Amount != 3 {
+		t.Fatal("native rotate parameters")
+	}
+	if got.OutMerge(0) != nil || got.InMerge(0) != nil {
+		t.Fatal("empty native mask")
+	}
+}

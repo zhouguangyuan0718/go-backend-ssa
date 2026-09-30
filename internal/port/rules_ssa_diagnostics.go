@@ -2,15 +2,21 @@ package port
 
 func ssaDiagnosticMigration(units []Unit) []Unit {
 	const root = "src/cmd/compile/internal/ssa/"
-	auxQueries := []string{"Value.AuxInt8", "Value.AuxUInt8", "Value.AuxInt16", "Value.AuxInt32", "Value.AuxFloat", "Value.AuxValAndOff", "Value.AuxArm64BitField", "Value.AuxArm64ConditionalParams", "Value.auxString"}
+	auxQueries := []string{"Value.AuxInt8", "Value.AuxUInt8", "Value.AuxInt16", "Value.AuxInt32", "Value.AuxFloat", "Value.AuxValAndOff", "Value.AuxArm64BitField", "Value.AuxArm64ConditionalParams", "Value.auxString", "checkFunc"}
 	for i := range units {
 		u := &units[i]
 		switch u.Source {
 		case root + "func.go":
 			u.Declarations = append(u.Declarations, "Func.Fatalf")
 		case root + "opGen.go":
-			u.ConstantFields = append(u.ConstantFields, ConstantFieldRule{Variable: "opcodeTable", Field: "auxType", Functions: auxQueries}, ConstantFieldRule{Variable: "opcodeTable", Field: "nilCheck", Functions: []string{"liveValues", "Value.removeable"}}, ConstantFieldRule{Variable: "opcodeTable", Field: "addrSinkArg0", Functions: []string{"Value.AddrSinkArg"}}, ConstantFieldRule{Variable: "opcodeTable", Field: "addrSinkArg1", Functions: []string{"Value.AddrSinkArg"}})
+			u.ConstantFields = append(u.ConstantFields, ConstantFieldRule{Variable: "opcodeTable", Field: "auxType", Functions: auxQueries}, ConstantFieldRule{Variable: "opcodeTable", Field: "argLen", Functions: []string{"checkFunc"}}, ConstantFieldRule{Variable: "opcodeTable", Field: "nilCheck", Functions: []string{"liveValues", "Value.removeable"}}, ConstantFieldRule{Variable: "opcodeTable", Field: "addrSinkArg0", Functions: []string{"Value.AddrSinkArg"}}, ConstantFieldRule{Variable: "opcodeTable", Field: "addrSinkArg1", Functions: []string{"Value.AddrSinkArg"}})
 			for j := range u.ConstantFields {
+				if u.ConstantFields[j].Field == "call" {
+					u.ConstantFields[j].Functions = append(u.ConstantFields[j].Functions, "likelyadjust")
+				}
+				if u.ConstantFields[j].Field == "name" {
+					u.ConstantFields[j].Functions = append(u.ConstantFields[j].Functions, "checkFunc")
+				}
 				if u.ConstantFields[j].Field == "call" || u.ConstantFields[j].Field == "hasSideEffects" {
 					u.ConstantFields[j].Functions = append(u.ConstantFields[j].Functions, "liveValues")
 				}
