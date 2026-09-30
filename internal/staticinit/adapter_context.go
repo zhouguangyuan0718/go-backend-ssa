@@ -42,12 +42,12 @@ func (c *Context) NewSchedule() *Schedule {
 	return &Schedule{compilation: c, Plans: make(map[ir.Node]*Plan), Temps: make(map[ir.Node]*ir.Name)}
 }
 
-// BindSchedule attaches a fresh native value literal to this compilation. Its
-// original maps are retained. A running or already bound schedule cannot move
-// between contexts.
+// BindSchedule attaches a fresh native value to this compilation. Its original
+// maps are retained, including nil maps for walk's constant-only zero schedule.
+// A running or already bound schedule cannot move between contexts.
 func (c *Context) BindSchedule(s Schedule) Schedule {
-	if c == nil || s.compilation != nil || s.seenMutation || len(s.Out) != 0 || s.Plans == nil || s.Temps == nil || len(s.Plans) != 0 || len(s.Temps) != 0 {
-		panic("schedule binding requires a fresh initialized value")
+	if c == nil || s.compilation != nil || s.seenMutation || len(s.Out) != 0 || (s.Plans == nil) != (s.Temps == nil) || len(s.Plans) != 0 || len(s.Temps) != 0 {
+		panic("schedule binding requires a fresh zero or initialized value")
 	}
 	s.compilation = c
 	return s

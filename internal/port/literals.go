@@ -10,8 +10,9 @@ import (
 )
 
 // Literal bindings preserve the native value initializer and pass its result to
-// an explicit instance binder. Only reviewed, explicit struct values are allowed;
-// pointer allocation and implicit element literals need separate review.
+// an explicit instance binder. Local typed zero declarations are equivalent to
+// explicit zero struct values. Pointer allocation and implicit element literals
+// need separate review.
 func literalBindings(files []*ast.File, info *types.Info, units []Unit) (map[ast.Node]string, error) {
 	result := map[ast.Node]string{}
 	for i, u := range units {
@@ -19,6 +20,31 @@ func literalBindings(files []*ast.File, info *types.Info, units []Unit) (map[ast
 			count := 0
 			var failure error
 			ast.Inspect(files[i], func(n ast.Node) bool {
+				if v, ok := n.(*ast.ValueSpec); ok && v.Type != nil && len(v.Values) == 0 {
+					typ := types.Unalias(info.TypeOf(v.Type))
+					named, ok := typ.(*types.Named)
+					if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != strings.TrimPrefix(path.Dir(rule.Source), "src/") || named.Obj().Name() != rule.Type {
+						return true
+					}
+					if _, ok := named.Underlying().(*types.Struct); !ok || named.TypeParams().Len() != 0 {
+						failure = fmt.Errorf("zero binding requires a non-generic struct value: %s", rule.Type)
+						return false
+					}
+					for _, id := range v.Names {
+						obj := info.Defs[id]
+						if obj == nil || obj.Parent() == obj.Pkg().Scope() || id.Name == "_" {
+							failure = fmt.Errorf("zero binding requires a named local variable: %s", rule.Type)
+							return false
+						}
+					}
+					if result[v] != "" {
+						failure = fmt.Errorf("duplicate literal binding: %s", rule.Type)
+						return false
+					}
+					result[v] = rule.Method
+					count++
+					return true
+				}
 				lit, ok := n.(*ast.CompositeLit)
 				if !ok {
 					return true

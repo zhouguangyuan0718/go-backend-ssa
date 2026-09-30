@@ -1,0 +1,32 @@
+package staticinit
+import("fmt";"encoding/json";"encoding/binary";"os";"go/constant";"go/token";"testing";"IMPORT_TYPES";"IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";ZERO_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian}
+ switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ var out []string
+ pos:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase("p.go","/src/p.go"),7,3))
+ snapshot:=func(s *obj.LSym){out=append(out,fmt.Sprintf("symbol:%s:%v:%d:%d:%x:%d",s.Name,s.Type,s.Size,s.Align,s.P,uint32(s.Attribute)));for _,r:=range s.R{out=append(out,fmt.Sprintf("reloc:%v:%d:%d:%s:%v:%d",r.Type,r.Off,r.Siz,r.Sym.Name,r.Sym.ABI(),r.Add))}}
+ complex:=constant.BinaryOp(constant.MakeFloat64(1.5),token.ADD,constant.MakeImag(constant.MakeFloat64(-2.25)))
+ cases:=[]struct{k types.Kind;v constant.Value}{
+ {types.TBOOL,constant.MakeBool(true)},{types.TBOOL,constant.MakeBool(false)},{types.TINT8,constant.MakeInt64(-3)},{types.TUINT64,constant.MakeUint64(^uint64(0))},{types.TINT,constant.MakeInt64(-7)},
+ {types.TFLOAT32,constant.MakeFloat64(1.25)},{types.TFLOAT64,constant.MakeFloat64(-2.5)},{types.TCOMPLEX64,complex},{types.TCOMPLEX128,complex},{types.TSTRING,constant.MakeString("abc")},{types.TSTRING,constant.MakeString("")},
+ }
+ for _,fips:=range []bool{false,true}{
+ LINK.Pkgpath="example/p";if fips{LINK.Pkgpath="crypto/internal/fips140/testinit"}
+ var nodes []ir.Node
+ for _,entry:=range cases{nodes=append(nodes,GRAPH.NewBasicLit(pos,TY.Types[entry.k],entry.v))}
+ pointer:=TY.NewPtr(TY.Types[types.TINT]);nodes=append(nodes,GRAPH.NewNilExpr(pos,pointer),nil)
+ for i,value:=range nodes{
+ typ:=pointer;if value!=nil{typ=value.Type()};TY.CalcSize(typ)
+ n:=GRAPH.NewNameAt(pos,TY.LocalPkg.Lookup(fmt.Sprintf("const%t_%d",fips,i)),typ);n.Class=ir.PEXTERN
+ var s Schedule
+ ZERO_BIND
+ ok:=s.StaticAssign(n,int64(target.size),value,typ)
+ if s.Plans!=nil||s.Temps!=nil||s.Out!=nil{t.Fatal("zero schedule fields changed")}
+ out=append(out,fmt.Sprintf("assign:%t:%d:%t",fips,i,ok));snapshot(n.Linksym())
+ }
+ }
+ for _,s:=range LINK.Data{snapshot(s)}
+ encoded,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(encoded))
+}

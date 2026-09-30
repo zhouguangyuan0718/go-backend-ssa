@@ -218,6 +218,48 @@ func TestScheduleLiteralBinding(t *testing.T) {
 	c.Noder.StaticInit.BindSchedule(s)
 }
 
+func TestZeroScheduleBinding(t *testing.T) {
+	old := sourceContext(t, "example/old", "package p", false)
+	assign := func(c *Context, value int64) *obj.LSym {
+		g := c.Noder.Typecheck.IR
+		u := g.Types
+		s := c.Noder.StaticInit.BindSchedule(staticinit.Schedule{})
+		n := g.NewNameAt(u.Pos, u.LocalPkg.Lookup("constant"), u.Types[types.TINT64])
+		n.Class = ir.PEXTERN
+		if !s.StaticAssign(n, 0, g.NewInt(u.Pos, value), n.Type()) || s.Plans != nil || s.Temps != nil || s.Out != nil {
+			t.Error("zero schedule changed constant-only path")
+		}
+		if binary.LittleEndian.Uint64(n.Linksym().P) != uint64(value) {
+			t.Error("constant bytes")
+		}
+		return n.Linksym()
+	}
+	retained := assign(old, 99)
+	for i := range 8 {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			t.Parallel()
+			c := sourceContext(t, "example/fresh", "package p", false)
+			if assign(c, int64(i+1)) == retained || binary.LittleEndian.Uint64(retained.P) != 99 {
+				t.Error("old schedule's symbols changed")
+			}
+		})
+	}
+}
+
+func TestScheduleBindingRejectsPartialInitialization(t *testing.T) {
+	c := sourceContext(t, "example/p", "package p", false)
+	for _, s := range []staticinit.Schedule{{Plans: make(map[ir.Node]*staticinit.Plan)}, {Temps: make(map[ir.Node]*ir.Name)}} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Error("partially initialized schedule accepted")
+				}
+			}()
+			c.Noder.StaticInit.BindSchedule(s)
+		}()
+	}
+}
+
 func TestInitializationContextDoesNotInternImports(t *testing.T) {
 	c := sourceContext(t, "example/p", "package p", false)
 	dep := c.Noder.Types.NewPkg("example/dep", "dep")

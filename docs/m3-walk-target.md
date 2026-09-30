@@ -32,3 +32,5 @@ GO_SSA_SOURCE_REPO=/path/to/go GOTOOLCHAIN=go1.27.1 \
 工具版本 `syncgo-m3-v21`，共 273 个生成文件。两版四目标对照通过（32.85s，`_work/m3-walk-target-source.log`）。generate/check 验证全部 273 个文件，完整 `go test -race -timeout 20m ./...` 通过（`_work/m3-walk-target-unit-final.log`）；本阶段未重复完整前端双版本流水线。
 
 下一步处理原生 walk 中零值 staticinit.Schedule 的实例绑定，并把已确认的包级计数器、运行时字段缓存和预分析缓存迁到 walk 实例，接入完整 Walk 流程。
+
+局部零值调度器绑定随后已实现，见 [m3-zero-schedule.md](m3-zero-schedule.md)。

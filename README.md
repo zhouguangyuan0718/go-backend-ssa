@@ -66,6 +66,7 @@
 49. [M3 原生 CanSSA](docs/m3-canssa.md)：按输入类型所属目标进行 SSA 表示判定，供 walk 使用。
 50. [M3 原生比较构造](docs/m3-compare.md)：完整 compare 算法、目标成本和有序比较 IR 构造。
 51. [M3 walk 架构输入](docs/m3-walk-target.md)：原生索引/调用判定及按类型绑定架构字段。
+52. [M3 局部零值调度器绑定](docs/m3-zero-schedule.md)：为原生 walk 的常量赋值保留零值行为。
 
 ## 当前可运行的工具
 

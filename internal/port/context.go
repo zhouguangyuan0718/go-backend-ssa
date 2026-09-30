@@ -237,6 +237,12 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		// Inner literals first, preserving every initializer and its evaluation order.
 		for i := len(bound) - 1; i >= 0; i-- {
 			lit := bound[i]
+			if v, ok := lit.(*ast.ValueSpec); ok {
+				for range v.Names {
+					v.Values = append(v.Values, &ast.CallExpr{Fun: binding(ctx, nil, literals[v], v.Pos()), Args: []ast.Expr{&ast.CompositeLit{Type: v.Type}}})
+				}
+				continue
+			}
 			rewriteExprs(node, map[ast.Node]ast.Expr{lit: &ast.CallExpr{Fun: binding(ctx, nil, literals[lit], lit.Pos()), Args: []ast.Expr{lit.(ast.Expr)}}})
 		}
 		return threadMethodContext(fs, files, node, info, parameterMethods, ctx, context.Type)

@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v21"
+const ToolVersion = "syncgo-m3-v22"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -66,7 +66,8 @@ type Unit struct {
 // or invented compiler declaration is emitted into the library.
 type CallRule struct{ Source, Function, Method string }
 
-// LiteralRule wraps a native struct value with a func(T) T instance method.
+// LiteralRule wraps explicit native struct literals and local typed zero
+// declarations with a func(T) T instance method.
 type LiteralRule struct{ Source, Type, Method string }
 
 // StateRule redirects typed host state to an instance. Variable may name a
