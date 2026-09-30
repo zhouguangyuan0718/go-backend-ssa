@@ -1,0 +1,25 @@
+package ssa
+import("fmt";"encoding/json";"testing")
+func TestSyncgoNativeSnapshot(t *testing.T){
+ var out []string
+ cases:=[][][2]int{{},{{0,1},{1,2},{2,3}},{{0,1},{0,2},{1,3},{2,3}},{{0,1},{1,1},{1,2},{2,1},{2,3}},{{0,1},{0,2},{1,2},{2,1},{1,3},{2,3}},{{0,1},{0,1},{1,2},{3,2},{3,4},{4,3}},{{0,1},{1,2},{2,0},{2,3}}}
+ state:=uint32(97531)
+ for i:=0;i<25;i++{var edges [][2]int;for j:=0;j<23;j++{state^=state<<13;state^=state>>17;state^=state<<5;a:=int(state%9);state=state*1664525+1013904223;edges=append(edges,[2]int{a,int(state%9)})};cases=append(cases,edges)}
+ id:=func(b *Block)ID{if b==nil{return 0};return b.ID}
+ for number,edges:=range cases{
+  f:=new(Config).NewFunc(nil,new(Cache));for i:=0;i<9;i++{f.NewBlock(BlockPlain)};f.Entry=f.Blocks[number%9]
+  for _,e:=range edges{f.Blocks[e[0]].AddEdgeTo(f.Blocks[e[1]])}
+  dump:=func(phase string){
+   po:=f.Postorder();numbers:=make([]int32,f.NumBlocks());for i:=range numbers{numbers[i]=-1};ordered:=postorderWithNumbering(f,numbers)
+   out=append(out,fmt.Sprintf("case:%d:%s:entry=%d:post=%v:numbered=%v:numbers=%v",number,phase,f.Entry.ID,po,ordered,numbers))
+   dom,tree:=f.Idom(),f.Sdom()
+   for _,b:=range f.Blocks{out=append(out,fmt.Sprintf("node:%d:dom=%d:parent=%d:child=%d:sibling=%d:entry=%d:exit=%d:order=%d:string=%s",b.ID,id(dom[b.ID]),id(tree.Parent(b)),id(tree.Child(b)),id(tree.Sibling(b)),tree[b.ID].Entry(),tree[b.ID].Exit(),tree.domorder(b),&tree[b.ID]))}
+   for _,a:=range f.Blocks{for _,b:=range f.Blocks{out=append(out,fmt.Sprintf("relation:%d:%d:%t:%t",a.ID,b.ID,tree.IsAncestorEq(a,b),tree.isAncestor(a,b)))}}
+   out=append(out,tree.treestructure(f.Entry),fmt.Sprintf("cached:%t:%t:%t",&po[0]==&f.Postorder()[0],&dom[0]==&f.Idom()[0],&tree[0]==&f.Sdom()[0]))
+  }
+  dump("initial")
+  extra:=f.NewBlock(BlockPlain);f.Entry.AddEdgeTo(extra);extra.AddEdgeTo(f.Blocks[(number+3)%9]);dump("added")
+  edge:=extra.Succs[0];edge.b.removePred(edge.i);extra.removeSucc(0);dump("removed")
+ }
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(data))
+}

@@ -76,6 +76,7 @@
 59. [M3 原生 SSA 图](docs/m3-ssa-graph.md)：完整图声明、原生基础建图方法和缓存生命周期。
 60. [M3 SSA 稀疏容器和缓存池](docs/m3-ssa-containers.md)：原生泛型稀疏结构及按 Cache 隔离的基础分配器。
 61. [M3 SSA 派生切片分配器](docs/m3-ssa-derived-allocators.md)：按类型审计原生切片重解释并保留完整分配算法。
+62. [M3 SSA 支配树](docs/m3-ssa-dominators.md)：原生后序遍历、立即支配者、稀疏树和独立可达性验证。
 
 ## 当前可运行的工具
 
