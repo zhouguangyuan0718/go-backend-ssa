@@ -73,6 +73,10 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		}
 	}
 	replaceImportedZeros(original, info, before.zeros)
+	constantHelpers, err := projectConstantFields(fs, original, info, units)
+	if err != nil {
+		return nil, nil, err
+	}
 	if err := localizeReadTables(fs, original, info, units); err != nil {
 		return nil, nil, err
 	}
@@ -84,6 +88,11 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	}
 	if err := extendNativeContext(original, info, units); err != nil {
 		return nil, nil, err
+	}
+	// Helpers contain only constants and primitive operations. Append them after
+	// context binding, whose object identities belong to the original source.
+	for i, helpers := range constantHelpers {
+		original[i].Decls = append(original[i].Decls, helpers...)
 	}
 	adapters := map[string][]byte{}
 	outfs := token.NewFileSet()
@@ -181,16 +190,15 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			if obj == nil {
 				return nil, nil, fmt.Errorf("missing context %s", c.Type)
 			}
-			st, ok := obj.Type().Underlying().(*types.Struct)
+			_, ok := obj.Type().Underlying().(*types.Struct)
 			if !ok {
 				return nil, nil, fmt.Errorf("context is not a struct")
 			}
 			for name, field := range c.Fields {
 				var actual types.Type
-				for i := 0; i < st.NumFields(); i++ {
-					if st.Field(i).Name() == field {
-						actual = st.Field(i).Type()
-					}
+				member, _, _ := types.LookupFieldOrMethod(types.NewPointer(obj.Type()), true, outpkg, field)
+				if v, ok := member.(*types.Var); ok && v.IsField() {
+					actual = v.Type()
 				}
 				if actual == nil || types.TypeString(actual, nil) != types.TypeString(pkg.Scope().Lookup(name).Type(), func(p *types.Package) string {
 					if dest := imports[p.Path()]; dest != "" {

@@ -7,8 +7,8 @@ func ssaTypesMigration() []Unit {
 	u := Unit{Source: root + "ssa/config.go",
 		Declarations: []string{"Types", "Types.SetTypPtrs", "Logger", "Frontend"},
 		Functions:    []string{"NewTypes"},
-		Context:      &ContextRule{Type: "typeContext", Constructor: "newTypeContext", Adapter: "adapter_context.go", Selective: true},
-		Owner:        &OwnerRule{Types: []string{"Types"}, Context: "typeContext", Field: "compilation"},
+		Context:      &ContextRule{Type: "Context", Constructor: "initialize", Initialize: true, Adapter: "adapter_context.go", Selective: true},
+		Owner:        &OwnerRule{Types: []string{"Types"}, Context: "Context", Field: "compilation"},
 		Checks:       map[string]string{"NewTypes": "checkTypes", "Types.SetTypPtrs": "checkTypes"},
 		Calls:        []CallRule{{Source: root + "types/type.go", Function: "NewPtr", Method: "Types.NewPtr"}},
 	}

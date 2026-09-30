@@ -1,0 +1,31 @@
+package ssa
+import("fmt";"encoding/json";"testing")
+func TestSyncgoNativeSnapshot(t *testing.T){
+ OPCODE_SETUP
+ var out []string
+ for i,info:=range UP.opcodeTable{
+  op:=Op(i)
+  out=append(out,fmt.Sprintf("%d:%s:%d:%d:%d:%t:%t:%t:%t:%t:%#v",i,op.String(),op.Asm(),op.Scale(),op.SymEffect(),op.IsCall(),op.IsTailCall(),op.HasSideEffects(),op.UnsafePoint(),op.ResultInArg0(),info))
+ }
+ for i:=BlockInvalid;i<=BlockFirst;i++{out=append(out,fmt.Sprintf("block:%d:%s:%s",i,i.String(),i.AuxIntType()))}
+ for _,op:=range []Op{-1,Op(len(UP.opcodeTable))}{func(){defer func(){out=append(out,fmt.Sprint("bounds:",recover()))}();_ = op.String()}()}
+ for _,r:=range []register{0,1,63,64,65,127}{a:=regMaskAt(r);b:=regMaskAt(126);out=append(out,fmt.Sprintf("mask:%d:%t:%d:%s:%d:%s:%s:%s",r,a.hasReg(r),a.pickReg(),a,countRegs(a.union(b)),a.intersect(b),a.union(b).minus(a),a.addReg(125).removeReg(r)))}
+ for _,group:=range []struct{regs []Register;ints,floats []int8;gp,fp,special regMask;frame,link int8}{
+ {UP.registers386[:],UP.paramIntReg386,UP.paramFloatReg386,UP.gpRegMask386,UP.fpRegMask386,UP.specialRegMask386,UP.framepointerReg386,UP.linkReg386},
+ {UP.registersAMD64[:],UP.paramIntRegAMD64,UP.paramFloatRegAMD64,UP.gpRegMaskAMD64,UP.fpRegMaskAMD64,UP.specialRegMaskAMD64,UP.framepointerRegAMD64,UP.linkRegAMD64},
+ {UP.registersARM[:],UP.paramIntRegARM,UP.paramFloatRegARM,UP.gpRegMaskARM,UP.fpRegMaskARM,UP.specialRegMaskARM,UP.framepointerRegARM,UP.linkRegARM},
+ {UP.registersARM64[:],UP.paramIntRegARM64,UP.paramFloatRegARM64,UP.gpRegMaskARM64,UP.fpRegMaskARM64,UP.specialRegMaskARM64,UP.framepointerRegARM64,UP.linkRegARM64},
+ {UP.registersLOONG64[:],UP.paramIntRegLOONG64,UP.paramFloatRegLOONG64,UP.gpRegMaskLOONG64,UP.fpRegMaskLOONG64,UP.specialRegMaskLOONG64,UP.framepointerRegLOONG64,UP.linkRegLOONG64},
+ {UP.registersMIPS[:],UP.paramIntRegMIPS,UP.paramFloatRegMIPS,UP.gpRegMaskMIPS,UP.fpRegMaskMIPS,UP.specialRegMaskMIPS,UP.framepointerRegMIPS,UP.linkRegMIPS},
+ {UP.registersMIPS64[:],UP.paramIntRegMIPS64,UP.paramFloatRegMIPS64,UP.gpRegMaskMIPS64,UP.fpRegMaskMIPS64,UP.specialRegMaskMIPS64,UP.framepointerRegMIPS64,UP.linkRegMIPS64},
+ {UP.registersPPC64[:],UP.paramIntRegPPC64,UP.paramFloatRegPPC64,UP.gpRegMaskPPC64,UP.fpRegMaskPPC64,UP.specialRegMaskPPC64,UP.framepointerRegPPC64,UP.linkRegPPC64},
+ {UP.registersRISCV64[:],UP.paramIntRegRISCV64,UP.paramFloatRegRISCV64,UP.gpRegMaskRISCV64,UP.fpRegMaskRISCV64,UP.specialRegMaskRISCV64,UP.framepointerRegRISCV64,UP.linkRegRISCV64},
+ {UP.registersS390X[:],UP.paramIntRegS390X,UP.paramFloatRegS390X,UP.gpRegMaskS390X,UP.fpRegMaskS390X,UP.specialRegMaskS390X,UP.framepointerRegS390X,UP.linkRegS390X},
+ {UP.registersWasm[:],UP.paramIntRegWasm,UP.paramFloatRegWasm,UP.gpRegMaskWasm,UP.fpRegMaskWasm,UP.specialRegMaskWasm,UP.framepointerRegWasm,UP.linkRegWasm},
+ }{out=append(out,fmt.Sprintf("registers:%#v",group))}
+ out=append(out,fmt.Sprintf("simd:%#v:%#v:%#v:%#v:%#v",UP.simdRegMaskAMD64,UP.simdRegMaskARM64,UP.simdRegMaskWasm,UP.fp32RegMaskWasm,UP.fp64RegMaskWasm))
+ before:=UP.opcodeTable[Op386LoweredWB].reg.clobbers
+ UP.opcodeTable[Op386LoweredWB].reg.clobbers=before.addReg(3)
+ out=append(out,fmt.Sprintf("shared:%s:%#v:%#v",Op386LoweredWB.String(),before,UP.opcodeTable[Op386LoweredWB].reg.clobbers))
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(data))
+}

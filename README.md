@@ -71,6 +71,7 @@
 54. [M3 ABI 参数布局](docs/m3-abi-layout.md)：原生寄存器/栈分配、参数分解和实例合成类型缓存。
 55. [M3 SSA 类型和位置](docs/m3-ssa-types.md)：原生 Types 的实例绑定及 Frontend、LocalSlot 等公开声明。
 56. [M3 SSA 汇编编号](docs/m3-ssa-objects.md)：opcode/register 元数据依赖的各架构原生指令与寄存器常量。
+57. [M3 SSA opcode 元数据](docs/m3-ssa-opcodes.md)：完整原生 opcode/register 表的实例隔离及无状态查询。
 
 ## 当前可运行的工具
 

@@ -6,7 +6,7 @@ func ssaValueMigration() []Unit {
 	return []Unit{
 		{Source: root + "ssa/decompose.go", Declarations: []string{"MaxStruct"}},
 		{Source: root + "ssa/value.go", Functions: []string{"CanSSA"},
-			Context:     &ContextRule{Type: "typeContext", Constructor: "newTypeContext", Adapter: "adapter_context.go", Selective: true},
+			Context:     &ContextRule{Type: "Context", Constructor: "initialize", Initialize: true, Adapter: "adapter_context.go", Selective: true},
 			ContextFrom: map[string]ContextSource{"CanSSA": {Argument: "t", Resolver: "typeContextOf"}},
 			State: []StateRule{
 				{Source: root + "types/size.go", Variable: "PtrSize", Field: "ptrSize"},

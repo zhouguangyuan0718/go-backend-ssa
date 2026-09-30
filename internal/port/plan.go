@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v26"
+const ToolVersion = "syncgo-m3-v27"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -48,9 +48,10 @@ type Unit struct {
 	Functions      []string
 	Declarations   []string // Types, complete constant groups, and Receiver.Method names.
 	Owner          *OwnerRule
-	WholeFile      bool     // Preserve types, constants and existing receivers.
-	ZeroValues     []string // Reviewed zero-valued struct globals replaced by fresh values.
-	ReadTables     []string // Constant array/slice/map lookups localized in their consuming functions.
+	WholeFile      bool                // Preserve types, constants and existing receivers.
+	ZeroValues     []string            // Reviewed zero-valued struct globals replaced by fresh values.
+	ReadTables     []string            // Constant array/slice/map lookups localized in their consuming functions.
+	ConstantFields []ConstantFieldRule // Stateless reads of immutable scalar fields in an instance-owned array.
 	State          []StateRule
 	ReceiverState  *ReceiverStateRule
 	Context        *ContextRule
@@ -77,6 +78,14 @@ type LiteralRule struct {
 // StateRule redirects typed host state to an instance. Variable may name a
 // whole variable, a literal bool feature, or a reviewed direct struct field.
 type StateRule struct{ Source, Variable, Field string }
+
+// ConstantFieldRule preserves selected native query signatures while the full
+// table moves into its context. The initializer and every table use are checked
+// before generating an immutable scalar lookup. No mutable table is shared.
+type ConstantFieldRule struct {
+	Variable, Field string
+	Functions       []string
+}
 
 // ReceiverStateRule keeps state in an existing private upstream receiver.
 type ReceiverStateRule struct {
@@ -165,6 +174,11 @@ func (p Plan) Validate() error {
 		output := u.output()
 		if !safePath(u.Source) || !ownedPath(output) || path.Ext(output) != ".go" || (!u.WholeFile && len(u.Functions)+len(u.Declarations) == 0 && (u.Context == nil || len(u.Context.Fields) == 0)) || outputs[output] {
 			return fmt.Errorf("invalid migration source: %s", u.Source)
+		}
+		for _, r := range u.ConstantFields {
+			if !u.WholeFile || u.Context == nil || u.Context.Fields[r.Variable] == "" || !token.IsIdentifier(r.Variable) || !token.IsIdentifier(r.Field) || len(r.Functions) == 0 {
+				return fmt.Errorf("invalid constant field rule: %s.%s", r.Variable, r.Field)
+			}
 		}
 		if r := u.ReceiverState; r != nil {
 			if !u.WholeFile || u.Context != nil || u.Owner != nil || !token.IsIdentifier(r.Type) || len(r.Fields) == 0 || r.InitMethod != "" && !token.IsIdentifier(r.InitMethod) || r.RunInit && r.InitMethod == "" {
