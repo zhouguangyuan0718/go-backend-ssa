@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v22"
+const ToolVersion = "syncgo-m3-v23"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -67,8 +67,12 @@ type Unit struct {
 type CallRule struct{ Source, Function, Method string }
 
 // LiteralRule wraps explicit native struct literals and local typed zero
-// declarations with a func(T) T instance method.
-type LiteralRule struct{ Source, Type, Method string }
+// declarations with a func(T) T instance method, or reviewed address literals
+// with a func(*T) *T method when Pointer is set.
+type LiteralRule struct {
+	Source, Type, Method string
+	Pointer              bool // Bind an explicit &T{...} through func(*T) *T, preserving its allocation.
+}
 
 // StateRule redirects typed host state to an instance. Variable may name a
 // whole variable, a literal bool feature, or a reviewed direct struct field.

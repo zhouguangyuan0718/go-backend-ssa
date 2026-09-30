@@ -16,7 +16,7 @@ func targetContext(size int, family sys.ArchFamily) *Context {
 	u.LocalPkg = u.NewPkg("p", "p")
 	tc := typecheck.NewContext(ir.NewContext(u, link))
 	tc.InitUniverse()
-	return NewContext(tc)
+	return &Context{Typecheck: tc}
 }
 func TestNativeIndexCost(t *testing.T) {
 	for _, family := range []sys.ArchFamily{sys.AMD64, sys.ARM, sys.ARM64, sys.I386, sys.Loong64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X, sys.Wasm} {
@@ -94,5 +94,20 @@ func TestWalkTargetIsolation(t *testing.T) {
 				t.Fatal("target leaked across compilations")
 			}
 		})
+	}
+}
+
+func TestWalkClearsFunctionCaches(t *testing.T) {
+	c := targetContext(8, sys.AMD64)
+	g := c.Typecheck.IR
+	u := g.Types
+	for _, name := range []string{"first", "second"} {
+		fn := g.NewFunc(u.Pos, u.Pos, u.LocalPkg.Lookup(name), u.NewSignature(nil, nil, nil))
+		c.staticValues = map[ir.Node]ir.Node{fn: fn}
+		c.shapeConvSources = map[*ir.Name]*types.Type{fn.Nname: fn.Type()}
+		c.Walk(fn)
+		if c.staticValues != nil || c.shapeConvSources != nil || g.CurFunc != fn {
+			t.Fatal("walk retained analysis caches or changed the driver contract")
+		}
 	}
 }

@@ -11,11 +11,27 @@ import (
 
 // Literal bindings preserve the native value initializer and pass its result to
 // an explicit instance binder. Local typed zero declarations are equivalent to
-// explicit zero struct values. Pointer allocation and implicit element literals
-// need separate review.
+// explicit zero struct values. Pointer rules require an explicit &T{...};
+// implicit element literals are rejected.
 func literalBindings(files []*ast.File, info *types.Info, units []Unit) (map[ast.Node]string, error) {
 	result := map[ast.Node]string{}
 	for i, u := range units {
+		if len(u.Literals) == 0 {
+			continue
+		}
+		parents := map[ast.Node]ast.Node{}
+		var stack []ast.Node
+		ast.Inspect(files[i], func(n ast.Node) bool {
+			if n == nil {
+				stack = stack[:len(stack)-1]
+				return true
+			}
+			if len(stack) > 0 {
+				parents[n] = stack[len(stack)-1]
+			}
+			stack = append(stack, n)
+			return true
+		})
 		for _, rule := range u.Literals {
 			count := 0
 			var failure error
@@ -28,6 +44,10 @@ func literalBindings(files []*ast.File, info *types.Info, units []Unit) (map[ast
 					}
 					if _, ok := named.Underlying().(*types.Struct); !ok || named.TypeParams().Len() != 0 {
 						failure = fmt.Errorf("zero binding requires a non-generic struct value: %s", rule.Type)
+						return false
+					}
+					if rule.Pointer {
+						failure = fmt.Errorf("pointer binding requires an explicit address literal: %s", rule.Type)
 						return false
 					}
 					for _, id := range v.Names {
@@ -62,11 +82,27 @@ func literalBindings(files []*ast.File, info *types.Info, units []Unit) (map[ast
 					failure = fmt.Errorf("literal binding requires an explicit non-generic struct value: %s", rule.Type)
 					return false
 				}
-				if old := result[lit]; old != "" {
+				var target ast.Node = lit
+				if rule.Pointer {
+					for {
+						p, ok := parents[target].(*ast.ParenExpr)
+						if !ok {
+							break
+						}
+						target = p
+					}
+					addr, ok := parents[target].(*ast.UnaryExpr)
+					if !ok || addr.Op != token.AND {
+						failure = fmt.Errorf("pointer binding requires an explicit address literal: %s", rule.Type)
+						return false
+					}
+					target = addr
+				}
+				if old := result[target]; old != "" {
 					failure = fmt.Errorf("duplicate literal binding: %s", rule.Type)
 					return false
 				}
-				result[lit] = rule.Method
+				result[target] = rule.Method
 				count++
 				return true
 			})
@@ -120,7 +156,11 @@ func checkLiteralAdapters(units []Unit, before *packageImporter, out *types.Pack
 			if sig.Variadic() || sig.TypeParams().Len() != 0 || sig.Params().Len() != 1 || sig.Results().Len() != 1 {
 				return fmt.Errorf("literal adapter must have signature func(T) T: %s", rule.Method)
 			}
-			want := types.TypeString(original.Type(), func(p *types.Package) string {
+			originalType := original.Type()
+			if rule.Pointer {
+				originalType = types.NewPointer(originalType)
+			}
+			want := types.TypeString(originalType, func(p *types.Package) string {
 				if mapped := imports[p.Path()]; mapped != "" {
 					return mapped
 				}

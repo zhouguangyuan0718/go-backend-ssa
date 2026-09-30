@@ -9,7 +9,7 @@ import (
 )
 
 // Opt-in, offline: GO_SSA_SOURCE_REPO points at a local repository containing
-// both official tags. Use -timeout 20m for the complete native differential.
+// both official tags. Use -timeout 30m for the complete native differential.
 // Ordinary unit tests need no checkout or network.
 func TestPinnedUpstreamAndUpgrade(t *testing.T) {
 	repo := os.Getenv("GO_SSA_SOURCE_REPO")

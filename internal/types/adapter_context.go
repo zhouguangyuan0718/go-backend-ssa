@@ -19,6 +19,7 @@ import (
 // Universe owns one compilation's mutable type and package graph. Its zero value
 // is invalid. Except for InternString, calls within a Universe are serialized.
 type Universe struct {
+	unsignedEType                                  [TUINTPTR + 1]Kind
 	pkgSpecials                                    *objabi.Context
 	typepkgmu                                      sync.Mutex
 	typepkg                                        *Pkg

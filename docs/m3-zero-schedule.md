@@ -19,3 +19,5 @@ GO_SSA_SOURCE_REPO=/path/to/go GOTOOLCHAIN=go1.27.1 \
 ```
 
 工具版本 syncgo-m3-v22，生成文件数量保持 273，本批未修改任何已有生成算法。generate/check 验证全部 273 个文件；完整 `go test -race -timeout 20m ./...` 通过（internal/port 60.303s，`_work/m3-zero-schedule-unit.log`）。完整 Walk 仍待下一批迁入，本批是其局部 Schedule 绑定前置依赖。
+
+后续完整 walk 已迁入，见 [m3-walk.md](m3-walk.md)。本文件保留该前置阶段的验证范围。

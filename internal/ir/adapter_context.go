@@ -66,6 +66,30 @@ func NewContext(u *types.Universe, link *obj.Link) *Context {
 }
 
 func (n *miniNode) compilationContext() *Context { return n.compilation }
+
+// BindCaseClause attaches walk's raw native case literal without changing its
+// original zero position/op or child slices. Foreign children are rejected
+// before the node gains an owner.
+func (c *Context) BindCaseClause(n *CaseClause) *CaseClause {
+	if c == nil || n == nil || n.compilation != nil {
+		panic("case binding requires an unbound literal")
+	}
+	if n.Type() != nil && n.Type().Universe() != c.Types {
+		panic("case type belongs to another compilation")
+	}
+	if n.Var != nil && !c.OwnsNode(n.Var) {
+		panic("case variable belongs to another compilation")
+	}
+	for _, list := range []Nodes{n.Init(), n.List, n.RTypes, n.Body} {
+		for _, child := range list {
+			if child != nil && !c.OwnsNode(child) {
+				panic("case child belongs to another compilation")
+			}
+		}
+	}
+	n.compilation = c
+	return n
+}
 func nodeContext(n Node) *Context {
 	if n == nil {
 		c := new(Context)

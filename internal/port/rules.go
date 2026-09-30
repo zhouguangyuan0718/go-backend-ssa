@@ -96,11 +96,11 @@ func Migration() Plan {
 				Calls: []CallRule{{Source: "src/cmd/compile/internal/base/print.go", Function: "Fatalf", Method: "fatalf"}, {Source: "src/cmd/compile/internal/base/print.go", Function: "Assertf", Method: "assertf"}},
 			},
 			{Source: "src/cmd/compile/internal/types/type.go",
-				Functions: []string{"IsDirectIface", "TypeSym", "TypeSymLookup", "TypeSymName", "IsInterfaceMethod", "ComplexForFloat", "ReceiverBaseType", "RuntimeSymName", "ReflectSymName", "IsNoInstrumentPkg", "IsNoRacePkg", "IsRuntimePkg", "IsMethodApplicable", "SubstAny", "substFields", "FloatForComplex", "newType", "NewTuple", "newSSA", "newSIMD", "newResults", "NewResults", "NewPtr", "NewSlice", "NewArray", "NewMap", "NewChan", "NewField", "NewStruct", "NewSignature", "fieldsHasShape", "CompareFields", "NewChanArgs", "NewFuncArgs", "NewInterface", "FakeRecv", "FakeRecvType", "NewNamed"},
+				Functions: []string{"IsReflexive", "IsDirectIface", "TypeSym", "TypeSymLookup", "TypeSymName", "IsInterfaceMethod", "ComplexForFloat", "ReceiverBaseType", "RuntimeSymName", "ReflectSymName", "IsNoInstrumentPkg", "IsNoRacePkg", "IsRuntimePkg", "IsMethodApplicable", "SubstAny", "substFields", "FloatForComplex", "newType", "NewTuple", "newSSA", "newSIMD", "newResults", "NewResults", "NewPtr", "NewSlice", "NewArray", "NewMap", "NewChan", "NewField", "NewStruct", "NewSignature", "fieldsHasShape", "CompareFields", "NewChanArgs", "NewFuncArgs", "NewInterface", "FakeRecv", "FakeRecvType", "NewNamed"},
 				Declarations: []string{
 					"Object", "Kind", "Txxx", "ChanDir", "Crecv", "Type", "typeNotInHeap",
 					"Map", "Forward", "Func", "Struct", "Interface", "Ptr", "ChanArgs", "FuncArgs", "Chan", "Tuple", "Results", "Array", "Slice", "Field", "fields", "fieldIsDDD",
-					"Type.IsPtrElem", "Type.IsFullyInstantiated", "Type.SetIsFullyInstantiated", "Type.IsUintptr", "Type.copy", "Type.forwardType", "Type.SetUnderlying", "Type.Obj", "Type.IsUnsafePtr", "Field.End", "Type.Pos", "Type.Registers", "Type.Deferwidth", "Type.SetDeferwidth", "Type.Recur", "Type.SetRecur",
+					"Type.SoleComponent", "Type.ToUnsigned", "Type.IsPtrElem", "Type.IsFullyInstantiated", "Type.SetIsFullyInstantiated", "Type.IsUintptr", "Type.copy", "Type.forwardType", "Type.SetUnderlying", "Type.Obj", "Type.IsUnsafePtr", "Field.End", "Type.Pos", "Type.Registers", "Type.Deferwidth", "Type.SetDeferwidth", "Type.Recur", "Type.SetRecur",
 					"Type.ChanArgs", "Type.FuncArgs", "Type.Methods", "Type.AllMethods", "Type.SetMethods", "Type.SetAllMethods", "Type.SetInterface", "Type.IsInterface", "Type.IsEmptyInterface", "Type.Size", "Type.Alignment", "Type.ArgWidth", "Type.HasPointers",
 					"Field.IsDDD", "Field.Nointerface", "Field.SetIsDDD", "Field.SetNointerface", "Field.Copy", "Field.IsMethod",
 					"Type.OffsetOf", "Type.StructType", "Type.fields", "Type.Fields", "Type.Field", "Type.setFields", "Type.IsStruct", "Type.IsFuncArgStruct", "Type.NumFields", "Type.FieldType",
@@ -122,7 +122,7 @@ func Migration() Plan {
 				Context: &ContextRule{
 					Type: "Universe", Constructor: "newUniverse", Adapter: "adapter_context.go", Init: true,
 					Fields: map[string]string{
-						"typepkgmu": "typepkgmu", "typepkg": "typepkg",
+						"unsignedEType": "unsignedEType", "typepkgmu": "typepkgmu", "typepkg": "typepkg",
 						"TypeInvalid": "TypeInvalid", "TypeMem": "TypeMem", "TypeFlags": "TypeFlags", "TypeVoid": "TypeVoid",
 						"TypeInt128": "TypeInt128", "TypeVec128": "TypeVec128", "TypeVec256": "TypeVec256", "TypeVec512": "TypeVec512",
 						"TypeMask": "TypeMask", "TypeResultMem": "TypeResultMem",

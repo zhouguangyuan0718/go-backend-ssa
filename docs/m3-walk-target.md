@@ -34,3 +34,5 @@ GO_SSA_SOURCE_REPO=/path/to/go GOTOOLCHAIN=go1.27.1 \
 下一步处理原生 walk 中零值 staticinit.Schedule 的实例绑定，并把已确认的包级计数器、运行时字段缓存和预分析缓存迁到 walk 实例，接入完整 Walk 流程。
 
 局部零值调度器绑定随后已实现，见 [m3-zero-schedule.md](m3-zero-schedule.md)。
+
+后续完整 walk 已迁入，见 [m3-walk.md](m3-walk.md)。本文件保留该前置阶段的验证范围。

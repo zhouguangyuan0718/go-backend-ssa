@@ -4,7 +4,7 @@
 
 库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。每次调用拥有独立编译状态，返回结果在后续调用期间仍有效。
 
-当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口，并提供已检查 AST 到原生 Unified IR stub 的 writer，以及实例独立的原生 IR 图构造接口与 typecheck universe 初始化；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及本地 stub 到读取阶段原生包 IR、原生整包去虚化/内联的入口和上游 CalcSize、InitTypes、类型等价与比较算法；完整前端和编译流程仍待移植。
+当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化，M3 已提供源码解析和原生 types2 类型检查入口，并提供已检查 AST 到原生 Unified IR stub 的 writer，以及实例独立的原生 IR 图构造接口与 typecheck universe 初始化；尚无 Go 源码到 SSA 的 Build API。** 当前可用编译器 syntax.Parse/AST、实例独立的 types2.Config.Check/Info、位置、诊断、目标布局输入、包符号查找、实例化 SSA 特殊类型、tuple/results 及指针/切片/数组/map/channel 构造、未定类型与常量映射、字段/结构体/签名构造，以及本地 stub 到读取阶段原生包 IR、原生整包去虚化/内联的入口和上游 CalcSize、InitTypes、类型等价与比较算法；前置优化、escape、slice 和完整 walk 已迁入，源码到 SSA 与统一编译驱动仍待完成。
 
 - 语言范围：Go 1.27；其他语言版本尚不支持。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
@@ -67,6 +67,7 @@
 50. [M3 原生比较构造](docs/m3-compare.md)：完整 compare 算法、目标成本和有序比较 IR 构造。
 51. [M3 walk 架构输入](docs/m3-walk-target.md)：原生索引/调用判定及按类型绑定架构字段。
 52. [M3 局部零值调度器绑定](docs/m3-zero-schedule.md)：为原生 walk 的常量赋值保留零值行为。
+53. [M3 原生 walk](docs/m3-walk.md)：完整排序/改写、实例缓存和公开 Walk 入口。
 
 ## 当前可运行的工具
 
@@ -79,14 +80,14 @@ export GO_SSA_SOURCE_REPO=/path/to/local/golang-go
 go run ./cmd/syncgo inspect -repo "$GO_SSA_SOURCE_REPO" -out _work/inspection.json -summary _work/inspection-summary.json
 go run ./cmd/syncgo generate -repo "$GO_SSA_SOURCE_REPO"
 go run ./cmd/syncgo check -repo "$GO_SSA_SOURCE_REPO"
-go test -race -timeout 20m ./...
+go test -race -timeout 30m ./...
 ```
 
 上游版本和移植规则统一维护在 [internal/port/rules.go](internal/port/rules.go)，不需要 JSON 配置。审计报告按需生成到 `_work/`；`sync/generated.json` 仅由工具自动维护。
 
-设定 `GO_SSA_SOURCE_REPO` 时，测试额外验证官方 go1.27.1 再生成、两版上游位置/符号回归与 SSA 类型切片差分测试、源码树未变以及 go1.27.0 → go1.27.1 升级；仓库需包含两个 tag。完整双版本差分包含多组独立原生编译，使用 `-timeout 20m`，避免默认 10 分钟时限。无该变量时仅跳过这项集成测试，其他测试照常执行。
+设定 `GO_SSA_SOURCE_REPO` 时，测试额外验证官方 go1.27.1 再生成、两版上游位置/符号回归与 SSA 类型切片差分测试、源码树未变以及 go1.27.0 → go1.27.1 升级；仓库需包含两个 tag。完整双版本差分包含多组独立原生编译，使用 `-timeout 30m`，避免默认 10 分钟时限。无该变量时仅跳过这项集成测试，其他测试照常执行。
 
-编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造与完整 typecheck 生产包，以及 types/objabi 的结构和算法切片；reader 的类型/对象实例化、函数体和字典读取主体已接入并完成源码差分；整包内联、方法包装、loopvar、pkginit、ABI wrappers、deadlocals、escape 和 slice 已接通；walk 和 SSA 流程尚未接通。
+编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造与完整 typecheck 生产包，以及 types/objabi 的结构和算法切片；reader 的类型/对象实例化、函数体和字典读取主体已接入并完成源码差分；整包内联、方法包装、loopvar、pkginit、ABI wrappers、deadlocals、escape、slice 和完整 walk 已接通；SSA 构造尚未接通。
 
 移植后的源码直接保存在本项目，和手写适配、转换规则一起纳入版本管理。使用本库时不需要先运行移植工具；维护者更新上游版本时再重新生成。
 
@@ -106,6 +107,7 @@ go test -race -timeout 20m ./...
 | [internal/noder/posmap.go](internal/noder/posmap.go) | 原生 syntax.Pos 到 Link.PosTable 映射、line pragma 与实例位置缓存 |
 | [internal/ir/node.go](internal/ir/node.go)、[expr.go](internal/ir/expr.go)、[func.go](internal/ir/func.go) | 原生 IR 节点、构造/复制/遍历、名称、函数/闭包、常量及格式化 |
 | [internal/typecheck/typecheck.go](internal/typecheck/typecheck.go)、[expr.go](internal/typecheck/expr.go)、[stmt.go](internal/typecheck/stmt.go) | 原生 IR 表达式/语句检查与改写、声明和内建调用 |
+| [internal/walk/walk.go](internal/walk/walk.go)、[order.go](internal/walk/order.go)、[switch.go](internal/walk/switch.go) | 完整原生 walk、实例状态及公开 walk.Context.Walk |
 
 手写适配示例为 [internal/types/adapter_context.go](internal/types/adapter_context.go)，生成来源和哈希记录在 [sync/generated.json](sync/generated.json)。
 
@@ -134,4 +136,4 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 
 类型布局入口示例见 [独立消费者测试](testdata/consumer/consumer_test.go)。先创建 Universe，再调用原生 `u.InitTypes(defTypeName)`；回调为传入的 Sym/Type 提供宿主的 `types.Object`。随后可直接调用 `Type.Size/Alignment/Registers/HasPointers` 与 `u.CalcSize/PtrDataSize/AlgType/Identical`。当前不提供假 `ir.Name`；宿主绑定契约及失败处理见 M2 文档。
 
-源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；之后可调用 Interleaved 完成整包优化，再调用 MakeWrappers 生成原生方法包装函数，随后逐函数调用 loopvar.ForCapture 处理循环变量捕获，再调用 pkginit.MakeTask 生成原生初始化任务，随后调用 ssagen 的 SymABIs.GenABIWrappers；完整 unified 尾部、实验性 midway 和 compiler directives 尚未接入。尚无 SSA 构造入口。
+源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；之后可调用 Interleaved 完成整包优化，再调用 MakeWrappers 生成原生方法包装函数，随后逐函数调用 loopvar.ForCapture 处理循环变量捕获，再调用 pkginit.MakeTask 生成原生初始化任务，随后调用 ssagen 的 SymABIs.GenABIWrappers，并依次执行 deadlocals、escape、slice 和 walk；完整 unified 尾部、实验性 midway 和 compiler directives 尚未接入。尚无 SSA 构造入口。

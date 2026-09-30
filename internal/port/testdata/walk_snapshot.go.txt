@@ -1,0 +1,51 @@
+package walk_test
+import("fmt";"encoding/json";"encoding/binary";"os";"strings";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_LOOPVAR";"IMPORT_NODER";"IMPORT_PKGINIT";"IMPORT_SSAGEN";"IMPORT_DEADLOCALS";"IMPORT_ESCAPE";"IMPORT_SLICE";"IMPORT_WALK";"bytes";"IMPORT_LOGOPT";EXPAND_RUNTIME AUTO_IMPORT PKGINIT_DRIVER_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ mode:=os.Getenv("SYNCGO_TARGET")
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.SplitN(mode,"-",2)[0],8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ LINK.Arch.Family=sys.AMD64;LINK.Arch.Alignment=1;LINK.Arch.CanMergeLoads=true
+ switch target.arch{case "386":LINK.Arch.Family=sys.I386;case "mips":LINK.Arch.Family=sys.MIPS;LINK.Arch.Alignment=4;LINK.Arch.CanMergeLoads=false;case "ppc64":LINK.Arch.Family=sys.PPC64;LINK.Arch.Alignment=8;LINK.Arch.CanMergeLoads=false}
+ if strings.HasSuffix(mode,"-fips"){LINK.Pkgpath="crypto/internal/fips140/testwalk"}
+ if strings.HasSuffix(mode,"-jumptable"){LINK.Arch.CanJumpTable=true}
+ if strings.HasSuffix(mode,"-split"){EXPERIMENT.MapSplitGroup=true}
+ if strings.HasSuffix(mode,"-libfuzzer"){ND_DEBUG.Libfuzzer=1}
+ data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
+ PKGINIT_READ
+ if strings.Contains(mode,"-inline"){LOOP_BASE.Flag.LowerL=1}
+ PKGINIT_DRIVER
+ INIT_BEFORE_ABI
+ EXPERIMENT.RegabiWrappers=target.arch=="amd64"||target.arch=="ppc64"
+ raw:="ref example/p.Grow ABI0\n"
+ ABI_READ
+ s.GenABIWrappers()
+ PRE_ESCAPE
+ ESC_SETUP
+ ESC_RUN
+ if strings.Contains(mode,"-inline"){seen:=false;for _,fn:=range TC.Target.Funcs{ir.Visit(fn,func(n ir.Node){seen=seen||n.Op()==ir.OINLMARK})};if !seen{t.Fatal("inline configuration produced no inline IR")}}
+ ND_DEBUG.VariableMakeThreshold=64
+ if strings.HasSuffix(mode,"-small"){ND_DEBUG.VariableMakeThreshold=7}
+ if strings.HasSuffix(mode,"-noopt"){LOOP_BASE.Flag.N=1}
+ var hash bytes.Buffer
+ if strings.HasSuffix(mode,"-exclude"){LOOP_BASE.VariableMakeHash=LOOP_BASE.NewHashDebug("variablemakehash","n",&hash)}
+ if strings.HasSuffix(mode,"-all"){LOOP_BASE.VariableMakeHash=LOOP_BASE.NewHashDebug("variablemakehash","y",&hash)}
+ SLICE_RUN
+ WALK_SETUP
+ WALK_SET_SOFT
+ var walked []*ir.Func
+ for _,fn:=range TC.Target.Funcs{
+ todo:=[]*ir.Func{fn};for len(todo)>0{f:=todo[len(todo)-1];todo=todo[:len(todo)-1];if f.OClosure!=nil&&f==fn{continue};GRAPH.InitLSym(f,true);TY.CalcSize(f.Type());WALK_RUN;walked=append(walked,f);todo=append(todo,f.Closures...);GRAPH.CurFunc=nil;LINK.DwTextCount++}
+ }
+ var out []string
+ for _,fn:=range walked{
+ out=append(out,fmt.Sprintf("func:%v:%v:%d:%d:%v:%d",fn.Sym(),fn.Type(),fn.ABI,fn.Esc(),fn.Pragma,len(fn.Body)))
+ for i,p:=range fn.Type().RecvParams(){out=append(out,fmt.Sprintf("param:%d:%v:%v:%q",i,p.Sym,p.Type,p.Note))}
+ ir.Visit(fn,func(n ir.Node){out=append(out,fmt.Sprintf("node:%v:%v:%d:%d:%v:%v",n.Op(),n.Type(),n.Typecheck(),n.Esc(),LINK.PosTable.Pos(n.Pos()),n));if call,ok:=n.(*ir.CallExpr);ok{out=append(out,fmt.Sprintf("call:%t:%t:%d",call.IsDDD,call.AppendNoAlias,len(call.KeepAlive)));out=append(out,fmt.Sprintf("buffer:%t",call.UseBuf))}})
+ ir.Visit(fn,func(n ir.Node){if m,ok:=n.(*ir.MoveToHeapExpr);ok{out=append(out,fmt.Sprintf("move:%v:%v:%t",m.Slice,m.RType,m.PreserveCapacity))}})
+ for _,n:=range fn.Dcl{out=append(out,fmt.Sprintf("local:%v:%v:%d:%d:%t:%t:%t:%t",n,n.Type(),n.Class,n.Esc(),n.Curfn==fn,n.Byval(),n.Addrtaken(),n.Opt==nil))}
+ for _,n:=range fn.ClosureVars{out=append(out,fmt.Sprintf("capture:%v:%d:%t:%t:%t",n,n.Esc(),n.Byval(),n.Addrtaken(),n.Opt==nil))}
+ }
+ for _,sym:=range LINK.Data{out=append(out,fmt.Sprintf("data:%s:%d:%d:%x",sym.Name,sym.Type,sym.Size,sym.P));for _,r:=range sym.R{out=append(out,fmt.Sprintf("reloc:%d:%d:%d:%s:%d",r.Type,r.Off,r.Siz,r.Sym.Name,r.Add))}}
+ out=append(out,fmt.Sprintf("state:%d:%t:%v",LINK.DwTextCount,GRAPH.CurFunc==nil,LINK.PosTable.Pos(POS)))
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

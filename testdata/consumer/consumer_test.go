@@ -33,6 +33,7 @@ import (
 	"go-backend-ssa/typecheck"
 	"go-backend-ssa/types"
 	"go-backend-ssa/types2"
+	"go-backend-ssa/walk"
 	"go/constant"
 	"strings"
 	"testing"
@@ -399,6 +400,32 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 		}
 	})
 
+	lowering := walk.NewContext(writer, analysis)
+	seen := map[*ir.Func]bool{}
+	for _, root := range result.Funcs {
+		todo := []*ir.Func{root}
+		for len(todo) > 0 {
+			fn := todo[len(todo)-1]
+			todo = todo[:len(todo)-1]
+			if seen[fn] {
+				continue
+			}
+			seen[fn] = true
+			if fn.LSym == nil {
+				graph.InitLSym(fn, true)
+			}
+			graph.Types.CalcSize(fn.Type())
+			lowering.Walk(fn)
+			if graph.CurFunc != fn {
+				t.Fatal("public Walk lost current function")
+			}
+			graph.CurFunc = nil
+			todo = append(todo, fn.Closures...)
+		}
+	}
+	if len(seen) == 0 {
+		t.Fatal("public Walk did not process functions")
+	}
 }
 
 func TestNativeObjectGraph(t *testing.T) {
