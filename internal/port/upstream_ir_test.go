@@ -78,6 +78,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_import")
 	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_dependencies")
 	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_source")
+	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_prepackage")
 	testUpstreamNativeGraph(t, s, r, root, "dwarfgen")
 	testUpstreamNativeGraph(t, s, r, root, "objw")
 	testUpstreamNativeGraph(t, s, r, root, "staticdata")
@@ -92,6 +93,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if len(snapshots) > 0 {
 		snapshotName = snapshots[0]
 	}
+	isSource := snapshotName == "noder_source" || snapshotName == "noder_prepackage"
 	isFixedSSA := snapshotName == "ssagen_fixed"
 	isDataSSA := snapshotName == "ssagen_data"
 	isQueueSSA := snapshotName == "ssagen_queue" || isDataSSA || isFixedSSA
@@ -121,8 +123,11 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if snapshotName == "noder_import" || snapshotName == "noder_inline" {
 		prepareNativeImport(t, root, dir, false)
 	}
-	if snapshotName == "noder_dependencies" || snapshotName == "noder_source" {
+	if snapshotName == "noder_dependencies" || isSource {
 		prepareNativeDependency(t, root, dir)
+	}
+	if snapshotName == "noder_prepackage" {
+		prepareBenchmarkDependency(t, dir)
 	}
 	template = []byte(strings.ReplaceAll(string(template), "BODY_IMPORT_PATH", fmt.Sprintf("%q", filepath.Join(dir, "reader-import"))))
 	template = []byte(strings.ReplaceAll(string(template), "BODY_INPUT_PATH", fmt.Sprintf("%q", filepath.Join(dir, "reader-input"))))
@@ -207,11 +212,11 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if pkgName == "staticdata" {
 		setup = `link:=&obj.Link{Arch:&obj.LinkArch{Arch:&sys.Arch{Name:target.arch,PtrSize:target.size,RegSize:target.size,ByteOrder:target.order}}};u:=types.NewUniverseWithPositions(target.size,target.size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");graph:=ir.NewContext(u,link);typecheck.NewContext(graph).InitUniverse();c:=NewContext(graph,objw.NewContext(u,link,"linux"))`
 	}
-	if snapshotName == "noder_source" || snapshotName == "noder_dict" || snapshotName == "noder_body" || (snapshotName == "noder_import" || snapshotName == "noder_dependencies") || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
+	if isSource || snapshotName == "noder_dict" || snapshotName == "noder_body" || (snapshotName == "noder_import" || snapshotName == "noder_dependencies") || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
 		setup = `link:=&obj.Link{Arch:&obj.LinkArch{Arch:&sys.Arch{Name:target.arch,PtrSize:target.size,RegSize:target.size,ByteOrder:target.order}}};u:=types.NewUniverseWithPositions(target.size,target.size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");graph:=ir.NewContext(u,link);tc:=typecheck.NewContext(graph);tc.InitUniverse();c,err:=NewContext(types2.NewContext(),tc);if err!=nil{t.Fatal(err)}`
 		position = "u.Pos"
 	}
-	if snapshotName == "noder_source" || snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
+	if isSource || snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
 		setup += `;link.Pathname="/src";link.Pkgpath="example/p";tc.InitRuntime();c.Flag.Dwarf=true;rt:=rttype.NewContext(objw.NewContext(u,link,"linux"));rt.Init();c.ReflectData=reflectdata.NewContext(tc,rt,staticdata.NewContext(graph,rt.Writer));c.StaticInit=staticinit.NewContext(tc,c.ReflectData)`
 	}
 
@@ -327,8 +332,11 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 			}
 		}
 	}
-	if snapshotName == "noder_source" {
+	if isSource {
 		ported = sourceSnapshotFixture(t, ported, dir, false)
+		if snapshotName == "noder_prepackage" {
+			ported = prepackageSnapshotFixture(t, ported, dir, false)
+		}
 	}
 	if snapshotName == "noder_dependencies" {
 		ported = dependencySnapshotFixture(t, ported, dir, false)
@@ -380,11 +388,14 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 			}
 		}
 	}
-	if snapshotName == "noder_dependencies" || snapshotName == "noder_source" {
+	if snapshotName == "noder_dependencies" || isSource {
 		packages = append(packages, "cmd/compile/internal/importer", "cmd/compile/internal/types2", "cmd/compile/internal/syntax", "internal/pkgbits", "internal/types/errors", "internal/exportdata", "internal/saferio", "cmd/internal/bio", "cmd/compile/internal/midway", "cmd/compile/internal/rangefunc")
 	}
 	if pkgName == "midway" {
 		packages = append(packages, "cmd/compile/internal/midway", "cmd/compile/internal/types2", "cmd/compile/internal/syntax")
+	}
+	if snapshotName == "noder_prepackage" {
+		packages = append(packages, "cmd/compile/internal/bloop", "cmd/compile/internal/coverage", "internal/coverage")
 	}
 	for _, pkg := range packages {
 		for _, name := range s.PackageFiles(pkg) {
@@ -437,13 +448,13 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if pkgName == "reflectdata" {
 		nativeSetup += `;ir.Pkgs.InternalMaps=types.NewPkg("go.internal/runtime/maps","internal/runtime/maps");ir.Pkgs.InternalMaps.Prefix="internal/runtime/maps";ir.Pkgs.Runtime=types.NewPkg("go.runtime","runtime");ir.Pkgs.Runtime.Prefix="runtime";typecheck.Target=&ir.Package{};ir.Pkgs.Itab=types.NewPkg("go.itab","go.itab");ir.Pkgs.Itab.Prefix="go:itab";base.AutogeneratedPos=base.Ctxt.PosTable.XPos(src.MakePos(src.NewFileBase("<autogenerated>","<autogenerated>"),1,0));rttype.Init()`
 	}
-	if snapshotName == "noder_source" || snapshotName == "noder_dict" || snapshotName == "noder_body" || (snapshotName == "noder_import" || snapshotName == "noder_dependencies") || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
+	if isSource || snapshotName == "noder_dict" || snapshotName == "noder_body" || (snapshotName == "noder_import" || snapshotName == "noder_dependencies") || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
 		nativeSetup = `base.Ctxt=&obj.Link{Arch:&obj.LinkArch{Arch:&sys.Arch{Name:target.arch,PtrSize:target.size,RegSize:target.size,ByteOrder:target.order}}};types.PtrSize=target.size;types.RegSize=target.size;types.MaxWidth=1<<50;types.BuiltinPkg=types.NewPkg("go.builtin","");types.LocalPkg=types.NewPkg("example/p","p");types.UnsafePkg=types.NewPkg("unsafe","unsafe");base.AutogeneratedPos=base.Ctxt.PosTable.XPos(src.MakePos(src.NewFileBase("<autogenerated>","<autogenerated>"),1,0));typecheck.InitUniverse()`
 	}
 	if snapshotName == "noder_import" || snapshotName == "noder_dependencies" {
 		nativeSetup += `;typecheck.Target=&ir.Package{}`
 	}
-	if snapshotName == "noder_source" || snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
+	if isSource || snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || (snapshotName == "walk" || isBuildSSA) {
 		nativeSetup += `;base.Ctxt.Pathname="/src";base.Ctxt.Pkgpath="example/p";base.Flag.Dwarf=true;buildcfg.GOARCH=target.arch;buildcfg.GOOS="linux";ir.Pkgs.Go=types.NewPkg("go","");ir.Pkgs.InternalMaps=types.NewPkg("go.internal/runtime/maps","internal/runtime/maps");ir.Pkgs.InternalMaps.Prefix="internal/runtime/maps";ir.Pkgs.Runtime=types.NewPkg("go.runtime","runtime");ir.Pkgs.Runtime.Prefix="runtime";typecheck.Target=&ir.Package{};ir.Pkgs.Itab=types.NewPkg("go.itab","go.itab");ir.Pkgs.Itab.Prefix="go:itab";typecheck.InitRuntime();rttype.Init()`
 	}
 
@@ -572,8 +583,11 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 			}
 		}
 	}
-	if snapshotName == "noder_source" {
+	if isSource {
 		native = sourceSnapshotFixture(t, native, dir, true)
+		if snapshotName == "noder_prepackage" {
+			native = prepackageSnapshotFixture(t, native, dir, true)
+		}
 	}
 	if snapshotName == "noder_dependencies" {
 		native = dependencySnapshotFixture(t, native, dir, true)
@@ -801,6 +815,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	if isQueueSSA {
 		targets = append(targets, "amd64-workers4")
+	}
+	if snapshotName == "noder_prepackage" {
+		targets = []string{"ordinary", "main", "main-testmain", "runtime", "atomic-perfunc", "disabled"}
 	}
 	for _, snapshotTarget = range targets {
 		if snapshotName == "escape" {

@@ -88,3 +88,7 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 原生 midway SIMD 分析与源码重写已迁入，见 [midway](m3-native-midway.md)。后续接入原生源码检查、重写后的第二次检查和完整 unified 驱动。
 
 原生 `checkFiles`、midway 后二次检查、rangefunc、AST HTML 诊断和完整 unified 已通过 `CompileParsedPackage` 接通，见 [源码前端](m3-native-source-frontend.md)。下一步将包级前端阶段、完整 Build 驱动和后端输出连接，再执行链接/运行及替换验收。
+
+### 原生 B.Loop 与覆盖率阶段
+
+完整迁入两个前端阶段，使用实例化 typecheck/IR、诊断和符号，公开源码示例接入内联前顺序。覆盖率配置公开为原生别名；runtime 固定包 ID 表保持固定源码来源并局部化。验证与边界见 [阶段记录](m3-prepackage.md)。后续继续补齐原生 IR 诊断和整包驱动，再验收链接运行、第二目标及工具链替换。

@@ -3,6 +3,8 @@ package noder_test
 import (
 	"encoding/binary"
 	"fmt"
+	"go-backend-ssa/bloop"
+	"go-backend-ssa/coverage"
 	"go-backend-ssa/deadlocals"
 	"go-backend-ssa/escape"
 	"go-backend-ssa/gcbridge"
@@ -65,6 +67,8 @@ func ExampleNewContext() {
 		panic(err)
 	}
 	writer.Flag.LowerL = 1
+	coverage.NewContext(tc).Fixup()
+	bloop.NewContext(tc).Walk(target)
 	writer.Interleaved.DevirtualizeAndInlinePackage(target, nil)
 	writer.MakeWrappers(target)
 	capture := loopvar.NewContext(tc, writer.Inline.Log)

@@ -1,0 +1,63 @@
+package noder
+import("bytes";"encoding/json";"encoding/binary";"fmt";"os";"path/filepath";"reflect";"regexp";"sort";"strings";"testing";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_IR";"IMPORT_TYPES";"IMPORT_TYPECHECK";"IMPORT_TYPES2";SOURCE_IMPORTS PRE_IMPORTS BODY_RUNTIME IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{"amd64",8,binary.LittleEndian}
+ mode:=os.Getenv("SYNCGO_TARGET")
+ SETUP
+ SOURCE_BIND
+ PRE_BIND
+ ND_DEBUG.SyncFrames=-1;ND_DEBUG.RangeFuncCheck=1;ND_DEBUG.AstDump="~.*\\.(F|Other)";RD_FLAG.Lang="go1.27";RD_FLAG.Complete=true;RD_FLAG.LowerL=1
+ _=src.XPos{};_=types2.Int;_=syntax.CheckBranches;_=bytes.NewBuffer
+ sources:=[]string{`package p
+import "example/dep"
+func Each(yield func(int)bool){for i:=0;i<4;i++{if !yield(i){return}}}
+type Box[T any]struct{V T}
+func Id[T any](x T)T{return x}
+func F()(n int){for v:=range Each{n+=v};return n+dep.Exported(2)+dep.Generic(3)+Id(Box[int]{V:4}).V}
+var Global=dep.Box[int]{V:7}
+`,"package p\n//go:noinline\nfunc Other(x int)int{return F()+x}\n"}
+ sources=append(sources,`package p
+import "testing"
+func Result(x int)int{return x+1}
+func Pair()(int,int){return 1,2}
+func Void(x int, xs ...int){}
+func Benchmark(b *testing.B){
+ for b.Loop(){
+  x:=1;x++;_ = Result(x);_,y:=Pair();x,y=y,x;Result(x);Pair();Void(x,Result(y),3)
+  if x>0{x=2}else{x=3}
+  for i:=0;i<2;i++{x+=i}
+  for _,v:=range []int{1,2}{x=v}
+  switch x{case 0:x=1;default:x=2}
+  select{default:x=4}
+ }
+}
+func Ordinary(b *testing.B){for b.More(){Result(1);Void(1)}}
+func Outside(){Result(1);Void(1)}
+
+var Meta=[4]byte{1,2,3,4};var PkgID uint32;var Counter0 [8]uint32;var OrdinaryVar int;func init(){OrdinaryVar=3}
+`)
+ if path=="main"{for i:=range sources{sources[i]=strings.Replace(sources[i],"package p","package main",1)}}
+ SOURCE_RUN
+ counterMode:="set";gran:="perblock";if strings.Contains(mode,"atomic"){counterMode="atomic"};if strings.Contains(mode,"testmain"){counterMode="testmain"};if strings.Contains(mode,"perfunc"){gran="perfunc"}
+ if mode!="disabled"{RD_FLAG.Cfg.CoverageInfo=&covcmd.CoverFixupConfig{MetaVar:"Meta",PkgIdVar:"PkgID",CounterPrefix:"Counter",CounterMode:counterMode,CounterGranularity:gran,MetaHash:"0123456789abcdef0123456789abcdef",MetaLen:4}}
+ PRE_RUN
+ var out []string
+ for _,n:=range TC.Target.Externs{out=append(out,fmt.Sprintf("extern:%v:%v:%t:%t:%d",n.Sym(),n.Type(),n.Readonly(),n.CoverageAuxVar(),n.Linksym().Type))}
+ var objects []string;for sym:=range UP.objReader{objects=append(objects,sym.Pkg.Path+"."+sym.Name)};sort.Strings(objects);out=append(out,fmt.Sprint("objects:",objects))
+ for _,p:=range TC.Target.Imports{out=append(out,fmt.Sprintf("import:%s:%t",p.Path,p.Direct))}
+ for _,p:=range LINK.Imports{out=append(out,fmt.Sprintf("fingerprint:%s:%x",p.Pkg,p.Fingerprint))}
+ for _,fn:=range TC.Target.Funcs{
+ out=append(out,fmt.Sprintf("fn:%v:%v:%d:%d:%s",fn.Sym(),fn.Type(),fn.Pragma,fn.Typecheck(),LINK.PosTable.Pos(fn.Pos())))
+ for _,d:=range fn.Dcl{out=append(out,fmt.Sprintf("local:%v:%v:%d:%t:%t",d.Sym(),d.Type(),d.Class,d.AutoTemp(),d.Curfn==fn))}
+ for _,stmt:=range fn.Body{ir.Visit(stmt,func(n ir.Node){out=append(out,fmt.Sprintf("node:%s:%d:%v:%s:%v",n.Op(),n.Typecheck(),n.Type(),LINK.PosTable.Pos(n.Pos()),n));if call,ok:=n.(*ir.CallExpr);ok{out=append(out,fmt.Sprintf("callflags:%t:%t",call.IsCompilerVarLive,call.NoInline))}})}
+ }
+ out=append(out,fmt.Sprintf("pending:%d:%d",len(UP.todoBodies),len(UP.todoDicts)))
+ for _,name:=range []string{"example/dep.Exported","example/dep.Number.M"}{fn,e:=UP.LookupFunc(name);if e!=nil{t.Fatal(e)};out=append(out,fmt.Sprintf("lookup:%s:%v:%t",name,fn.Type(),TC.HaveInlineBody(fn)))}
+ UP.PostLookupCleanup()
+ SOURCE_REPORTS
+ names:=make([]string,0,len(reports));for p:=range reports{names=append(names,p)};sort.Strings(names)
+ ptr:=regexp.MustCompile(`(scope [^\n<>]* )0x[0-9a-f]+`)
+ for _,name:=range names{out=append(out,"html:"+name+":"+ptr.ReplaceAllString(reports[name],"${1}<address>"))}
+ if len(names)!=2{t.Fatalf("expected two reports, have %v",names)}
+ data,e:=json.Marshal(out);if e!=nil{t.Fatal(e)};fmt.Println("SYNCGO_IR="+string(data))
+}
