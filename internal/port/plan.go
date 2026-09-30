@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v45"
+const ToolVersion = "syncgo-m3-v46"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -96,6 +96,7 @@ type CallRule struct{ Source, Function, Method string }
 type LiteralRule struct {
 	Source, Type, Method string
 	Pointer              bool // Bind an explicit &T{...} through func(*T) *T, preserving its allocation.
+	NilPointer           bool // Bind an explicit (*T)(nil) to its instance-owned native default receiver.
 }
 
 // StateRule redirects typed host state to an instance. Variable may name a
@@ -304,7 +305,7 @@ func (p Plan) Validate() error {
 			}
 		}
 		for _, literal := range u.Literals {
-			if u.Context == nil || !safePath(literal.Source) || portPath(literal.Source) == "" || !token.IsIdentifier(literal.Type) || !memberPath(literal.Method) {
+			if u.Context == nil || !safePath(literal.Source) || portPath(literal.Source) == "" || !token.IsIdentifier(literal.Type) || !memberPath(literal.Method) || literal.Pointer && literal.NilPointer {
 				return fmt.Errorf("invalid literal binding")
 			}
 		}

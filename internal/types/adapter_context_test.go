@@ -6,6 +6,32 @@ import (
 	"testing"
 )
 
+func TestBindNativeNilPackage(t *testing.T) {
+	a, b := NewUniverse(8, 8, 1<<50), NewUniverse(8, 8, 1<<50)
+	pa, pb := a.BindPackage(nil), b.BindPackage(nil)
+	if pa == pb || pa != a.BindPackage(nil) || pa.Universe() != a || pb.Universe() != b {
+		t.Fatal("anonymous package identity")
+	}
+	sym, err := a.Lookup(nil, "field")
+	if err != nil || sym != pa.Lookup("field") || pb.Lookup("field") == sym {
+		t.Fatal("native nil receiver namespace")
+	}
+	p := a.NewPkg("example/p", "p")
+	if a.BindPackage(p) != p {
+		t.Fatal("existing package replaced")
+	}
+	for _, bind := range []func(){func() { a.BindPackage(pb) }, func() { new(Universe).BindPackage(nil) }, func() { (*Universe)(nil).BindPackage(nil) }} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Error("invalid package binding accepted")
+				}
+			}()
+			bind()
+		}()
+	}
+}
+
 func TestContextOwnershipAndInputLifetime(t *testing.T) {
 	a, b := NewUniverse(8, 8, 1<<50), NewUniverse(8, 8, 1<<50)
 	input := []byte("alpha")

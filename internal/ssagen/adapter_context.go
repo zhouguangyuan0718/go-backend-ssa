@@ -7,15 +7,25 @@ import (
 	"go-backend-ssa/internal/cmd/src"
 	errorspkg "go-backend-ssa/internal/go/types/errors"
 	"go-backend-ssa/internal/ir"
+	"go-backend-ssa/internal/ssa"
 	"go-backend-ssa/internal/typecheck"
 	"go-backend-ssa/internal/types"
 	"io"
 )
 
-// Context binds native ABI wrapper generation to one compiler graph. Further
-// ssagen phases will use the same instance as they are ported.
+// Context binds native ABI wrappers, target initialization and SSA frontend
+// services to one compiler graph. Set SSA and Arch before InitConfig, after
+// type and runtime declarations have been initialized. Phase operations within
+// one graph are serialized; separate contexts can compile independently.
 type Context struct {
-	Typecheck *typecheck.Context
+	SSA             *ssa.Context
+	Arch            ArchInfo
+	ssaConfig       *ssa.Config
+	ssaCaches       []ssa.Cache
+	BoundsCheckFunc [ssa.BoundsKindCount]*obj.LSym
+	softFloatOps    map[ssa.Op]sfRtCallDef
+	deferType       *types.Type
+	Typecheck       *typecheck.Context
 	// ReadFile supplies symabis input. There is no implicit filesystem fallback.
 	ReadFile func(string) ([]byte, error)
 }
@@ -64,3 +74,43 @@ func (c *Context) checkPackage() {
 		c.checkWrapper(fn, 0)
 	}
 }
+
+// NewFrontend binds the native SSA frontend to an existing declared IR function.
+func (c *Context) NewFrontend(fn *ir.Func, logging bool) ssa.Frontend {
+	c.checkFrontendFunc(fn)
+	return &ssafn{compilation: c, curfn: fn, log: logging}
+}
+func (c *Context) checkFrontendFunc(fn *ir.Func) {
+	c.checkBackend()
+	if fn == nil || !c.Typecheck.IR.OwnsNode(fn) || fn.Type() == nil || fn.Type().Universe() != c.Typecheck.IR.Types || fn.Dcl == nil {
+		panic("SSA frontend requires a declared function from this compilation")
+	}
+}
+func (c *Context) checkBackend() {
+	if c == nil || c.Typecheck == nil || c.Typecheck.IR == nil || c.SSA == nil || c.SSA.IR != c.Typecheck.IR || c.SSA.Types != c.Typecheck.IR.Types || c.SSA.ReflectData == nil || c.SSA.ReflectData.Typecheck != c.Typecheck || c.SSA.ReflectData.StaticData == nil || c.SSA.ReflectData.StaticData.IR != c.Typecheck.IR {
+		panic("ssagen requires matching SSA and frontend services")
+	}
+}
+func (c *Context) checkInitConfig() {
+	c.checkBackend()
+	if c.Arch.LinkArch != c.Typecheck.IR.Base.Ctxt.Arch || c.Arch.LinkArch == nil || c.Typecheck.IR.Base.Flag.LowerC <= 0 || c.Typecheck.IR.Pkgs.Runtime == nil {
+		panic("ssagen configuration requires matching target, workers and runtime symbols")
+	}
+}
+func (c *Context) checkSplitSlot(parent *ssa.LocalSlot, suffix string, offset int64, typ *types.Type) {
+	c.checkBackend()
+	if parent == nil || parent.N == nil || !c.Typecheck.IR.OwnsNode(parent.N) || parent.Type == nil || parent.Type.Universe() != c.Typecheck.IR.Types || typ == nil || typ.Universe() != c.Typecheck.IR.Types {
+		panic("SSA slot belongs to another compilation")
+	}
+}
+func (c *Context) checkStringData(string) { c.checkBackend() }
+func (c *Context) tracePrintf(format string, args ...any) (int, error) {
+	return fmt.Fprintf(c.traceWriter(), format, args...)
+}
+func (c *Context) warnfAt(pos src.XPos, format string, args ...any) {
+	g := c.Typecheck.IR
+	g.Diagnostics.Add(diagnostic.Warning, "", g.Base.Ctxt.OutermostPos(pos), fmt.Sprintf(format, args...))
+}
+
+// SSAConfig returns the configuration prepared by native InitConfig.
+func (c *Context) SSAConfig() *ssa.Config { return c.ssaConfig }

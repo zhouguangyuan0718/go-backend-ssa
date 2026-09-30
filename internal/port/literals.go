@@ -36,6 +36,35 @@ func literalBindings(files []*ast.File, info *types.Info, units []Unit) (map[ast
 			count := 0
 			var failure error
 			ast.Inspect(files[i], func(n ast.Node) bool {
+				if rule.NilPointer {
+					call, ok := n.(*ast.CallExpr)
+					if !ok || !info.Types[call.Fun].IsType() || len(call.Args) != 1 {
+						return true
+					}
+					id, ok := ast.Unparen(call.Args[0]).(*ast.Ident)
+					if !ok || info.Uses[id] != types.Universe.Lookup("nil") {
+						return true
+					}
+					pointer, ok := types.Unalias(info.TypeOf(call)).(*types.Pointer)
+					if !ok {
+						return true
+					}
+					named, ok := types.Unalias(pointer.Elem()).(*types.Named)
+					if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != strings.TrimPrefix(path.Dir(rule.Source), "src/") || named.Obj().Name() != rule.Type {
+						return true
+					}
+					if _, ok := named.Underlying().(*types.Struct); !ok || named.TypeParams().Len() != 0 {
+						failure = fmt.Errorf("nil binding requires a non-generic struct pointer: %s", rule.Type)
+						return false
+					}
+					if result[call] != "" {
+						failure = fmt.Errorf("duplicate nil pointer binding: %s", rule.Type)
+						return false
+					}
+					result[call] = rule.Method
+					count++
+					return true
+				}
 				if v, ok := n.(*ast.ValueSpec); ok && v.Type != nil && len(v.Values) == 0 {
 					typ := types.Unalias(info.TypeOf(v.Type))
 					named, ok := typ.(*types.Named)
@@ -157,7 +186,7 @@ func checkLiteralAdapters(units []Unit, before *packageImporter, out *types.Pack
 				return fmt.Errorf("literal adapter must have signature func(T) T: %s", rule.Method)
 			}
 			originalType := original.Type()
-			if rule.Pointer {
+			if rule.Pointer || rule.NilPointer {
 				originalType = types.NewPointer(originalType)
 			}
 			want := types.TypeString(originalType, func(p *types.Package) string {

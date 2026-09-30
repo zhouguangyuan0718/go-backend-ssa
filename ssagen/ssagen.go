@@ -1,6 +1,6 @@
-// Package ssagen currently exposes the native SymABIs and ABI wrapper phase.
-// Run GenABIWrappers after pkginit.MakeTask. Native SSA construction is not yet
-// exposed; the returned wrapper functions are native IR in the shared target.
+// Package ssagen exposes native ABI wrappers, SSA target initialization and
+// frontend services for declared IR functions. Run GenABIWrappers after
+// pkginit.MakeTask. Native IR-to-SSA construction is not yet exposed.
 package ssagen
 
 import (
@@ -10,5 +10,6 @@ import (
 
 type Context = compiler.Context
 type SymABIs = compiler.SymABIs
+type ArchInfo = compiler.ArchInfo
 
 func NewContext(tc *typecheck.Context) *Context { return compiler.NewContext(tc) }

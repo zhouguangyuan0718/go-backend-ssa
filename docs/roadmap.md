@@ -65,4 +65,4 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 
 技术细节通过源码审计和原型推进，不把每个实现选择都变成用户批准门槛。发布、远端仓库等操作按后续实际指令处理。
 
-本批已迁入原生 SSA 的 CSE、prove、SCCP、已知位、分支/短路、内存优化和 CPU 特征推导，并验证目标 lowering 前后的图及独立语义。见 [SSA 优化阶段](m3-ssa-optimizer.md)。调用展开、写屏障、循环抢占检查和原生临时变量也已迁入，见 [SSA 调用和内存阶段](m3-ssa-calls.md)。后期优化、调度及寄存器/栈槽分配已迁入，见 [SSA 调度和分配](m3-ssa-allocation.md)。阶段表、原生选项和顺序校验已实例化，见 [SSA 阶段配置](m3-ssa-phases.md)。完整原生 Compile 及计时、统计、转储服务已接通，见 [SSA Compile](m3-ssa-compile.md)。接下来完成 ssagen 的 IR 到 SSA 构造、指令输出、统一驱动及替换/自举验收。
+本批已迁入原生 SSA 的 CSE、prove、SCCP、已知位、分支/短路、内存优化和 CPU 特征推导，并验证目标 lowering 前后的图及独立语义。见 [SSA 优化阶段](m3-ssa-optimizer.md)。调用展开、写屏障、循环抢占检查和原生临时变量也已迁入，见 [SSA 调用和内存阶段](m3-ssa-calls.md)。后期优化、调度及寄存器/栈槽分配已迁入，见 [SSA 调度和分配](m3-ssa-allocation.md)。阶段表、原生选项和顺序校验已实例化，见 [SSA 阶段配置](m3-ssa-phases.md)。完整原生 Compile 及计时、统计、转储服务已接通，见 [SSA Compile](m3-ssa-compile.md)。原生 ssafn 前端和目标/运行时初始化已接通，见 [SSA 前端与初始化](m3-ssagen-frontend.md)。接下来完成 ssagen 的 IR 到 SSA 构造、指令输出、统一驱动及替换/自举验收。

@@ -149,6 +149,20 @@ func (t *Type) TupleTypes() (*Type, *Type, error) {
 	return pair.first, pair.second, nil
 }
 
+// BindPackage supplies the instance-owned default for a native nil package receiver.
+func (u *Universe) BindPackage(pkg *Pkg) *Pkg {
+	if u == nil || u.ptrSize == 0 {
+		panic("uninitialized Universe")
+	}
+	if pkg == nil {
+		return u.anonymous
+	}
+	if pkg.universe != u {
+		panic("package belongs to another Universe")
+	}
+	return pkg
+}
+
 // Lookup explicitly supplies the owner for the upstream nil-package case.
 func (u *Universe) Lookup(pkg *Pkg, name string) (*Sym, error) {
 	if u == nil || u.ptrSize == 0 {

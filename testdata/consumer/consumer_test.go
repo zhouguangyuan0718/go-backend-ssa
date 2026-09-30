@@ -964,11 +964,18 @@ func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
 	var _ *ssa.Block = b
 	var _ *ssa.Func = f
 
+	tc.InitRuntime()
+	graph.Base.Flag.LowerC = 1
+	backend := ssagen.NewContext(tc)
+	backend.SSA = c
+	backend.Arch.LinkArch = link.Arch
+	backend.InitConfig()
+	cfg = backend.SSAConfig()
 	compiledIR := graph.NewFunc(position.XPos{}, position.XPos{}, u.LocalPkg.Lookup("compiled"), u.NewSignature(nil, nil, nil))
 	compiledIR.DeclareParams(true)
 	var compiledCache ssa.Cache
 	compiledCache.Reset()
-	compiled := cfg.NewFunc(&publicSplitFrontend{fn: compiledIR}, &compiledCache)
+	compiled := cfg.NewFunc(backend.NewFrontend(compiledIR, false), &compiledCache)
 	compiled.Name, compiled.Type = "compiled", compiledIR.Type()
 	compiled.ABI0, compiled.ABI1, compiled.ABISelf, compiled.ABIDefault = cfg.ABI0, cfg.ABI1, cfg.ABI1, cfg.ABI1
 	compiled.OwnAux = ssa.OwnAuxCall(compiledIR.Linksym(), cfg.ABI1.ABIAnalyze(compiledIR.Type(), true))

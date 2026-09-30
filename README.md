@@ -90,6 +90,7 @@
 73. [M3 原生 SSA 调度和分配](docs/m3-ssa-allocation.md)：后期优化、调度、寄存器/栈槽分配及原生架构身份。
 74. [M3 SSA 阶段配置与初始化](docs/m3-ssa-phases.md)：原生阶段表、选项解析、顺序校验及实例初始化分组。
 75. [M3 完整原生 SSA Compile](docs/m3-ssa-compile.md)：完整阶段循环、统计/转储服务、公开入口及物理位置执行验证。
+76. [M3 原生 SSA 前端与初始化](docs/m3-ssagen-frontend.md)：目标配置、运行时符号、defer 布局及原生 Frontend 服务。
 
 ## 当前可运行的工具
 

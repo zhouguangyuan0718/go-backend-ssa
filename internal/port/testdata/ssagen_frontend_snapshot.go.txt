@@ -1,0 +1,62 @@
+package ssagen
+
+import (
+ IMPORT_BASE
+ "IMPORT_IR"
+ "IMPORT_OBJ"
+ "IMPORT_SRC"
+ "IMPORT_SYS"
+ "IMPORT_TYPECHECK"
+ "IMPORT_TYPES"
+ "FE_SSA_IMPORT"
+ FE_IMPORT
+ "encoding/binary"
+ "encoding/json"
+ "fmt"
+ "os"
+ "reflect"
+ "sort"
+ "strings"
+ "testing"
+)
+
+func TestSyncgoNativeSnapshot(t *testing.T) {
+ mode:=os.Getenv("SYNCGO_TARGET")
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.Split(mode,"-")[0],8,binary.LittleEndian}
+ switch target.arch{case "386","arm","mips","mipsle":target.size=4}
+ switch target.arch{case "mips","mips64","ppc64","s390x":target.order=binary.BigEndian}
+ SETUP
+ var out []string
+ add:=func(s string,args ...any){out=append(out,fmt.Sprintf(s,args...))}
+ FE_FEATURES.GOAMD64=1;FE_FEATURES.GOARM.Version=7;FE_FEATURES.GOARM.SoftFloat=strings.Contains(mode,"soft");FE_FEATURES.GOPPC64=8;FE_FEATURES.GORISCV64=20
+ FE_FEATURES.FramePointerEnabled=target.arch=="amd64"||target.arch=="arm64"
+ EXPERIMENT.RegabiArgs=!strings.Contains(mode,"noregabi");EXPERIMENT.PreemptibleLoops=false;EXPERIMENT.SIMD=false
+ FE_FLAG.LowerC=3;FE_FLAG.WB=true;FE_FLAG.Race=strings.Contains(mode,"race");if strings.Contains(mode,"noopt"){FE_FLAG.N=1}
+ UP.Arch.SoftFloat=strings.Contains(mode,"soft")
+ UP.InitConfig()
+ cfg:=UP.ssaConfig
+ add("config:%d:%d:%t:%t:%t:%d",cfg.PtrSize,cfg.RegSize,cfg.SoftFloat,cfg.Race,TY.NewPtrCacheEnabled,len(UP.ssaCaches))
+ syms:=reflect.ValueOf(FE_SYMS);st:=syms.Type()
+ var symbols func(string,reflect.Value)
+ symbols=func(n string,v reflect.Value){if v.Kind()==reflect.Array{for i:=0;i<v.Len();i++{symbols(fmt.Sprintf("%s[%d]",n,i),v.Index(i))};return};if v.Kind()==reflect.Pointer{if v.IsNil(){add("sym:%s:nil",n)}else{sym:=v.Interface().(*obj.LSym);add("sym:%s:%s:%v",n,sym.Name,sym.ABI())}}}
+ for i:=0;i<syms.NumField();i++{symbols(st.Field(i).Name,syms.Field(i))}
+ for i,s:=range UP.BoundsCheckFunc{add("bounds:%d:%v",i,s)}
+ var ops []int;for op:=range UP.softFloatOps{ops=append(ops,int(op))};sort.Ints(ops)
+ for _,n:=range ops{d:=UP.softFloatOps[ssa.Op(n)];add("soft:%v:%s:%v",ssa.Op(n),d.rtfn.Name,d.rtype)}
+ dt:=UP.deferstruct();add("defer:%v:%d:%d:%t",dt,dt.Size(),dt.Alignment(),dt==UP.deferstruct())
+ for _,f:=range dt.Fields(){add("field:%s:%v:%d",f.Sym.Name,f.Type,f.Offset)}
+ pos:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase("frontend.go","/src/frontend.go"),17,3))
+ fn:=GRAPH.NewFunc(pos,pos,TY.LocalPkg.Lookup("snapshot"),TY.NewSignature(nil,nil,nil));fn.DeclareParams(true)
+ fe:=FE_NEW
+ labelABI:=func(a any)string{if a==cfg.ABI0{return "abi0"};if a==cfg.ABI1{return "abi1"};return "other"}
+ add("abi-default:%s",labelABI(FE_BOUND(nil,cfg.ABI0,cfg.ABI1)))
+ for _,a:=range []obj.ABI{obj.ABI0,obj.ABIInternal}{fn.ABI=a;for _,pragma:=range []ir.PragmaFlag{0,ir.RegisterParams}{fn.Pragma=pragma;add("abi:%v:%d:%s:%s",a,pragma,labelABI(FE_BOUND(fn,cfg.ABI0,cfg.ABI1)),labelABI(UP.AbiForBodylessFuncStackMap(fn)))}}
+ for _,name:=range []string{"goschedguarded","writeBarrier","wbZero","wbMove","cgoCheckMemmove","cgoCheckPtrWrite"}{add("lookup:%s:%v",name,fe.Syslook(name))}
+ for _,s:=range []string{"","a\x00β",strings.Repeat("long",40)}{d:=fe.StringData(s);add("string:%s:%x:%t:%v:%d",d.Name,d.P,d==fe.StringData(s),d.Type,d.Size)}
+ parent:=ssa.LocalSlot{N:fn.NewLocal(pos,TY.LocalPkg.Lookup("slot"),TY.Types[types.TSTRING]),Type:TY.Types[types.TSTRING],Off:16}
+ for _,class:=range []ir.Class{ir.PAUTO,ir.PPARAM}{for _,addr:=range []bool{false,true}{parent.N.Class=class;parent.N.SetAddrtaken(addr);before:=len(fn.Dcl);slot:=fe.SplitSlot(&parent,".len",int64(target.size),TY.Types[types.TINT]);second:=fe.SplitSlot(&parent,".len",int64(target.size),TY.Types[types.TINT]);add("split:%v:%t:%s:%t:%d:%t:%d:%t:%t:%v:%t:%t:%d",class,addr,slot.N.Sym().Name,slot.N==parent.N,slot.Off,slot.SplitOf==&parent,slot.SplitOffset,slot.N.Used(),slot.N.Curfn==fn,slot.N.Esc(),slot.N.Sym()==TY.LocalPkg.Lookup("slot.len"),slot.N.Sym()==second.N.Sym(),len(fn.Dcl)-before)}}
+ // The same native frontend also supplies the complete compiler's callbacks.
+ fn=GRAPH.NewFunc(pos,pos,TY.LocalPkg.Lookup("compiled"),TY.NewSignature(nil,nil,nil));fn.DeclareParams(true);fe=FE_NEW
+ cache:=new(ssa.Cache);cache.Reset();f:=cfg.NewFunc(fe,cache);f.Name="compiled";f.Type=fn.Type();f.ABI0=cfg.ABI0;f.ABI1=cfg.ABI1;f.ABISelf=cfg.ABI1;f.ABIDefault=cfg.ABI1;f.OwnAux=ssa.OwnAuxCall(fn.Linksym(),cfg.ABI1.ABIAnalyze(fn.Type(),true));f.Entry=f.NewBlock(ssa.BlockRet);f.Entry.Pos=pos;mem:=f.Entry.NewValue0(pos,ssa.OpInitMem,TY.TypeMem);f.Entry.SetControl(f.Entry.NewValue1(pos,ssa.OpMakeResult,TY.TypeResultMem,mem));ssa.Compile(f);add("compile:%t:%s",f.RegAlloc!=nil,f.String())
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Printf("SYNCGO_IR=%s\n",data)
+}
