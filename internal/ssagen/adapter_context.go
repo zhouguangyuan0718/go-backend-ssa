@@ -29,6 +29,7 @@ import (
 // one graph are serialized; separate contexts can compile independently.
 type Context struct {
 	Inline                               *inline.Context
+	constructionCapture                  *constructionState
 	globalMapInitLsyms                   map[*obj.LSym]struct{}
 	largeStackFramesMu                   sync.Mutex
 	largeStackFrames                     []largeStack
@@ -355,3 +356,99 @@ func (c *Context) OwnsSymABIs(s *SymABIs) bool { return s != nil && s.compilatio
 
 // WorkerCount returns the cache count fixed by InitConfig.
 func (c *Context) WorkerCount() int { return len(c.ssaCaches) }
+
+// Construction owns a graph at the native boundary after phi insertion and
+// before SSA compilation. Its cache is not reused by later function builds.
+// Operations sharing a compiler Context must be serialized. Keep the compiler
+// configuration and frontend IR unchanged until ContinueNative completes.
+// This low-level function boundary is not the standalone package Build API.
+type Construction struct{ state *constructionState }
+
+// Handles may be copied by external callers. Keep consumption and completion
+// on shared private state so every copy observes the same one-shot operation.
+type constructionState struct {
+	owner        *Context
+	function     *ssa.Func
+	continuation func() *ssa.Func
+	started      bool
+	complete     bool
+}
+
+func (c *Construction) Func() *ssa.Func {
+	if c == nil || c.state == nil || c.state.function == nil {
+		panic("uninitialized SSA construction")
+	}
+	return c.state.function
+}
+
+// ContinueNative consumes the continuation exactly once, including on failure.
+// It runs the original SSA pipeline, frame allocation, defer data and incoming
+// register-spill recording, then returns the same graph. GenSSA may consume it.
+func (h *Construction) ContinueNative() *ssa.Func {
+	if h == nil || h.state == nil {
+		panic("uninitialized SSA construction")
+	}
+	c := h.state
+	if c.owner == nil || c.function == nil || c.continuation == nil || c.started || c.owner.constructionCapture != nil || c.function.Config != c.owner.ssaConfig || c.owner.Typecheck.IR.Base.Ctxt.ObjectNumbered() {
+		panic("SSA continuation is unavailable or its compiler state changed")
+	}
+	c.started = true
+	continuation := c.continuation
+	c.continuation = nil
+	f := continuation()
+	if f != c.function {
+		panic("SSA continuation changed the function identity")
+	}
+	c.complete = true
+	return f
+}
+
+// NativeCompleted reports successful completion of the original native tail.
+func (c *Construction) NativeCompleted() bool { return c != nil && c.state != nil && c.state.complete }
+
+// ConstructSSA runs the original construction prefix with an exclusively owned
+// cache and stops after phi insertion. The returned graph survives later calls
+// to both ConstructSSA and the worker-cache-based BuildSSA on this Context.
+// fn must already have completed normal frontend lowering and symbol setup.
+func (c *Context) ConstructSSA(fn *ir.Func, isPgoHot bool) *Construction {
+	c.checkBuildSSA(fn, 0, isPgoHot)
+	if c.constructionCapture != nil {
+		panic("SSA construction is already active")
+	}
+	previous := c.ssaCaches
+	// Construction is serial and uses worker zero. Cache contains large inline
+	// value/block arrays; retain one cache per graph, not one per native worker.
+	c.ssaCaches = make([]ssa.Cache, 1)
+	capture := &constructionState{owner: c}
+	c.constructionCapture = capture
+	defer func() { c.ssaCaches = previous; c.constructionCapture = nil }()
+	f := c.buildssa(fn, 0, isPgoHot)
+	if capture.function != f || capture.continuation == nil {
+		panic("native SSA construction boundary was not reached")
+	}
+	return &Construction{state: capture}
+}
+
+// The generator preserves the entire original suffix in continuation. Native
+// callers run it synchronously, in the same scope as the original function.
+func (c *Context) finishSSAConstruction(s *state, continuation func() *ssa.Func) *ssa.Func {
+	capture := c.constructionCapture
+	if capture == nil {
+		return continuation()
+	}
+	if s == nil || s.compilation != c || s.f == nil || capture.owner != c || capture.function != nil {
+		panic("invalid SSA construction capture")
+	}
+	capture.function = s.f
+	// buildssa's original deferred popLine executes when construction returns.
+	// Restore exactly that saved scope during the delayed native suffix, without
+	// rerunning construction or introducing another source-position update.
+	lines := append([]src.XPos(nil), s.line...)
+	capture.continuation = func() *ssa.Func {
+		previous := s.line
+		s.line = lines
+		defer func() { s.line = previous }()
+		return continuation()
+	}
+	return s.f
+}

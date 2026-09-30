@@ -57,6 +57,8 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_sources")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_frames")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_build")
+	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_construction")
+	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_resume")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_emit")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_assemble")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_flush")
@@ -95,6 +97,8 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if len(snapshots) > 0 {
 		snapshotName = snapshots[0]
 	}
+	isConstruction := snapshotName == "ssagen_construction"
+	isResume := snapshotName == "ssagen_resume"
 	isSource := snapshotName == "noder_source" || snapshotName == "noder_prepackage"
 	isPackageFinish := snapshotName == "ssagen_package"
 	isFrontendPipeline := snapshotName == "ssagen_pipeline" || isPackageFinish
@@ -103,10 +107,10 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	isQueueSSA := snapshotName == "ssagen_queue" || isDataSSA || isFixedSSA
 	isArchiveSSA := snapshotName == "ssagen_archive" || isQueueSSA
 	isObjectSSA := snapshotName == "ssagen_object" || isArchiveSSA
-	isFlushSSA := snapshotName == "ssagen_flush" || isObjectSSA
+	isFlushSSA := snapshotName == "ssagen_flush" || isObjectSSA || isResume
 	isAssembleSSA := snapshotName == "ssagen_assemble"
 	isEmitSSA := snapshotName == "ssagen_emit" || isAssembleSSA || isFlushSSA
-	isBuildSSA := snapshotName == "ssagen_build" || isEmitSSA
+	isBuildSSA := snapshotName == "ssagen_build" || isEmitSSA || isConstruction
 	observerFile := "ssagen_build_observer.go.txt"
 	if isEmitSSA {
 		observerFile = "ssagen_emit_observer.go.txt"
@@ -115,6 +119,8 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	var err error
 	if isAssembleSSA || isFlushSSA {
 		template, err = os.ReadFile(filepath.Join(root, "internal/port/testdata/ssagen_emit_snapshot.go.txt"))
+	} else if isConstruction {
+		template, err = os.ReadFile(filepath.Join(root, "internal/port/testdata/ssagen_build_snapshot.go.txt"))
 	} else if snapshotName == "ssa_objects" {
 		template, err = ssaObjectsSnapshot(s)
 	} else {
@@ -122,6 +128,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	if err != nil {
 		t.Fatal(err)
+	}
+	if isConstruction {
+		template = []byte(replaceFlushFixture(t, string(template), `if compiled.RegAlloc==nil{t.Fatal("SSA pipeline did not allocate registers",f)}`, `if compiled.RegAlloc!=nil||len(compiled.RegArgs)!=0{t.Fatal("construction ran the native tail",f)}`))
 	}
 	dir := t.TempDir()
 	if snapshotName == "noder_import" || snapshotName == "noder_inline" {
@@ -299,6 +308,10 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		ported = strings.Replace(ported, "backend.InitConfig();", "amd64.NewContext(backend);backend.InitConfig();", 1)
 		ported = strings.NewReplacer("EMIT_IMPORT", `"go-backend-ssa/internal/amd64";`, "EMIT_RUN", "ssagen.SyncgoEmitSnapshot(backend,compiled)").Replace(ported)
 	}
+	if isResume {
+		ported = replaceFlushFixture(t, ported, "for _,f:=range walked{", `held:=map[*ir.Func]*ssagen.Construction{};for _,f:=range walked{held[f]=backend.ConstructSSA(f,ir.FuncName(f)=="Phi");graph.CurFunc=nil};for _,f:=range walked{`)
+		ported = replaceFlushFixture(t, ported, `ssagen.SyncgoBuildSnapshot(backend,f,ir.FuncName(f)=="Phi")`, `ssagen.SyncgoResumeSnapshot(held[f])`)
+	}
 	if isFlushSSA {
 		ported = replaceFlushFixture(t, ported, `"go-backend-ssa/internal/amd64";`, `"go-backend-ssa/internal/amd64";"go-backend-ssa/internal/dwarfgen";`)
 		ported = replaceFlushFixture(t, ported, "backend.InitConfig();", "backend.InitConfig();dwarfgen.NewContext(backend,c.ReflectData);")
@@ -318,6 +331,14 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 			code = flushSnapshotObserver(code) + flushFinalObserver()
 		} else {
 			code = assemblySnapshotObserver(code, isAssembleSSA)
+		}
+		if isConstruction || isResume {
+			code = constructionObserver(t, code, isResume)
+		}
+		if isResume {
+			code += `
+func SyncgoResumeSnapshot(held *Construction)(*ssa.Func,int64,int64,int64){f:=held.ContinueNative();fe:=f.Frontend().(*ssafn);return f,fe.stksize,fe.stkptrsize,fe.stkalign}
+`
 		}
 		writeTestFile(t, dir, "internal/ssagen/export_snapshot_test.go", code)
 	}
@@ -535,6 +556,17 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		"DRIVER_DUMP_READ", `var dump string;if data,err:=os.ReadFile(dumpPath);err==nil{dump=string(data)}else if !os.IsNotExist(err){t.Fatal(err)}`,
 		"DRIVER_PROFILE", `pgoir.LookupFunc=LookupFunc;pgoir.PostLookupCleanup=PostLookupCleanup;path:=filepath.Join(t.TempDir(),"profile");if err:=os.WriteFile(path,[]byte(raw),0600);err!=nil{t.Fatal(err)};profile,err=pgoir.New(path);if err!=nil{t.Fatal(err)}`,
 		"DRIVER.", "interleaved.", "EXPAND_RUNTIME", `"cmd/compile/internal/rttype";"internal/buildcfg";`, "INLINE_HEUR.", "inlheur.", "EXPAND_IMPORT", `"cmd/compile/internal/inline";"cmd/compile/internal/inline/inlheur";`, "EXPAND_BIND", `inline.InlineCall=unifiedInlineCall`, "INLINE.", "inline.", "IMPORT_DWARF", "cmd/internal/dwarf", "SYMBOL_IMPORT", `;"internal/buildcfg"`, "SYMBOL_TARGET", `buildcfg.GOOS="linux";buildcfg.GOARCH="amd64"`, "PGO_HOOK_IMPORT", `"cmd/compile/internal/pgoir";`, "PGO_HOOK_BIND", `typecheck.HaveInlineBody=unifiedHaveInlineBody;pgoir.LookupFunc=LookupFunc;pgoir.PostLookupCleanup=PostLookupCleanup`, "PGO_LOOKUP", "pgoir.LookupFunc", "PGO_CLEANUP", "pgoir.PostLookupCleanup", "POLICY_IMPORT", "", "IMPORT_PGOIR", "cmd/compile/internal/pgoir", "POLICY_BASE", "base", "POLICY_DEBUG", "base.Debug", "POLICY_PGO", "pgoir", "HASH_LINK", "Ctxt", "HEUR_IMPORT", `"cmd/compile/internal/inline/inlheur";"cmd/compile/internal/inline";`, "INLINE_ANALYZE", `base.Flag.LowerL=1;inline.CanInlineFuncs(typecheck.Target.Funcs,nil)`, "HEUR_SETUP", "typecheck.HaveInlineBody=unifiedHaveInlineBody", "HEUR.", "inlheur.", "IMPORT_PGO", "cmd/internal/pgo", "CG_BUILD", "&Profile{Profile:input,WeightedCG:createIRGraph(input.NamedEdgeMap)}", "AUTO_POS", "base.AutogeneratedPos", "BODY_TYPES2", "", "BODY_RUNTIME", `"cmd/compile/internal/rttype";"internal/buildcfg";"cmd/compile/internal/staticinit";`, "INIT_SCHEDULE", "&staticinit.Schedule{Plans:make(map[ir.Node]*staticinit.Plan),Temps:make(map[ir.Node]*ir.Name)}", "INIT_STATE", "staticinit", "BODY_DRAIN", `readBodies(typecheck.Target,duringInlining,nil)`, "IMPORT_TYPES2", "cmd/compile/internal/types2", "DICT_CONTEXT", "", "DICT_ONLY", "", "ND_DEBUG", "base.Debug", "RD_STATIC", "", "RD_FLAG", "base.Flag", "SD_FILE_BIND", `_ = fs.ValidPath`, "SD_FLAG", "base.Flag", "IMPORT_TYPEBITS", "cmd/compile/internal/typebits", "IMPORT_RTTYPE", "cmd/compile/internal/rttype", "RD_OBJW", "", "EXPERIMENT", "buildcfg.Experiment", "TC.", "typecheck.", "IMPORT_OBJW", "cmd/compile/internal/objw", "IMPORT_TYPECHECK", "cmd/compile/internal/typecheck", "RT_IR_OBJW", "", "IMPORT_SYS", "cmd/internal/sys", "IMPORT_OBJABI", "cmd/internal/objabi", "IMPORT_BITVEC", "cmd/compile/internal/bitvec", "FIPSHASH", "obj.SetFIPSDebugHash", "IMPORT_PKGBITS", "internal/pkgbits", "IMPORT_BUILDCFG", `;"internal/buildcfg"`, "MAKEMARKER", "ScopeMarker{}", "IMPORT_IR", "cmd/compile/internal/ir", "GRAPH.", "ir.", "IMPORT_TYPES", "cmd/compile/internal/types", "IMPORT_OBJ", "cmd/internal/obj", "IMPORT_SRC", "cmd/internal/src", "IMPORT_BASE", `"cmd/compile/internal/base"`, "SETUP", nativeSetup, "UP.", "", "TY.", "types.", "LINK", "base.Ctxt", "POS", "base.Pos").Replace(string(template))
+	if isConstruction {
+		data, err := s.Read("src/cmd/compile/internal/ssagen/ssa.go")
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Observe the pinned source directly, independently of the migration's
+		// continuation transform. Leave its original suffix present and unmodified.
+		code := replaceFlushFixture(t, string(data), "\tssa.Compile(s.f)", "\tif true { return s.f }\n\tssa.Compile(s.f)")
+		writeTestFile(t, dir, "reference/construction_ssa.go", code)
+		overlay[filepath.Join(goroot, "src/cmd/compile/internal/ssagen/ssa.go")] = filepath.Join(dir, "reference/construction_ssa.go")
+	}
 	if isBuildSSA {
 		observer := "reference/ssagen_build_observer_test.go"
 		data, err := os.ReadFile(filepath.Join(root, "internal/port/testdata", observerFile))

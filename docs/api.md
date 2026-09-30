@@ -2,6 +2,8 @@
 
 本文件的 Build/Package/SSA 接口仍是拟议设计。已实现的完整原生源码编译入口为 `compiler.Compile`，见[源码到原生归档](m3-native-source-compiler.md)；它运行完整原生后端，不提供这里设计的 Built/EarlyOptimized 图结果。
 
+新增的低层 `ssagen.Context.ConstructSSA` 已提供 Phi 完成、SSA Compile 之前的函数图及一次性原生 continuation，使用独立 cache 保留图；它要求已准备好的 IR 和目标服务。源码级 `Build`、包元数据和 EarlyOptimized 仍按本文设计推进，见[SSA 构建分界](m3-ssa-construction.md)。
+
 ## 入口
 
 ```go

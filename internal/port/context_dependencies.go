@@ -26,7 +26,7 @@ func statefulFunctions(files []*ast.File, info *types.Info, candidates, states, 
 			if fn.Recv != nil {
 				key = receiverType(fn) + "." + key
 			}
-			if hasOwnedAllocation(fn.Body, info, owners) || hasBoundLiteral(fn.Body, literals) || units[i].Checks[key] != "" || len(units[i].Nullable[key]) != 0 {
+			if hasOwnedAllocation(fn.Body, info, owners) || hasBoundLiteral(fn.Body, literals) || units[i].Checks[key] != "" || units[i].FunctionContinuations[key].Method != "" || len(units[i].Nullable[key]) != 0 {
 				needed[obj] = candidates[obj]
 			}
 			ast.Inspect(fn.Body, func(n ast.Node) bool {

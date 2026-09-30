@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v70"
+const ToolVersion = "syncgo-m3-v72"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -51,6 +51,7 @@ type Unit struct {
 	BuildVariant           string // Explicit native variant made unconditional after exact constraint validation.
 	Functions              []string
 	FunctionRegions        map[string]FunctionRegionRule
+	FunctionContinuations  map[string]FunctionContinuationRule
 	Declarations           []string // Types, complete constant groups, and Receiver.Method names.
 	ExportConstants        bool     // Generate public aliases for this file's exported native constants.
 	Owner                  *OwnerRule
@@ -90,6 +91,16 @@ type FunctionRegionRule struct {
 	Inputs         []string
 	EndBefore      bool
 }
+
+// FunctionContinuationRule delegates a complete native function suffix to a
+// typed instance adapter. The suffix is preserved in a closure with its native
+// captures; the adapter either runs it now or owns a later continuation.
+type FunctionContinuationRule struct {
+	Before SourceCallAnchor
+	Method string
+	State  string // a unique local struct declared before the boundary, passed by address
+}
+
 type SourceCallAnchor struct {
 	// Assignment anchors a direct assignment to a package variable or field.
 	// It is mutually exclusive with the imported-call anchor fields.
@@ -279,6 +290,18 @@ func (p Plan) Validate() error {
 			return fmt.Errorf("invalid migration source: %s", u.Source)
 		}
 
+		for name, r := range u.FunctionContinuations {
+			selected := u.WholeFile
+			for _, f := range u.Functions {
+				selected = selected || f == name
+			}
+			if !selected || u.Context == nil || !token.IsIdentifier(name) || name == "init" || !token.IsIdentifier(r.Method) || !token.IsIdentifier(r.State) || r.State == "_" || r.Before.Assignment != "" || r.Before.Enclosing != "" || r.Before.StringArgument != nil || !safePath(r.Before.Package) || !memberPath(r.Before.Member) {
+				return fmt.Errorf("invalid function continuation: %s", name)
+			}
+			if _, ok := u.FunctionRegions[name]; ok {
+				return fmt.Errorf("function region also has a continuation: %s", name)
+			}
+		}
 		for name, r := range u.FunctionRegions {
 			selected := false
 			for _, f := range u.Functions {

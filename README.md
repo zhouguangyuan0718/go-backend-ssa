@@ -116,6 +116,7 @@
 99. [M3 上游编译驱动接入](docs/m3-upstream-compiler-driver.md)：隔离 cmd/compile、内容哈希、标准库重建和编译器自编译。
 100. [M3 原生 PGO 输入](docs/m3-native-profile-input.md)：原生 pprof/预处理输入、实例解码状态、热点机器码及带 PGO 的真实自编译。
 101. [M3 正式 dist bootstrap](docs/m3-dist-bootstrap.md)：隔离导入映射、bootstrap 复制、完整自举和编译器二进制固定点。
+102. [M3 SSA 构建分界](docs/m3-ssa-construction.md)：Phi 后的独立函数图、每图专属 cache、保留原生后半段及一次性恢复执行。
 
 ## 当前可运行的工具
 

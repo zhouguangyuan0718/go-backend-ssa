@@ -89,6 +89,10 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			return true
 		})
 	}
+	continuations, err := prepareFunctionContinuations(original, info, units)
+	if err != nil {
+		return nil, nil, err
+	}
 	if err := removeAdapterMethods(original, units); err != nil {
 		return nil, nil, err
 	}
@@ -117,6 +121,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		return nil, nil, err
 	}
 	if err := rewritePackageContext(fs, original, info, units, before.recovering); err != nil {
+		return nil, nil, err
+	}
+	if err := applyFunctionContinuations(fs, continuations); err != nil {
 		return nil, nil, err
 	}
 	if err := rewriteHostFields(original, info, units); err != nil {
@@ -232,6 +239,10 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		if u.WholeFile {
 			prov.Rule = "whole-file-and-zero-values-v1"
 			prov.Declarations = append(append([]string{"*"}, u.ZeroValues...), u.ReadTables...)
+		}
+		for _, name := range sortedKeys(u.FunctionContinuations) {
+			rule := u.FunctionContinuations[name]
+			prov.Declarations = append(prov.Declarations, "function-continuation:"+name+":"+rule.Before.Package+"."+rule.Before.Member+":"+rule.Method+":"+rule.State)
 		}
 		for _, r := range u.MethodCalls {
 			prov.Declarations = append(prov.Declarations, "method-call:"+r.Method+":"+r.Adapter)

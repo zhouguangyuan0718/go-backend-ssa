@@ -140,6 +140,7 @@ func ssagenBuildMigration(units []Unit) []Unit {
 		u.Owner.Types = append(u.Owner.Types, "state")
 		u.HostCalls = append(u.HostCalls, HostCallRule{Package: "os", Function: "MkdirAll", Method: "makeDumpDirectory"})
 		u.Checks["buildssa"] = "checkBuildSSA"
+		u.FunctionContinuations = map[string]FunctionContinuationRule{"buildssa": {Before: SourceCallAnchor{Package: "cmd/compile/internal/ssa", Member: "Compile"}, Method: "finishSSAConstruction", State: "s"}}
 		u.Checks["InitTables"] = "checkIntrinsicTables"
 	}
 	context := *frame.Context

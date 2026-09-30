@@ -120,3 +120,5 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 ### 正式 dist bootstrap 与二进制固定点
 
 隔离替换工具链已完成 Linux/amd64、CGO_ENABLED=0 的正式 make.bash/dist bootstrap，并在默认 PGO 下通过强制重编的完整二进制固定点和程序执行验证，见[阶段记录](m3-dist-bootstrap.md)。后续继续独立 Built/EarlyOptimized API、第二目标、cgo/race 与规定回归；最低 bootstrap SDK 仍单独待验收。
+
+低层函数级 SSA 构建现在可停在原生 Phi 完成、SSA Compile 之前，并用独立 cache 保留图；原生后半段可显式恢复一次。详见[SSA 构建分界](m3-ssa-construction.md)。这解决独立 Built 的构图和存储基础，源码级包 Build、结果元数据、artifact 与 EarlyOptimized 截点仍需实现。
