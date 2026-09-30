@@ -16,20 +16,24 @@ import (
 	"testing"
 )
 
-func TestNativeCompileLinkAndRun(t *testing.T) {
+func TestNativeCompileLinkAndRun(t *testing.T) { testNativeCompileLinkAndRun(t, "amd64") }
+func TestARM64CompileLinkAndRun(t *testing.T)  { testNativeCompileLinkAndRun(t, "arm64") }
+
+func testNativeCompileLinkAndRun(t *testing.T, arch string) {
 	if os.Getenv("GO_SSA_NATIVE_EXECUTION") == "" {
 		t.Skip("set GO_SSA_NATIVE_EXECUTION for official-toolchain link and execution")
 	}
-	image := os.Getenv("GO_SSA_LINUX_AMD64_IMAGE")
-	if (runtime.GOOS != "linux" || runtime.GOARCH != "amd64") && image == "" {
-		t.Fatal("set GO_SSA_LINUX_AMD64_IMAGE to an installed Linux AMD64 image")
+	imageKey := "GO_SSA_LINUX_" + strings.ToUpper(arch) + "_IMAGE"
+	image := os.Getenv(imageKey)
+	if (runtime.GOOS != "linux" || runtime.GOARCH != arch) && image == "" {
+		t.Fatalf("set %s to an installed Linux %s image", imageKey, arch)
 	}
 	dir := t.TempDir()
 	run := func(t *testing.T, args ...string) []byte {
 		t.Helper()
 		cmd := exec.Command("go", args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.27.1", "GOWORK=off", "GOOS=linux", "GOARCH=amd64", "GOAMD64=v1", "GOEXPERIMENT=", "CGO_ENABLED=0", "GO111MODULE=off", "GOFLAGS=", "GOPROXY=off", "GOSUMDB=off")
+		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.27.1", "GOWORK=off", "GOOS=linux", "GOARCH="+arch, "GOAMD64=v1", "GOARM64=v8.0", "GOEXPERIMENT=", "CGO_ENABLED=0", "GO111MODULE=off", "GOFLAGS=", "GOPROXY=off", "GOSUMDB=off")
 		b, e := cmd.CombinedOutput()
 		if e != nil {
 			t.Fatalf("go %v: %v\n%s", args, e, b)
@@ -105,10 +109,10 @@ func main(){ch:=make(chan int);go func(){ch<-dep.Twice(M[1])}();var v interface{
 	execute := func(t *testing.T, binary string) []byte {
 		t.Helper()
 		var cmd *exec.Cmd
-		if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
+		if runtime.GOOS == "linux" && runtime.GOARCH == arch {
 			cmd = exec.Command(binary)
 		} else {
-			cmd = exec.Command("docker", "run", "--rm", "--platform", "linux/amd64", "--network", "none", "--mount", "type=bind,source="+dir+",target=/work,readonly", image, "/work/"+filepath.Base(binary))
+			cmd = exec.Command("docker", "run", "--rm", "--pull=never", "--platform", "linux/"+arch, "--entrypoint", "", "--network", "none", "--mount", "type=bind,source="+dir+",target=/work,readonly", image, "/work/"+filepath.Base(binary))
 		}
 		b, e := cmd.CombinedOutput()
 		if e != nil {
@@ -141,6 +145,9 @@ func main(){ch:=make(chan int);go func(){ch<-dep.Twice(M[1])}();var v interface{
 			req := request("example/dep", depSource)
 			req.Files[0].Name = depFile
 			req.Options = opts
+			if arch == "arm64" {
+				req.Target = compiler.Target{GOOS: "linux", GOARCH: arch, GOARM64: "v8.0"}
+			}
 			dep, e := compiler.Compile(context.Background(), req)
 			if e != nil {
 				t.Fatal(e)
@@ -165,6 +172,9 @@ func main(){ch:=make(chan int);go func(){ch<-dep.Twice(M[1])}();var v interface{
 			req = request("main", mainSource)
 			req.Files[0].Name = mainFile
 			req.Options = opts
+			if arch == "arm64" {
+				req.Target = compiler.Target{GOOS: "linux", GOARCH: arch, GOARM64: "v8.0"}
+			}
 			req.Imports = map[string][]byte{"example/dep": dep.Archive}
 			result, e := compiler.Compile(context.Background(), req)
 			if e != nil {

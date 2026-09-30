@@ -20,6 +20,7 @@ import (
 	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/internal/abi"
 	"go-backend-ssa/internal/amd64"
+	"go-backend-ssa/internal/arm64"
 	"go-backend-ssa/internal/cmd/obj"
 	"go-backend-ssa/internal/cmd/src"
 	"go-backend-ssa/internal/cmd/sys"
@@ -52,6 +53,8 @@ const UpstreamCommit = "862c888e612ac346c7c4d99c9392bdfd265f33b0"
 type Target struct {
 	GOOS, GOARCH string
 	GOAMD64      int
+	// GOARM64 uses the native feature syntax; empty selects v8.0 on arm64.
+	GOARM64 string `json:",omitempty"`
 	// Experiments is parsed by the pinned native parser, independent of the host.
 	Experiments string
 }
@@ -142,8 +145,9 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
-	if req.Target.GOOS != "linux" || req.Target.GOARCH != "amd64" || req.Target.GOAMD64 < 1 || req.Target.GOAMD64 > 4 {
-		return nil, fmt.Errorf("unsupported native target: %+v", req.Target)
+	var armFeatures buildcfg.Goarm64Features
+	if req.Target, armFeatures, err = normalizeTarget(req.Target); err != nil {
+		return nil, err
 	}
 	if req.ImportPath == "" || len(req.Files) == 0 || req.Options.Workers < 0 {
 		return nil, fmt.Errorf("compiler requires an import path, source files and nonnegative worker count")
@@ -170,7 +174,11 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	if e = validateArtifactInputs(req, language, exp.String()); e != nil {
 		return nil, e
 	}
-	arch := sys.NewContext().ArchAMD64
+	architectures := sys.NewContext()
+	arch := architectures.ArchAMD64
+	if req.Target.GOARCH == "arm64" {
+		arch = architectures.ArchARM64
+	}
 	link := &obj.Link{Arch: &obj.LinkArch{Arch: arch}, Pkgpath: req.ImportPath, Pathname: workingDirectory, UseBASEntries: true, Flag_locationlists: !req.Options.DisableDwarf && built == nil}
 	link.TargetOS = req.Target.GOOS
 	if e = link.Headtype.Set(req.Target.GOOS); e != nil {
@@ -272,10 +280,15 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	backend.Inline = nd.Inline
 	backend.SSA = ssa.NewContext(abi.NewContext(graph), nd.ReflectData, nd.Inline.Log)
 	backend.SSA.GOAMD64 = req.Target.GOAMD64
+	backend.GOARM64 = armFeatures
 	backend.SSA.FramePointerEnabled = true
 	backend.SSA.Now = func() time.Time { return time.Time{} }
 	backend.Liveness = liveness.NewContext(backend.SSA)
-	amd64.NewContext(backend)
+	if req.Target.GOARCH == "amd64" {
+		amd64.NewContext(backend)
+	} else {
+		arm64.NewContext(backend)
+	}
 	dwarf := dwarfgen.NewContext(backend, nd.ReflectData)
 	producer := flag.NewFlagSet("compile", flag.ContinueOnError)
 	producer.SetOutput(io.Discard)
@@ -298,7 +311,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	dwarf.Flags = producer
 	dwarf.RecordFlags("N", "l", "dwarf")
 	backend.InitTables()
-	config := gc.ObjectConfig{GOOS: req.Target.GOOS, GOARCH: req.Target.GOARCH, GOAMD64: req.Target.GOAMD64, Version: Version}
+	config := gc.ObjectConfig{GOOS: req.Target.GOOS, GOARCH: req.Target.GOARCH, GOAMD64: req.Target.GOAMD64, GOARM64: armFeatures, Version: Version}
 	nd.BindImports(config, hostOS, func(name string) (noder.DependencyFile, error) {
 		if a := artifacts[name]; a != nil {
 			return noder.NewUnifiedDependency(name, a.payload), nil

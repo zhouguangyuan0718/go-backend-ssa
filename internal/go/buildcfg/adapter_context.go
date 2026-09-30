@@ -4,6 +4,7 @@ package buildcfg
 // field is caller input; it does not read the host environment.
 type Context struct {
 	GOOS, GOARCH, Version string
+	DefaultGOARM64        string
 	GO386                 string
 	GOAMD64               int
 	GOARM                 GoarmFeatures

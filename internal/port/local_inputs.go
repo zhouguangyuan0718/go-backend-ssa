@@ -58,10 +58,35 @@ func localInputSignatures(s *Source, units []Unit, fs *token.FileSet, importer *
 				}
 			}
 		}
-		for name := range requested[source] {
-			if !found[name] {
+		for _, name := range sortedKeys(requested[source]) {
+			if found[name] {
+				continue
+			}
+			// Some native inputs are constants emitted by cmd/dist rather than
+			// declarations in the tracked file. Prove the scalar type from that
+			// pinned generator before providing a type-check-only input variable.
+			proof := ""
+			for _, u := range units {
+				for _, state := range u.State {
+					if state.Input && state.Source == source && state.Variable == name {
+						if proof != "" && proof != state.TypeSource {
+							return nil, fmt.Errorf("conflicting host input proof: %s", name)
+						}
+						proof = state.TypeSource
+					}
+				}
+			}
+			if proof == "" {
 				return nil, fmt.Errorf("host input not found: %s", name)
 			}
+			id := &ast.Ident{NamePos: f.Name.Pos(), Name: name}
+			v := &ast.ValueSpec{Names: []*ast.Ident{id}, Values: []ast.Expr{ast.NewIdent(name)}}
+			v.Type, _, err = generatedConstantType(s, v, proof)
+			if err != nil {
+				return nil, err
+			}
+			v.Values = nil
+			decls = append(decls, &ast.GenDecl{Tok: token.VAR, Specs: []ast.Spec{v}})
 		}
 		f.Decls = decls
 		pruneImports(f)

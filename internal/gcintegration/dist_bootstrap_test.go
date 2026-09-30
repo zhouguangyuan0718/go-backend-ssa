@@ -15,19 +15,23 @@ import (
 
 // This gate runs the actual pinned make.bash/dist bootstrap through all native
 // stages, including default PGO and the final standard library/tool rebuild.
-func TestPinnedDistBootstrap(t *testing.T) {
+func TestPinnedDistBootstrap(t *testing.T)      { testPinnedDistBootstrap(t, "amd64") }
+func TestPinnedARM64DistBootstrap(t *testing.T) { testPinnedDistBootstrap(t, "arm64") }
+
+func testPinnedDistBootstrap(t *testing.T, arch string) {
 	repo := os.Getenv("GO_SSA_SOURCE_REPO")
 	if repo == "" || os.Getenv("GO_SSA_DIST_BOOTSTRAP") == "" {
 		t.Skip("set GO_SSA_SOURCE_REPO and GO_SSA_DIST_BOOTSTRAP")
 	}
-	linux := runtime.GOOS == "linux" && runtime.GOARCH == "amd64"
-	image := os.Getenv("GO_SSA_LINUX_AMD64_IMAGE")
+	linux := runtime.GOOS == "linux" && runtime.GOARCH == arch
+	imageKey := "GO_SSA_LINUX_" + strings.ToUpper(arch) + "_IMAGE"
+	image := os.Getenv(imageKey)
 	bootstrap := os.Getenv("GO_SSA_LINUX_BOOTSTRAP")
 	if linux && bootstrap == "" {
 		bootstrap = runtime.GOROOT()
 	}
 	if !linux && (image == "" || bootstrap == "") {
-		t.Fatal("set GO_SSA_LINUX_AMD64_IMAGE and GO_SSA_LINUX_BOOTSTRAP")
+		t.Fatalf("set %s and GO_SSA_LINUX_BOOTSTRAP", imageKey)
 	}
 	var err error
 	bootstrap, err = filepath.Abs(bootstrap)
@@ -39,7 +43,7 @@ func TestPinnedDistBootstrap(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.SplitN(string(version), "\n", 2)[0] != "go1.27.1" {
-		t.Fatal("requires explicit Go 1.27.1 Linux/amd64 bootstrap")
+		t.Fatal("requires explicit Go 1.27.1 bootstrap")
 	}
 	root, err := filepath.Abs("../..")
 	if err != nil {
@@ -57,7 +61,7 @@ func TestPinnedDistBootstrap(t *testing.T) {
 	}
 	target := func(parts ...string) string { return filepath.Join(append([]string{targetTree}, parts...)...) }
 	common := []string{
-		"GOROOT_BOOTSTRAP=" + targetBootstrap, "GOTOOLCHAIN=local", "GOOS=linux", "GOARCH=amd64", "GOAMD64=v1", "GOEXPERIMENT=", "CGO_ENABLED=0", "GOMAXPROCS=4", "GOPROXY=off", "GOSUMDB=off", "GOWORK=off", "GOFLAGS=", "GOENV=off", "GOCOMPILEDEBUG=", "GOSSAFUNC=", "GOSSADIR=", "GO_DISTFLAGS=-d", "BOOT_GO_GCFLAGS=", "GO_GCFLAGS=", "GO_LDFLAGS=", "BOOT_GO_LDFLAGS=",
+		"GOROOT_BOOTSTRAP=" + targetBootstrap, "GOTOOLCHAIN=local", "GOOS=linux", "GOARCH=" + arch, "GOAMD64=v1", "GOARM64=v8.0", "GOEXPERIMENT=", "CGO_ENABLED=0", "GOMAXPROCS=4", "GOPROXY=off", "GOSUMDB=off", "GOWORK=off", "GOFLAGS=", "GOENV=off", "GOCOMPILEDEBUG=", "GOSSAFUNC=", "GOSSADIR=", "GO_DISTFLAGS=-d", "BOOT_GO_GCFLAGS=", "GO_GCFLAGS=", "GO_LDFLAGS=", "BOOT_GO_LDFLAGS=",
 		"GO_SSA_BRIDGE_TRACE=" + target("bootstrap-calls.jsonl"), "GOBUILDTIMELOGFILE=" + target("bootstrap-times.log"),
 	}
 	run := func(goroot, executable string, args ...string) []byte {
@@ -69,7 +73,7 @@ func TestPinnedDistBootstrap(t *testing.T) {
 			cmd.Env = append(os.Environ(), environment...)
 			cmd.Dir = filepath.Join(tree, "src")
 		} else {
-			docker := []string{"run", "--rm", "--pull=never", "--platform", "linux/amd64", "--network", "none", "--mount", "type=bind,source=" + bootstrap + ",target=/bootstrap,readonly", "--mount", "type=bind,source=" + tree + ",target=/goroot", "-w", "/goroot/src"}
+			docker := []string{"run", "--rm", "--pull=never", "--platform", "linux/" + arch, "--entrypoint", "", "--network", "none", "--mount", "type=bind,source=" + bootstrap + ",target=/bootstrap,readonly", "--mount", "type=bind,source=" + tree + ",target=/goroot", "-w", "/goroot/src"}
 			for _, e := range environment {
 				docker = append(docker, "-e", e)
 			}
@@ -83,7 +87,7 @@ func TestPinnedDistBootstrap(t *testing.T) {
 		}
 		return output
 	}
-	if got := string(run(targetBootstrap, filepath.Join(targetBootstrap, "bin/go"), "version")); got != "go version go1.27.1 linux/amd64\n" {
+	if got := string(run(targetBootstrap, filepath.Join(targetBootstrap, "bin/go"), "version")); got != "go version go1.27.1 linux/"+arch+"\n" {
 		t.Fatal("unexpected bootstrap", got)
 	}
 	output := run(targetTree, "bash", "./make.bash")
@@ -138,10 +142,10 @@ func TestPinnedDistBootstrap(t *testing.T) {
 	var baseline []byte
 	stages := []string{"official", "compile1", "compile2", "compile3", "compile4", "compile"}
 	for _, stage := range stages {
-		executable := target("pkg/tool/linux_amd64", stage)
+		executable := target("pkg/tool/linux_"+arch, stage)
 		goroot := targetTree
 		if stage == "official" {
-			executable = filepath.Join(targetBootstrap, "pkg/tool/linux_amd64/compile")
+			executable = filepath.Join(targetBootstrap, "pkg/tool/linux_"+arch+"/compile")
 			goroot = targetBootstrap
 		} else {
 			if identity := run(goroot, executable, "-V=full"); !bytes.Contains(identity, []byte(m.Library)) {
@@ -165,7 +169,7 @@ func TestPinnedDistBootstrap(t *testing.T) {
 	// The dotted alias retains canonical cmd/vendor paths inside cmd as well.
 	// Force a fresh build; comparing cached compiler copies would be insufficient.
 	run(targetTree, target("bin/go"), "-C", target("src/cmd"), "build", "-a", "-p=4", "-trimpath", "-ldflags=-w", "-gcflags=cmd/...=-dwarf=false", "-o", target("compile.again"), "cmd/compile")
-	stage3, err := os.ReadFile(filepath.Join(tree, "pkg/tool/linux_amd64/compile3"))
+	stage3, err := os.ReadFile(filepath.Join(tree, "pkg/tool/linux_"+arch+"/compile3"))
 	if err != nil {
 		t.Fatal(err)
 	}

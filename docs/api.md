@@ -1,6 +1,6 @@
 # 公共 API 与后端契约
 
-已实现源码级 `compiler.Build(ctx, Request)`，返回 Built 或 EarlyOptimized 阶段的 `compiler.Package`，见[源码到 Built SSA](m3-source-build.md)。它复用 `compiler.Compile` 的显式输入，按选择的阶段运行原生流程，独立保留每张图及包元数据；当前支持 Linux/amd64，依赖通过 `Request.Artifacts` 传入严格版本化 artifact，或通过 `Request.Imports` 使用显式原生归档适配器。
+已实现源码级 `compiler.Build(ctx, Request)`，返回 Built 或 EarlyOptimized 阶段的 `compiler.Package`，见[源码到 Built SSA](m3-source-build.md)。它复用 `compiler.Compile` 的显式输入，按选择的阶段运行原生流程，独立保留每张图及包元数据；当前支持 Linux/amd64 和 Linux/arm64，依赖通过 `Request.Artifacts` 传入严格版本化 artifact，或通过 `Request.Imports` 使用显式原生归档适配器。
 
 下文是完整目标契约；其中完整能力集仍按回归逐项验收；EarlyOptimized 的实际边界见[阶段记录](m5-early-optimized.md)；artifact 的实际契约见[阶段记录](m4-import-artifact.md)。当前实际声明以 `compiler/build.go` 与 `compiler/compiler.go` 为准。原生归档输出继续使用 `compiler.Compile`；低层 `ssagen.Context.ConstructSSA` 另提供一次性原生 continuation，见[SSA 构建分界](m3-ssa-construction.md)。
 
@@ -91,3 +91,8 @@ Built/EarlyOptimized 中的 Block.Values 不是执行顺序。消费方按照控
 对于固定源码、依赖 artifact、目标、阶段和工具版本，输出的规范化图及诊断排序应可重复；不要求对象地址或上游临时 ID 完全相同。不依赖 map 遍历或绝对源码根目录实现稳定顺序。
 
 跨 Build 调用可并发；同一结果的只读并发需要完成 lazy-cache 审计后才宣布支持。主动修改同一结果由调用方同步。取消后库不能继续异步写入已返回对象。
+
+
+## 已实现的完整目标
+
+源码 `compiler.Build` / `compiler.Compile` 支持 Linux AMD64 和 ARM64。AMD64 使用 `GOAMD64=1..4`；ARM64 使用 `GOARM64` 的原生版本/特征语法，空值规范化为 `v8.0`，并要求 `GOAMD64=0`。返回元数据及 artifact 均记录规范化后的目标；混合架构字段或不匹配的依赖会报错。低层 ARM64 处理函数通过公开 `arm64.NewContext` 安装。实现和端到端验证见 [M6 记录](m6-arm64.md)。

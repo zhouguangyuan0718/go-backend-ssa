@@ -129,8 +129,9 @@ func validateArtifactInfo(info ArtifactInfo) error {
 	if !version.IsValid(m.Language) || version.Lang(m.Language) != m.Language || version.Compare(m.Language, "go1.27") > 0 {
 		return fmt.Errorf("unsupported SSA artifact language %q", m.Language)
 	}
-	if m.Target.GOOS != "linux" || m.Target.GOARCH != "amd64" || m.Target.GOAMD64 < 1 || m.Target.GOAMD64 > 4 {
-		return fmt.Errorf("unsupported SSA artifact target")
+	canonical, _, targetErr := normalizeTarget(m.Target)
+	if targetErr != nil || canonical != m.Target {
+		return fmt.Errorf("unsupported or noncanonical SSA artifact target")
 	}
 	exp, err := buildcfg.ParseGOEXPERIMENT(m.Target.GOOS, m.Target.GOARCH, m.Experiments)
 	if err != nil || exp.String() != m.Experiments || m.Target.Experiments != m.Experiments {
@@ -201,7 +202,7 @@ func validateArtifactInputs(req Request, language, experiments string) error {
 			return fmt.Errorf("missing SSA artifact for %q", path)
 		}
 		m := a.info.Metadata
-		if path != a.info.ImportPath || m.Language != language || m.Target.GOOS != req.Target.GOOS || m.Target.GOARCH != req.Target.GOARCH || m.Target.GOAMD64 != req.Target.GOAMD64 || m.Experiments != experiments {
+		if path != a.info.ImportPath || m.Language != language || m.Target.GOOS != req.Target.GOOS || m.Target.GOARCH != req.Target.GOARCH || m.Target.GOAMD64 != req.Target.GOAMD64 || m.Target.GOARM64 != req.Target.GOARM64 || m.Experiments != experiments {
 			return fmt.Errorf("SSA artifact %q is incompatible with the requested package, language, target or experiments", path)
 		}
 		if _, ok := req.Imports[path]; ok {

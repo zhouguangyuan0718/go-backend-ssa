@@ -122,3 +122,6 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 隔离替换工具链已完成 Linux/amd64、CGO_ENABLED=0 的正式 make.bash/dist bootstrap，并在默认 PGO 下通过强制重编的完整二进制固定点和程序执行验证，见[阶段记录](m3-dist-bootstrap.md)。后续继续独立 Built/EarlyOptimized API、第二目标、cgo/race 与规定回归；最低 bootstrap SDK 仍单独待验收。
 
 低层函数级 SSA 构建现在可停在原生 Phi 完成、SSA Compile 之前，并用独立 cache 保留图；原生后半段可显式恢复一次。详见[SSA 构建分界](m3-ssa-construction.md)。源码级 `compiler.Build` 已进一步完成整包声明固定点、独立 Built 图、初始化、类型、符号及静态数据，见[源码到 Built SSA](m3-source-build.md)。严格 artifact 的生产/消费、精确依赖身份及三包泛型往返现已实现，见[import artifact](m4-import-artifact.md)。EarlyOptimized 截点及原生续编译现已接通，见 [M5](m5-early-optimized.md)。第二目标及其余回归继续推进。
+
+
+Linux ARM64 的完整后端、规范化 CPU 身份和隔离替换驱动已接通，见 [M6 记录](m6-arm64.md)。当前后续重心是完整后端元数据消费、cgo/race 驱动、最低 bootstrap SDK 与规定回归。

@@ -95,6 +95,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 }
 func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName string, snapshots ...string) {
 	t.Helper()
+	arm64Target := len(snapshots) > 1 && snapshots[1] == "arm64"
 	snapshotName := pkgName
 	if len(snapshots) > 0 {
 		snapshotName = snapshots[0]
@@ -381,6 +382,9 @@ func SyncgoResumeSnapshot(held *Construction)(*ssa.Func,int64,int64,int64){f:=he
 	}
 	if snapshotName == "noder_dependencies" {
 		ported = dependencySnapshotFixture(t, ported, dir, false)
+	}
+	if arm64Target {
+		ported = strings.NewReplacer("go-backend-ssa/internal/amd64", "go-backend-ssa/internal/arm64", "amd64.NewContext(backend)", "arm64.NewContext(backend)").Replace(ported)
 	}
 	writeTestFile(t, dir, "internal/"+pkgName+"/adapter_snapshot_test.go", ported)
 	snapshotTarget := ""
@@ -669,6 +673,9 @@ func SyncgoResumeSnapshot(held *Construction)(*ssa.Func,int64,int64,int64){f:=he
 	if snapshotName == "noder_dependencies" {
 		native = dependencySnapshotFixture(t, native, dir, true)
 	}
+	if arm64Target {
+		native = strings.NewReplacer("cmd/compile/internal/amd64", "cmd/compile/internal/arm64", "amd64.Init(&ssagen.Arch)", "arm64.Init(&ssagen.Arch)").Replace(native)
+	}
 	writeTestFile(t, dir, "reference/"+pkgName+"_snapshot_test.go", native)
 	overlay[filepath.Join(goroot, "src/cmd/compile/internal/"+pkgName+"/syncgo_snapshot_test.go")] = filepath.Join(dir, "reference/"+pkgName+"_snapshot_test.go")
 	// Observers expose existing buffers only in the temporary reference build.
@@ -904,6 +911,11 @@ func SyncgoResumeSnapshot(held *Construction)(*ssa.Func,int64,int64,int64){f:=he
 	}
 	if snapshotName == "noder_prepackage" {
 		targets = []string{"ordinary", "main", "main-testmain", "runtime", "atomic-perfunc", "disabled"}
+	}
+	if arm64Target {
+		for i := range targets {
+			targets[i] = strings.Replace(targets[i], "amd64", "arm64", 1)
+		}
 	}
 	for _, snapshotTarget = range targets {
 		if snapshotName == "escape" {

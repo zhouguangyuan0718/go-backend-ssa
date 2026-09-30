@@ -62,3 +62,6 @@ walk 后的 map/channel/interface/分配等通常已部分表示为 Go runtime �
 `obj.LSym` 等初期可以通过私有兼容实现承接，但其内容、重定位、属性和引用需要转为可公开读取的符号/数据描述。完整 linker/assembler 不作为依赖引入的默认答案。
 
 后端所需完整输出见 [API 契约](api.md)。
+
+
+Linux ARM64 现已接通同一源码阶段、原生续编译、汇编和对象写出流程，见 [M6 记录](m6-arm64.md)。Build 在两种完整目标上均保留原有阶段边界；原生指令生成与寄存器分配仍由显式 `compiler.Compile` 路径完成。

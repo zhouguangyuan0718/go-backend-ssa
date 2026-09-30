@@ -24,7 +24,18 @@ func TestSourceEarlyOfficialOracle(t *testing.T) {
 	testSourceBuildOfficialOracle(t, compiler.EarlyOptimized)
 }
 
-func testSourceBuildOfficialOracle(t *testing.T, stage compiler.Stage) {
+func TestARM64BuildOfficialOracle(t *testing.T) {
+	testSourceBuildOfficialOracle(t, compiler.Built, "arm64")
+}
+func TestARM64EarlyOfficialOracle(t *testing.T) {
+	testSourceBuildOfficialOracle(t, compiler.EarlyOptimized, "arm64")
+}
+
+func testSourceBuildOfficialOracle(t *testing.T, stage compiler.Stage, architectures ...string) {
+	arch := "amd64"
+	if len(architectures) > 0 {
+		arch = architectures[0]
+	}
 	if os.Getenv("GO_SSA_NATIVE_EXECUTION") == "" {
 		t.Skip("set GO_SSA_NATIVE_EXECUTION for official Built dumps and object data")
 	}
@@ -33,7 +44,7 @@ func testSourceBuildOfficialOracle(t *testing.T, stage compiler.Stage) {
 		t.Helper()
 		cmd := exec.Command("go", args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.27.1", "GOWORK=off", "GO111MODULE=off", "GOFLAGS=", "GOOS=linux", "GOARCH=amd64", "GOAMD64=v1", "GOEXPERIMENT=", "CGO_ENABLED=0", "GOPROXY=off", "GOSUMDB=off", "GOSSADIR="+dir, "GOSSAFUNC=", "GOCOMPILEDEBUG=")
+		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go1.27.1", "GOWORK=off", "GO111MODULE=off", "GOFLAGS=", "GOOS=linux", "GOARCH="+arch, "GOAMD64=v1", "GOARM64=v8.0", "GOEXPERIMENT=", "CGO_ENABLED=0", "GOPROXY=off", "GOSUMDB=off", "GOSSADIR="+dir, "GOSSAFUNC=", "GOCOMPILEDEBUG=")
 		cmd.Env = append(cmd.Env, env...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -74,9 +85,16 @@ func testSourceBuildOfficialOracle(t *testing.T, stage compiler.Stage) {
  `
 	file := filepath.Join(dir, "p.go")
 	write(file, []byte(source))
-	for _, mode := range []string{"default", "noinline", "noopt", "amd64v3"} {
+	modes := []string{"default", "noinline", "noopt", "amd64v3"}
+	if arch == "arm64" {
+		modes[3] = "arm64v81"
+	}
+	for _, mode := range modes {
 		t.Run(mode, func(t *testing.T) {
 			req := request("p", source)
+			if arch == "arm64" {
+				req.Target = compiler.Target{GOOS: "linux", GOARCH: arch, GOARM64: "v8.0"}
+			}
 			req.Options.Stage = stage
 			req.Files[0].Name = file
 			req.Options.Complete = true
@@ -91,6 +109,9 @@ func testSourceBuildOfficialOracle(t *testing.T, stage compiler.Stage) {
 			}
 			if mode == "amd64v3" {
 				req.Target.GOAMD64 = 3
+			}
+			if mode == "arm64v81" {
+				req.Target.GOARM64 = "v8.1"
 			}
 			p, err := compiler.Build(context.Background(), req)
 			if err != nil {
@@ -114,7 +135,11 @@ func testSourceBuildOfficialOracle(t *testing.T, stage compiler.Stage) {
 			}
 			archive := filepath.Join(dir, mode+".a")
 			args = append(args, "-d="+strings.Join(dumpFlags, ","), "-o", archive, file)
-			run([]string{fmt.Sprintf("GOAMD64=v%d", req.Target.GOAMD64)}, args...)
+			cpuEnv := []string{fmt.Sprintf("GOAMD64=v%d", req.Target.GOAMD64)}
+			if arch == "arm64" {
+				cpuEnv = []string{"GOARM64=" + p.Metadata.Target.GOARM64}
+			}
+			run(cpuEnv, args...)
 			for _, f := range p.Functions {
 				name := strings.NewReplacer(" ", "_", "/", "_", ":", "_").Replace(f.Name) + "_01__" + phase + ".dump"
 				expected, err := os.ReadFile(filepath.Join(dir, name))

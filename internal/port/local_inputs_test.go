@@ -112,3 +112,46 @@ func TestBootstrapConstantBindingProvenance(t *testing.T) {
 		t.Fatal("changed bootstrap signature accepted")
 	}
 }
+
+func TestGeneratedLocalConstantInput(t *testing.T) {
+	const generator = "src/cmd/tool/generate.go"
+	const source = "src/cmd/compile/internal/p/main.go"
+	const code = `package p;func Read()string{return DefaultTarget}`
+	const proof = "package main;import(\"fmt\";\"io\");func generate(w io.Writer){fmt.Fprintf(w,\"const DefaultTarget = `%s`\\n\",\"host choice\")}"
+	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", generator: proof, source: code})
+	input, err := OpenSource(context.Background(), repo, pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{{Source: source, Functions: []string{"Read"}, Context: &ContextRule{Type: "Context", Constructor: "newContext", Selective: true, Adapter: "adapter_context.go"}, State: []StateRule{{Source: source, Variable: "DefaultTarget", Field: "DefaultTarget", Input: true, TypeSource: generator}}}}}
+	dir := t.TempDir()
+	writeTestFile(t, dir, "internal/p/adapter_context.go", `package p;type Context struct{DefaultTarget string}`)
+	r, err := Render(input, p, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := string(r.Files["internal/p/main.go"])
+	if !strings.Contains(data, "syncgoCtx.DefaultTarget") || strings.Contains(data, "host choice") {
+		t.Fatal(data)
+	}
+	seen := false
+	for _, file := range r.Ledger.Files {
+		if file.Source == source {
+			seen = file.SignatureSources[generator] == hash([]byte(proof))
+		}
+	}
+	if !seen {
+		t.Fatal("missing generated input proof")
+	}
+	for _, changed := range []string{strings.Replace(proof, "const DefaultTarget", "const Other", 1), strings.Replace(proof, "`%s`", "%d", 1)} {
+		input.cache[generator] = []byte(changed)
+		if _, err := Render(input, p, dir); err == nil {
+			t.Fatal("unproven generated input accepted")
+		}
+	}
+	input.cache[generator] = []byte(proof)
+	input.cache[source] = []byte(`package p;func Read()string{DefaultTarget="changed";return DefaultTarget}`)
+	if _, err := Render(input, p, dir); err == nil {
+		t.Fatal("generated constant mutation accepted")
+	}
+}

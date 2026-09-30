@@ -62,3 +62,6 @@ M3 已接通真实隔离 `cmd/compile` 驱动、Linux/amd64 无 cgo 标准库重
 原生 raw/gzip/预处理 PGO 输入已接通，自编译现在使用上游默认 profile，且产物继续生成与第一阶段相同的测试归档，见[PGO 验证](m3-native-profile-input.md)。这尚未替代 dist bootstrap 的完整多阶段验收。
 
 正式 dist bootstrap 已在 Linux/amd64、CGO_ENABLED=0 和 Go 1.27.1 bootstrap SDK 下通过；各阶段归档及强制重编后的编译器二进制保持一致，详见[自举记录](m3-dist-bootstrap.md)。独立 SSA 阶段接口、第二目标、其余驱动与回归要求仍未全部完成。
+
+
+M5 已提供源码 Built/EarlyOptimized 图与严格 import artifact；M6 已把相同源码驱动、完整后端及正式 bootstrap 扩展到 Linux/arm64，见 [ARM64 记录](m6-arm64.md)。剩余验收包括完整后端元数据消费、cgo/race 驱动、最低 bootstrap SDK 与规定回归。

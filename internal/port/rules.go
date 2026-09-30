@@ -240,6 +240,7 @@ func Migration() Plan {
 	plan.Units = ssagenEmitMigration(plan.Units)
 	plan.Units = amd64EmissionMigration(plan.Units)
 	plan.Units = x86AssemblerMigration(plan.Units)
+	plan.Units = arm64Migration(plan.Units)
 	plan.Units = objectFlushMigration(plan.Units)
 	plan.Units = objectFileMigration(plan.Units)
 	plan.Units = archiveMigration(plan.Units)

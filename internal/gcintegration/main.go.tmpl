@@ -3,6 +3,7 @@ package main
 
 import (
     "cmd/compile/internal/amd64"
+    "cmd/compile/internal/arm64"
     "cmd/compile/internal/base"
     "cmd/compile/internal/ssagen"
     "cmd/internal/obj"
@@ -37,8 +38,8 @@ func run() error {
         }
     }
     buildcfg.Check()
-    if buildcfg.GOOS != "linux" || buildcfg.GOARCH != "amd64" {
-        return fmt.Errorf("go-backend-ssa currently supports linux/amd64, got %s/%s", buildcfg.GOOS, buildcfg.GOARCH)
+    if buildcfg.GOOS != "linux" || (buildcfg.GOARCH != "amd64" && buildcfg.GOARCH != "arm64") {
+        return fmt.Errorf("go-backend-ssa currently supports linux/amd64 and linux/arm64, got %s/%s", buildcfg.GOOS, buildcfg.GOARCH)
     }
     for _, key := range []string{"GOCOMPILEDEBUG", "GOSSAFUNC", "GOSSADIR"} {
         if os.Getenv(key) != "" { return fmt.Errorf("unsupported compiler environment setting %s", key) }
@@ -46,7 +47,7 @@ func run() error {
     // Retain the official driver parser, config-file readers and diagnostics.
     // This native graph is used only to parse driver settings. Source loading
     // and every compiler pass run exclusively through compiler.Compile below.
-    amd64.Init(&ssagen.Arch)
+    if buildcfg.GOARCH == "amd64" { amd64.Init(&ssagen.Arch) } else { arm64.Init(&ssagen.Arch) }
     base.Ctxt = obj.Linknew(ssagen.Arch.LinkArch)
     base.Ctxt.DiagFunc = base.Errorf
     base.Ctxt.DiagFlush = base.FlushErrors
@@ -66,9 +67,11 @@ func run() error {
     if base.Ctxt.Pkgpath == obj.UnlinkablePkg { return fmt.Errorf("go-backend-ssa driver currently requires an explicit -p package path") }
     if base.Flag.N != 0 && base.Flag.N != 1 { return fmt.Errorf("unsupported optimization mode -N=%d",base.Flag.N) }
     if base.Flag.LowerL != 0 && base.Flag.LowerL != 1 { return fmt.Errorf("unsupported inline mode -l=%d", base.Flag.LowerL) }
+    target := compiler.Target{GOOS: buildcfg.GOOS, GOARCH: buildcfg.GOARCH, Experiments: buildcfg.Experiment.String()}
+    if buildcfg.GOARCH == "amd64" { target.GOAMD64 = buildcfg.GOAMD64 } else { target.GOARM64 = buildcfg.GOARM64.String() }
     req := compiler.Request{
         ImportPath: base.Ctxt.Pkgpath,
-        Target: compiler.Target{GOOS: buildcfg.GOOS, GOARCH: buildcfg.GOARCH, GOAMD64: buildcfg.GOAMD64, Experiments: buildcfg.Experiment.String()},
+        Target: target,
         Paths: compiler.SourcePaths{WorkingDirectory: base.Ctxt.Pathname, GOROOT: buildcfg.GOROOT, HostOS: runtime.GOOS},
         Options: compiler.Options{
             Workers: base.Flag.LowerC, DisableOptimization: base.Flag.N != 0,

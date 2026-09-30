@@ -8,20 +8,25 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
 // This gate builds the replacement as the actual pinned cmd/compile, then asks
 // cmd/go to rebuild sources with it. No tool-exec fallback or prebuilt runtime
 // archives stand in for calls into the library.
-func TestPinnedCompilerDriver(t *testing.T) {
+func TestPinnedCompilerDriver(t *testing.T)      { testPinnedCompilerDriver(t, "amd64") }
+func TestPinnedARM64CompilerDriver(t *testing.T) { testPinnedCompilerDriver(t, "arm64") }
+
+func testPinnedCompilerDriver(t *testing.T, arch string) {
 	repo := os.Getenv("GO_SSA_SOURCE_REPO")
 	if repo == "" || os.Getenv("GO_SSA_DRIVER_INTEGRATION") == "" {
 		t.Skip("set GO_SSA_SOURCE_REPO and GO_SSA_DRIVER_INTEGRATION")
 	}
-	image := os.Getenv("GO_SSA_LINUX_AMD64_IMAGE")
-	if (runtime.GOOS != "linux" || runtime.GOARCH != "amd64") && image == "" {
-		t.Fatal("set GO_SSA_LINUX_AMD64_IMAGE for target execution")
+	imageKey := "GO_SSA_LINUX_" + strings.ToUpper(arch) + "_IMAGE"
+	image := os.Getenv(imageKey)
+	if (runtime.GOOS != "linux" || runtime.GOARCH != arch) && image == "" {
+		t.Fatalf("set %s for target execution", imageKey)
 	}
 	root, e := filepath.Abs("../..")
 	if e != nil {
@@ -37,7 +42,7 @@ func TestPinnedCompilerDriver(t *testing.T) {
 	verifyIntegrationFiles(t, tree, manifest)
 	hostTools := filepath.Join(tree, "pkg/tool", runtime.GOOS+"_"+runtime.GOARCH)
 	env := func(goroot, cache, goos, goarch string) []string {
-		return append(os.Environ(), "GOROOT="+goroot, "GOCACHE="+cache, "GOTOOLCHAIN=local", "GOWORK=off", "GOFLAGS=", "GOOS="+goos, "GOARCH="+goarch, "GOAMD64=v1", "GOEXPERIMENT=", "CGO_ENABLED=0", "GOPROXY=off", "GOSUMDB=off", "GOMAXPROCS=4", "GOCOMPILEDEBUG=", "GOSSAFUNC=", "GOSSADIR=", "GO_SSA_BRIDGE_TRACE=")
+		return append(os.Environ(), "GOROOT="+goroot, "GOCACHE="+cache, "GOTOOLCHAIN=local", "GOWORK=off", "GOFLAGS=", "GOOS="+goos, "GOARCH="+goarch, "GOAMD64=v1", "GOARM64=v8.0", "GOEXPERIMENT=", "CGO_ENABLED=0", "GOPROXY=off", "GOSUMDB=off", "GOMAXPROCS=4", "GOCOMPILEDEBUG=", "GOSSAFUNC=", "GOSSADIR=", "GO_SSA_BRIDGE_TRACE=")
 	}
 	run := func(executable string, args []string, environment []string, cwd string) []byte {
 		t.Helper()
@@ -59,7 +64,7 @@ func TestPinnedCompilerDriver(t *testing.T) {
 		t.Fatal(e)
 	}
 	compiler := filepath.Join(hostTools, "compile")
-	targetEnv := env(tree, filepath.Join(dir, "library-cache"), "linux", "amd64")
+	targetEnv := env(tree, filepath.Join(dir, "library-cache"), "linux", arch)
 	identity := run(compiler, []string{"-V=full"}, targetEnv, dir)
 	if !bytes.Contains(identity, []byte(manifest.Library)) {
 		t.Fatalf("compiler identity lacks library hash: %s", identity)
@@ -106,10 +111,10 @@ func main(){x:=[]int{5,1,3};slices.Sort(x);ch:=make(chan int);go func(){ch<-twic
 	}
 	execute := func(binary string, args ...string) []byte {
 		t.Helper()
-		if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
+		if runtime.GOOS == "linux" && runtime.GOARCH == arch {
 			return run(filepath.Join(probe, binary), args, targetEnv, probe)
 		}
-		dockerArgs := []string{"run", "--rm", "--pull=never", "--platform", "linux/amd64", "--network", "none", "--mount", "type=bind,source=" + probe + ",target=/work", "-e", "GOOS=linux", "-e", "GOARCH=amd64", "-e", "GOAMD64=v1", image}
+		dockerArgs := []string{"run", "--rm", "--pull=never", "--platform", "linux/" + arch, "--entrypoint", "", "--network", "none", "--mount", "type=bind,source=" + probe + ",target=/work", "-e", "GOOS=linux", "-e", "GOARCH=" + arch, "-e", "GOAMD64=v1", "-e", "GOARM64=v8.0", image}
 		dockerArgs = append(dockerArgs, "/work/"+binary)
 		dockerArgs = append(dockerArgs, args...)
 		return run("docker", dockerArgs, os.Environ(), probe)
@@ -118,7 +123,7 @@ func main(){x:=[]int{5,1,3};slices.Sort(x);ch:=make(chan int);go func(){ch<-twic
 	if string(ours) != "[1 3 5] 10 true 11\n" {
 		t.Fatalf("wrong program output %q", ours)
 	}
-	run(filepath.Join(bootstrap, "bin/go"), []string{"build", "-p=4", "-o", "official", "."}, env(bootstrap, filepath.Join(dir, "official-cache"), "linux", "amd64"), probe)
+	run(filepath.Join(bootstrap, "bin/go"), []string{"build", "-p=4", "-o", "official", "."}, env(bootstrap, filepath.Join(dir, "official-cache"), "linux", arch), probe)
 	if native := execute("official"); !bytes.Equal(native, ours) {
 		t.Fatalf("execution differs: library=%q native=%q", ours, native)
 	}
@@ -204,7 +209,7 @@ func main(){x:=[]int{5,1,3};slices.Sort(x);ch:=make(chan int);go func(){ch<-twic
 	}
 	hostArchive := filepath.Join(probe, "host.a")
 	run(compiler, []string{"-p", "p", "-trimpath", probe + "=>/source", "-o", hostArchive, selfSource}, targetEnv, probe)
-	if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
+	if runtime.GOOS == "linux" && runtime.GOARCH == arch {
 		execute("compile.self", "-p", "p", "-trimpath", probe+"=>/source", "-o", filepath.Join(probe, "self.a"), selfSource)
 	} else {
 		execute("compile.self", "-p", "p", "-trimpath", "/work=>/source", "-o", "/work/self.a", "/work/self.go")
@@ -220,5 +225,5 @@ func main(){x:=[]int{5,1,3};slices.Sort(x);ch:=make(chan int);go func(){ch<-twic
 	if !bytes.Equal(host, self) {
 		t.Fatalf("self-compiled compiler output differs: host=%d self=%d", len(host), len(self))
 	}
-	t.Logf("self-compiled linux/amd64 compiler emitted the same %d-byte archive", len(self))
+	t.Logf("self-compiled linux/%s compiler emitted the same %d-byte archive", arch, len(self))
 }
