@@ -61,6 +61,7 @@
 44. [M3 原生包初始化任务](docs/m3-pkginit.md)：原生 MakeTask、初始化记录和 ASan 全局变量登记。
 45. [M3 原生 ABI wrappers](docs/m3-abi-wrappers.md)：汇编 ABI 输入、原生 wrapper IR 生成及实例绑定。
 46. [M3 原生 deadlocals](docs/m3-deadlocals.md)：实例独立的无用局部赋值消除、闭包符号初始化及原生差分。
+47. [M3 原生 escape](docs/m3-escape.md)：原生逃逸分析、参数摘要、闭包捕获分类和实例缓存。
 
 ## 当前可运行的工具
 
@@ -80,7 +81,7 @@ go test -race -timeout 20m ./...
 
 设定 `GO_SSA_SOURCE_REPO` 时，测试额外验证官方 go1.27.1 再生成、两版上游位置/符号回归与 SSA 类型切片差分测试、源码树未变以及 go1.27.0 → go1.27.1 升级；仓库需包含两个 tag。完整双版本差分包含多组独立原生编译，使用 `-timeout 20m`，避免默认 10 分钟时限。无该变量时仅跳过这项集成测试，其他测试照常执行。
 
-编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造与完整 typecheck 生产包，以及 types/objabi 的结构和算法切片；reader 的类型/对象实例化、函数体和字典读取主体已接入并完成源码差分；整包内联、方法包装、loopvar、pkginit、ABI wrappers 和 deadlocals 已接通；escape、slice、walk 和 SSA 流程尚未接通。
+编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造与完整 typecheck 生产包，以及 types/objabi 的结构和算法切片；reader 的类型/对象实例化、函数体和字典读取主体已接入并完成源码差分；整包内联、方法包装、loopvar、pkginit、ABI wrappers、deadlocals 和 escape 已接通；slice、walk 和 SSA 流程尚未接通。
 
 移植后的源码直接保存在本项目，和手写适配、转换规则一起纳入版本管理。使用本库时不需要先运行移植工具；维护者更新上游版本时再重新生成。
 

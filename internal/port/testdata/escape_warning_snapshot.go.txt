@@ -1,0 +1,6 @@
+// Passive copies of native diagnostics before FlushErrors empties the buffer.
+// This observer exists only in the temporary reference overlay.
+package base
+var syncgoEscapeFlushed []string
+func syncgoCaptureEscapeWarnings(){syncgoEscapeFlushed=append(syncgoEscapeFlushed,SyncgoLoopWarnings()...)}
+func SyncgoEscapeWarnings()[]string{out:=append([]string(nil),syncgoEscapeFlushed...);return append(out,SyncgoLoopWarnings()...)}

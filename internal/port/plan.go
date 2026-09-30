@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v16"
+const ToolVersion = "syncgo-m3-v17"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -55,7 +55,7 @@ type Unit struct {
 	ReceiverState  *ReceiverStateRule
 	Context        *ContextRule
 	ContextMethods map[string]string   // Free function -> method name when the native Context already uses that name.
-	ContextParams  []string            // Private receiver methods that take an explicit context parameter.
+	ContextParams  []string            // Reviewed receiver methods that take an explicit context parameter.
 	Literals       []LiteralRule       // Reviewed external struct values bound to an instance.
 	Calls          []CallRule          // Reviewed external functions bound to context methods.
 	Nullable       map[string][]string // Reviewed owned pointers/receivers that accept nil.
@@ -69,7 +69,7 @@ type CallRule struct{ Source, Function, Method string }
 // LiteralRule wraps a native struct value with a func(T) T instance method.
 type LiteralRule struct{ Source, Type, Method string }
 
-// StateRule redirects a type-checked upstream host variable to instance state.
+// StateRule redirects a typed host variable or literal boolean feature constant to instance state.
 type StateRule struct{ Source, Variable, Field string }
 
 // ReceiverStateRule keeps state in an existing private upstream receiver.
@@ -207,7 +207,7 @@ func (p Plan) Validate() error {
 		parameterMethods := map[string]bool{}
 		for _, name := range u.ContextParams {
 			receiver, method, ok := strings.Cut(name, ".")
-			if u.Context == nil || !ok || !token.IsIdentifier(receiver) || (method != "*" && (!token.IsIdentifier(method) || token.IsExported(method))) || parameterMethods[name] {
+			if u.Context == nil || !ok || !token.IsIdentifier(receiver) || (method != "*" && (!token.IsIdentifier(method) || token.IsExported(method) && token.IsExported(receiver))) || parameterMethods[name] {
 				return fmt.Errorf("invalid context parameter method: %s", name)
 			}
 			parameterMethods[name] = true

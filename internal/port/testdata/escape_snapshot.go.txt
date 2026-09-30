@@ -1,0 +1,43 @@
+package escape_test
+import("fmt";"encoding/json";"encoding/binary";"os";"strings";"testing";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_LOOPVAR";"IMPORT_NODER";"IMPORT_PKGINIT";"IMPORT_SSAGEN";"IMPORT_DEADLOCALS";"IMPORT_ESCAPE";"IMPORT_LOGOPT";EXPAND_RUNTIME AUTO_IMPORT PKGINIT_DRIVER_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ mode:=os.Getenv("SYNCGO_TARGET")
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.SplitN(mode,"-",2)[0],8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
+ PKGINIT_READ
+ if strings.Contains(mode,"-inline"){LOOP_BASE.Flag.LowerL=1}
+ PKGINIT_DRIVER
+ INIT_BEFORE_ABI
+ EXPERIMENT.RegabiWrappers=target.arch=="amd64"||target.arch=="ppc64"
+ raw:="ref example/p.Identity ABI0\n"
+ ABI_READ
+ s.GenABIWrappers()
+ PRE_ESCAPE
+ ESC_SETUP
+ ND_DEBUG.ZeroCopy=1
+ if strings.HasSuffix(mode,"-nocopy"){ND_DEBUG.ZeroCopy=0}
+ if strings.HasSuffix(mode,"-diagnostics")||strings.Contains(mode,"-inline"){LOOP_BASE.Flag.LowerM=2}
+ if strings.HasSuffix(mode,"-runtime"){LOOP_BASE.Flag.CompilingRuntime=true}
+ if strings.HasSuffix(mode,"-freegc"){EXPERIMENT.RuntimeFreegc=true;ND_DEBUG.FreeAppend=1;ND_DEBUG.EscapeAliasCheck=1}
+ ESC_RUN
+ if strings.Contains(mode,"-inline"){seen:=false;for _,fn:=range TC.Target.Funcs{ir.Visit(fn,func(n ir.Node){seen=seen||n.Op()==ir.OINLMARK})};if !seen{t.Fatal("inline configuration produced no inline IR")}}
+ var out []string
+ for _,fn:=range TC.Target.Funcs{
+ out=append(out,fmt.Sprintf("func:%v:%v:%d:%d:%v:%d",fn.Sym(),fn.Type(),fn.ABI,fn.Esc(),fn.Pragma,len(fn.Body)))
+ for i,p:=range fn.Type().RecvParams(){out=append(out,fmt.Sprintf("param:%d:%v:%v:%q",i,p.Sym,p.Type,p.Note))}
+ ir.Visit(fn,func(n ir.Node){out=append(out,fmt.Sprintf("node:%v:%v:%d:%d:%v:%v",n.Op(),n.Type(),n.Typecheck(),n.Esc(),LINK.PosTable.Pos(n.Pos()),n));if call,ok:=n.(*ir.CallExpr);ok{out=append(out,fmt.Sprintf("call:%t:%t:%d",call.IsDDD,call.AppendNoAlias,len(call.KeepAlive)))}})
+ for _,n:=range fn.Dcl{out=append(out,fmt.Sprintf("local:%v:%v:%d:%d:%t:%t:%t:%t",n,n.Type(),n.Class,n.Esc(),n.Curfn==fn,n.Byval(),n.Addrtaken(),n.Opt==nil))}
+ for _,n:=range fn.ClosureVars{out=append(out,fmt.Sprintf("capture:%v:%d:%t:%t:%t",n,n.Esc(),n.Byval(),n.Addrtaken(),n.Opt==nil))}
+ }
+ ESC_WARNINGS
+ var logRow func(*logopt.LoggedOpt)string
+ logRow=func(e *logopt.LoggedOpt)string{
+ var args []string
+ for _,a:=range e.Arguments(){switch a:=a.(type){case []*logopt.LoggedOpt:for _,child:=range a{args=append(args,logRow(child))};default:args=append(args,fmt.Sprint(a))}}
+ return fmt.Sprintf("event:%v:%v:%s:%s:%s:%v",LINK.PosTable.Pos(e.Position()),LINK.PosTable.Pos(e.LastPosition()),e.Pass(),e.FunctionName(),e.What(),args)
+ }
+ for _,e:=range ESC_LOG{out=append(out,logRow(e))}
+ out=append(out,fmt.Sprintf("state:%d:%t:%v",LINK.DwTextCount,GRAPH.CurFunc==nil,LINK.PosTable.Pos(POS)))
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

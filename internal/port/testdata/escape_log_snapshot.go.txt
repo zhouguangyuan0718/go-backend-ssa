@@ -1,0 +1,10 @@
+// Read-only accessors compiled only into the temporary reference overlay.
+package logopt
+import "cmd/internal/src"
+func SyncgoEscapeSnapshot()[]*LoggedOpt{return loggedOpts}
+func(o *LoggedOpt)Position()src.XPos{return o.pos}
+func(o *LoggedOpt)LastPosition()src.XPos{return o.lastPos}
+func(o *LoggedOpt)Pass()string{return o.compilerPass}
+func(o *LoggedOpt)FunctionName()string{return o.functionName}
+func(o *LoggedOpt)What()string{return o.what}
+func(o *LoggedOpt)Arguments()[]any{return o.target}

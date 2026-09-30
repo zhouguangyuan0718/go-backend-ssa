@@ -1,5 +1,7 @@
 # M3 原生 deadlocals
 
+后续已接入 [原生 escape](m3-escape.md)，以下记录本批完成时的范围与验证。
+
 本批整体迁入 Go 1.27.1 `deadlocals/deadlocals.go`，保留上游文件、包名和 visitor 算法。执行顺序为 pkginit → ABI wrappers → deadlocals → escape；后续 escape、slice、walk 和 SSA 尚未接通。
 
 ## 状态与对外入口

@@ -6,6 +6,7 @@ import (
 	"go-backend-ssa/bitvec"
 	"go-backend-ssa/deadlocals"
 	"go-backend-ssa/diagnostic"
+	"go-backend-ssa/escape"
 	"go-backend-ssa/gcbridge"
 	"go-backend-ssa/inline"
 	"go-backend-ssa/inline/inlheur"
@@ -186,7 +187,7 @@ func TestNativeSyntaxFromPublicModule(t *testing.T) {
 }
 
 func TestNativeCheckerFromPublicModule(t *testing.T) {
-	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return};func UseId(x int)int{return Id(x)};func Twice(x int)int{return Id(Id(x))};type Number int;func(n Number)M(x int)int{return int(n)+x};func Method(n Number)func(int)int{return n.M};func Captures(xs []int)(out []*int){for _,v:=range xs{out=append(out,&v)};return};func Dead(p int){p=1}"), nil, nil, syntax.CheckBranches)
+	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return};func UseId(x int)int{return Id(x)};func Twice(x int)int{return Id(Id(x))};type Number int;func(n Number)M(x int)int{return int(n)+x};func Method(n Number)func(int)int{return n.M};func Captures(xs []int)(out []*int){for _,v:=range xs{out=append(out,&v)};return};func Dead(p int){p=1};func RetPtr()*int{x:=7;return &x}"), nil, nil, syntax.CheckBranches)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,6 +350,21 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	assignment := dead.Body[0].(*ir.AssignStmt)
 	if assignment.X != graph.BlankNode || graph.Int64Val(assignment.Y) != 0 {
 		t.Fatal("public deadlocals pass failed")
+	}
+	analysis := escape.NewContext(tc, writer.Inline.Log)
+	analysis.Funcs(result.Funcs)
+	ret, err := writer.LookupFunc("example/p.RetPtr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var heapLocal *ir.Name
+	for _, n := range ret.Dcl {
+		if n.Sym().Name == "x" {
+			heapLocal = n
+		}
+	}
+	if heapLocal == nil || heapLocal.Esc() != ir.EscHeap || heapLocal.Opt != nil {
+		t.Fatal("public escape classification failed")
 	}
 }
 

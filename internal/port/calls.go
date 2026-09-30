@@ -67,7 +67,7 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 			}
 			for name := range variables[source] {
 				obj := previous.Scope().Lookup(name)
-				_, ok := obj.(*types.Var)
+				ok := externalStateObject(obj)
 				reuse = reuse && ok && importer.sources[obj] == source
 			}
 			if reuse {
@@ -84,7 +84,7 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 				}
 			}
 			for name := range variables[source] {
-				if obj, ok := previous.Scope().Lookup(name).(*types.Var); ok && importer.sources[obj] == source {
+				if obj := previous.Scope().Lookup(name); externalStateObject(obj) && importer.sources[obj] == source {
 					reused[name] = true
 					found[name] = true
 				}
@@ -114,7 +114,7 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 					decls = append(decls, d)
 					continue
 				}
-				if d.Tok != token.VAR {
+				if d.Tok != token.VAR && d.Tok != token.CONST {
 					continue
 				}
 				var specs []ast.Spec
@@ -124,6 +124,26 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 						if variables[source][name.Name] && !reused[name.Name] {
 							if len(v.Names) != 1 {
 								return nil, fmt.Errorf("external state requires a single declaration: %s", name.Name)
+							}
+							if d.Tok == token.CONST {
+								// Feature build files declare literal bool constants. Preserve
+								// the original constant object for typed reference binding.
+								if len(v.Values) != 1 {
+									return nil, fmt.Errorf("external feature requires a literal boolean: %s", name.Name)
+								}
+								value, ok := v.Values[0].(*ast.Ident)
+								if !ok || (value.Name != "true" && value.Name != "false") {
+									return nil, fmt.Errorf("external feature requires a literal boolean: %s", name.Name)
+								}
+								if v.Type != nil {
+									typ, ok := v.Type.(*ast.Ident)
+									if !ok || typ.Name != "bool" {
+										return nil, fmt.Errorf("external feature requires a boolean type: %s", name.Name)
+									}
+								}
+								specs = append(specs, v)
+								found[name.Name] = true
+								continue
 							}
 							if v.Type == nil {
 								typ, err := externalValueType(f, v, importer)
@@ -244,7 +264,11 @@ func checkStateAdapters(units []Unit, before *packageImporter, out *types.Packag
 			if !ok || !field.IsField() {
 				return fmt.Errorf("missing state field %s", state.Field)
 			}
-			want := types.TypeString(unnamedSignature(original.Type()), func(p *types.Package) string {
+			originalType := original.Type()
+			if _, ok := original.(*types.Const); ok {
+				originalType = types.Default(originalType)
+			}
+			want := types.TypeString(unnamedSignature(originalType), func(p *types.Package) string {
 				if mapped := imports[p.Path()]; mapped != "" {
 					return mapped
 				}
@@ -375,4 +399,16 @@ func localCallSignatures(s *Source, units []Unit, fs *token.FileSet, original []
 		files = append(files, f)
 	}
 	return files, nil
+}
+
+// Features retain upstream constant identity while their uses read an instance bool.
+func externalStateObject(obj types.Object) bool {
+	switch obj := obj.(type) {
+	case *types.Var:
+		return true
+	case *types.Const:
+		typ, ok := obj.Type().Underlying().(*types.Basic)
+		return ok && typ.Info()&types.IsBoolean != 0
+	}
+	return false
 }
