@@ -1,0 +1,46 @@
+package archiveinput
+
+import (
+ "bufio"
+ "bytes"
+ "fmt"
+ "io"
+ "os"
+ "reflect"
+ "strings"
+ "testing"
+ portbio "go-backend-ssa/internal/cmd/bio"
+ nativebio "go-backend-ssa/internal/reference/bio"
+ port "go-backend-ssa/internal/go/exportdata"
+ native "go-backend-ssa/internal/reference/exportdata"
+ portsafe "go-backend-ssa/internal/go/saferio"
+ nativesafe "go-backend-ssa/internal/reference/saferio"
+)
+func archive(body string,size int)[]byte{return []byte(fmt.Sprintf("!<arch>\n%-16s%-12d%-6d%-6d%-8o%-10d`\n%s", "__.PKGDEF",0,0,0,0644,size,body))}
+func result(data []byte,e error)string{return fmt.Sprintf("%x|%v",data,e)}
+func TestArchiveInputDifferential(t *testing.T){
+ body:="go object linux amd64 go1.27.1 X:none\nbuild id \"test\"\n$$B\nuPAYLOAD\n$$\n";valid:=archive(body,len(body));cases:=[][]byte{valid}
+ for i:=0;i<len(valid);i++{cases=append(cases,append([]byte(nil),valid[:i]...))}
+ for i:=range valid{for _,b:=range []byte{0,'\n',0xff}{v:=append([]byte(nil),valid...);v[i]=b;cases=append(cases,v)}}
+ for _,s:=range []string{"$$\n","$$B\ni", "$$B\nc", "$$B\nv", "$$X\nu", "$$B\nu"}{v:="go object example\n"+s+"data\n$$\n";cases=append(cases,archive(v,len(v)))}
+ for _,size:=range []int{-1,0,1,9,1<<30}{cases=append(cases,archive(body,size))}
+ long:="go object example\n"+strings.Repeat("a",5000)+"\n$$B\nuX\n$$\n";cases=append(cases,archive(long,len(long)))
+ for i,data:=range cases{for _,size:=range []int{16,4096,8192}{a,b:=bufio.NewReaderSize(bytes.NewReader(data),size),bufio.NewReaderSize(bytes.NewReader(data),size);x,xe:=native.ReadUnified(a);y,ye:=port.ReadUnified(b);if result(x,xe)!=result(y,ye){t.Fatalf("case %d size %d: native %s port %s",i,size,result(x,xe),result(y,ye))}
+ // Compare explicit stage calls, including reader position and partially returned headers.
+ a,b=bufio.NewReaderSize(bytes.NewReader(data),size),bufio.NewReaderSize(bytes.NewReader(data),size)
+ an,ae:=native.FindPackageDefinition(a);bn,be:=port.FindPackageDefinition(b);if fmt.Sprint(an,ae)!=fmt.Sprint(bn,be){t.Fatal(i,"package",an,ae,bn,be)}
+ if ae==nil{ah,as,ae:=native.ReadObjectHeaders(a);bh,bs,be:=port.ReadObjectHeaders(b);if ah!=bh||!reflect.DeepEqual(as,bs)||fmt.Sprint(ae)!=fmt.Sprint(be){t.Fatal(i,"headers")};if ae==nil{an,ae=native.ReadExportDataHeader(a);bn,be=port.ReadExportDataHeader(b);if fmt.Sprint(an,ae)!=fmt.Sprint(bn,be){t.Fatal(i,"export header")}}}
+ ar,_:=io.ReadAll(a);br,_:=io.ReadAll(b);if !bytes.Equal(ar,br){t.Fatal(i,"remaining bytes")}
+ }}
+ t.Logf("%d archive cases x 3 buffer sizes, unified and staged results match",len(cases))
+}
+type memory struct{*bytes.Reader};func(*memory)Close()error{return nil}
+func TestBufferedSeekDifferential(t *testing.T){
+ data:=[]byte(strings.Repeat("0123456789abcdef",1024));f,e:=os.CreateTemp(t.TempDir(),"archive");if e!=nil{t.Fatal(e)};defer f.Close();if _,e=f.Write(data);e!=nil{t.Fatal(e)};f.Seek(0,0)
+ a,b:=nativebio.NewReader(f),portbio.NewReader(&memory{bytes.NewReader(data)})
+ for i:=range 32{n:=i*3+1;x,y:=make([]byte,n),make([]byte,n);an,ae:=a.Read(x);bn,be:=b.Read(y);if result(x,ae)!=result(y,be)||an!=bn||a.Offset()!=b.Offset(){t.Fatal("read",i)};for _,seek:=range [][2]int64{{-1,1},{int64(i),0},{-20,2}}{an,bn:=a.MustSeek(seek[0],int(seek[1])),b.MustSeek(seek[0],int(seek[1]));if an!=bn||a.Buffered()!=b.Buffered()||a.Offset()!=b.Offset(){t.Fatal("seek",i,seek)}}}
+ x,y:=make([]byte,5),make([]byte,5);an,ae:=a.File().ReadAt(x,3);bn,be:=b.File().ReadAt(y,3);if an!=bn||result(x,ae)!=result(y,be)||a.Offset()!=b.Offset(){t.Fatal("readat")};if a.Close()!=b.Close(){t.Fatal("close")}
+}
+func TestSafeReadsDifferential(t *testing.T){
+ for _,n:=range []uint64{0,1,3,4,10<<20-1,10<<20,10<<20+1,1<<63,^uint64(0)}{for _,input:=range []string{"","abc"}{a,ae:=nativesafe.ReadData(strings.NewReader(input),n);b,be:=portsafe.ReadData(strings.NewReader(input),n);if result(a,ae)!=result(b,be){t.Fatal("read",n,input)};a,ae=nativesafe.ReadDataAt(strings.NewReader(input),n,0);b,be=portsafe.ReadDataAt(strings.NewReader(input),n,0);if result(a,ae)!=result(b,be){t.Fatal("readat",n,input)}}}
+}

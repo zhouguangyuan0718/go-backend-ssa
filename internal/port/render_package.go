@@ -113,6 +113,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	if err := moveReceiverState(fs, original, info, units); err != nil {
 		return nil, nil, err
 	}
+	if err := rewriteHostSignatures(original, info, units); err != nil {
+		return nil, nil, err
+	}
 	if err := rewritePackageContext(fs, original, info, units, before.recovering); err != nil {
 		return nil, nil, err
 	}
@@ -220,6 +223,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			if state.Input {
 				prov.Declarations = append(prov.Declarations, "host-input:"+state.Variable+":"+state.Field)
 			}
+		}
+		for _, rule := range u.HostSignatures {
+			prov.Declarations = append(prov.Declarations, fmt.Sprintf("host-stream-signature:%s:%t:%d:%s", rule.Function, rule.Result, rule.Index, strings.Join(rule.Methods, ",")))
 		}
 		for _, rule := range u.HostFields {
 			prov.Declarations = append(prov.Declarations, "host-stream-field:"+rule.Type+"."+rule.Field+":"+strings.Join(rule.Methods, ","))

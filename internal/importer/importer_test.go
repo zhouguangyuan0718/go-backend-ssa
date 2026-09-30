@@ -1,8 +1,10 @@
 package importer
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
+	"go-backend-ssa/internal/go/exportdata"
 	"go-backend-ssa/internal/go/pkgbits"
 	"go-backend-ssa/internal/syntax"
 	"go-backend-ssa/internal/types2"
@@ -53,7 +55,14 @@ func exportFixtures(t *testing.T, answer int) map[string]string {
 		if start < 0 || end <= start {
 			t.Fatal("invalid native export archive")
 		}
-		out[name] = string(raw[start+len("\n$$B\nu") : end])
+		payload, err := exportdata.ReadUnified(bufio.NewReader(bytes.NewReader(raw)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(payload, raw[start+len("\n$$B\nu"):end]) {
+			t.Fatal("native archive payload disagrees with independent fixture extraction")
+		}
+		out[name] = string(payload)
 	}
 	return out
 }

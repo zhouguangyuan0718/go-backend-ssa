@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v59"
+const ToolVersion = "syncgo-m3-v60"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -59,6 +59,7 @@ type Unit struct {
 	FixedSizeof            []FixedSizeofRule
 	SliceReinterpretations []SliceReinterpretationRule
 	HostFields             []HostFieldRule
+	HostSignatures         []HostSignatureRule
 	HostResources          []HostResourceRule
 	HostCalls              []HostCallRule
 	State                  []StateRule
@@ -93,6 +94,16 @@ type ContextParamCallRule struct{ Source, Method, Field, ContextType string }
 type HostFieldRule struct {
 	Type, Field string
 	Methods     []string
+}
+
+// HostSignatureRule projects one native *os.File parameter or result onto
+// explicitly reviewed stream operations. Index is zero-based within that list.
+// Bodies and all other signature slots remain native.
+type HostSignatureRule struct {
+	Function string
+	Result   bool
+	Index    int
+	Methods  []string
 }
 
 // HostResourceRule binds a reviewed standard-library resource factory to a
@@ -414,10 +425,25 @@ func (p Plan) Validate() error {
 			seenHostFields[key] = true
 			methods := map[string]bool{}
 			for _, name := range field.Methods {
-				if (name != "Read" && name != "Write" && name != "Seek" && name != "Close") || methods[name] {
+				if !hostStreamMethod(name) || methods[name] {
 					return fmt.Errorf("invalid host stream method: %s", name)
 				}
 				methods[name] = true
+			}
+		}
+		seenHostSignatures := map[string]bool{}
+		for _, rule := range u.HostSignatures {
+			key := fmt.Sprintf("%s:%t:%d", rule.Function, rule.Result, rule.Index)
+			if !memberPath(rule.Function) || rule.Index < 0 || len(rule.Methods) == 0 || seenHostSignatures[key] {
+				return fmt.Errorf("invalid host stream signature: %s", key)
+			}
+			seenHostSignatures[key] = true
+			seen := map[string]bool{}
+			for _, name := range rule.Methods {
+				if !hostStreamMethod(name) || seen[name] {
+					return fmt.Errorf("invalid host stream signature method: %s", name)
+				}
+				seen[name] = true
 			}
 		}
 		for _, resource := range u.HostResources {

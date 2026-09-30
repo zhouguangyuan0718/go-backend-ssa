@@ -45,3 +45,10 @@ func (w *Writer) Validate() { _ = writerContext(w) }
 type borrowedOutput struct{ io.WriteSeeker }
 
 func (borrowedOutput) Close() error { return nil }
+
+func readerContext(r *Reader) *Context {
+	if r == nil || r.f == nil || r.Reader == nil {
+		panic("object input requires an explicit stream")
+	}
+	return &Context{}
+}

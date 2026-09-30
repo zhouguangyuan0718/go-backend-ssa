@@ -104,6 +104,7 @@
 87. [M3 原生声明固定点](docs/m3-native-declaration-fixed-point.md)：运行时类型、全局声明、新函数和 DWARF 收尾之间的完整原生迭代。
 88. [M3 原生编译器指令](docs/m3-native-directives.md)：原生 pragma、linkname/cgo/embed/wasm 解析与文件记录、并发源码输入及 writer/reader 贯通。
 89. [M3 原生类型导入器](docs/m3-native-type-importer.md)：Unified 导出数据的惰性类型加载、泛型/别名/方法字典和类型环境归属。
+90. [M3 原生归档输入](docs/m3-native-archive-input.md)：显式可定位输入流、原生缓冲读取、归档格式校验与大小受限读取。
 
 ## 当前可运行的工具
 
@@ -175,3 +176,5 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 源码解析入口及可运行示例见 [syntax](syntax/syntax.go) 和 [M3 记录](docs/m3-syntax.md)。`syntax.Parse` 后可调用 `types2.Config.Check` 获得类型检查结果，示例见 [types2](types2/example_test.go)。检查成功后，可按 [noder 示例](noder/example_test.go)调用 RewriteRangeFuncs，再写出原生 Unified IR stub，并通过 ReadLocalPackage 读取为原生 ir.Package；之后可调用 Interleaved 完成整包优化，再调用 MakeWrappers 生成原生方法包装函数，随后逐函数调用 loopvar.ForCapture 处理循环变量捕获，再调用 pkginit.MakeTask 生成原生初始化任务，随后调用 ssagen 的 SymABIs.GenABIWrappers，并依次执行 deadlocals、escape、slice 和 walk；含编译器指令的源码通过 ParseFile/WriteParsedPackage 保留原生文件记录，见 [编译器指令](docs/m3-native-directives.md)；完整 unified 尾部与实验性 midway 尚未接入。完成目标、SSA、liveness 配置及 InitConfig/InitTables 后，可对完成 walk 的函数调用 ssagen.BuildSSA，得到原生优化、寄存器分配和帧布局后的 SSA，见 [完整 IR 到 SSA](docs/m3-ssagen-build.md)。AMD64 可在 InitConfig 前通过 amd64.NewContext 安装目标处理函数，然后用 objw.NewProgs 和 ssagen.GenSSA 输出原生指令链及 GC/调试元数据，见 [原生 AMD64 指令生成](docs/m3-ssagen-emission.md)。原生 x86 汇编器已迁入并通过机器码及重定位差分，见 [原生 x86 汇编器](docs/m3-native-assembler.md)。通过 dwarfgen.NewContext 绑定调试信息回调后，objw.Progs.Flush 已执行完整原生汇编、PC 表和 DWARF 生成，见 [原生函数 Flush](docs/m3-native-flush.md)。随后通过 gc.Context.AddGCLocals 完成函数辅助数据注册，并在其他包级数据就绪后调用 objw.Context.WriteObject 输出原生 Go 对象二进制载荷，见 [原生对象序列化](docs/m3-native-object.md)。符号编号后可通过 noder.Context.ExportUnified 输出最终导出 bitstream，或通过 gc.Context.WriteArchive 写出原生包归档，见 [原生导出与归档](docs/m3-native-archive.md)。通过 gc.Context.BindBackend、EnqueueFunc 和 CompileQueued 可运行完整原生函数准备与后台队列，见 [函数编译队列](docs/m3-native-compile-queue.md)。通过 gc.Context.DumpData 可执行完整原生包数据收尾，嵌入文件通过显式 provider 输入，见 [包数据收尾](docs/m3-native-package-data.md)。通过 gc.Context.CompileDeclarations 执行完整原生声明固定点，见 [声明固定点](docs/m3-native-declaration-fixed-point.md)。统一源码 Build 驱动、整包前端组装和上游工具链替换仍待完成。
 
 显式依赖的最终 Unified 导出数据可通过 `importer.NewContext(checker).ReadExport` 加载，同一对象可用作 `types2.Config.Importer`。见 [原生类型导入器](docs/m3-native-type-importer.md)。
+
+原生归档输入已迁入，支持显式内存流以及原生格式和截断错误处理，见 [归档输入](docs/m3-native-archive-input.md)。目标对象头匹配及 noder 依赖组装仍需继续接通。
