@@ -1,0 +1,16 @@
+package ssa
+import("fmt";"encoding/json";"encoding/binary";"os";"testing";"IMPORT_TYPES";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_SRC";"IMPORT_IR";IMPORT_BASE SYMBOL_IMPORT)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ // Keep ir referenced on both sides; only the migrated setup needs its constructor.
+ var _ ir.Node
+ var out []string
+ for _,simd:=range []bool{false,true}{EXPERIMENT.SIMD=simd
+ i:=TY.Types[types.TINT];z:=TY.NewArray(i,0);p:=TY.NewPtr(i)
+ record:=func(ts ...*types.Type)*types.Type{var fs []*types.Field;for _,t:=range ts{fs=append(fs,TY.NewField(src.XPos{},nil,t))};return TY.NewStruct(fs)}
+ cases:=[]*types.Type{i,TY.NewSlice(i),TY.NewInterface(nil),z,TY.NewArray(i,1),TY.NewArray(i,2),TY.NewArray(z,100),record(i,i,i,i),record(i,i,i,i,i),record(TY.NewArray(i,2)),record(z,z,z,z,p),record(TY.Types[types.TINT64],TY.Types[types.TINT64],TY.Types[types.TINT64]),TY.TypeVec512,record(TY.TypeVec512),record(TY.TypeVec512,TY.TypeVec512),record(TY.TypeVec512,TY.TypeVec512,TY.TypeVec512,TY.NewArray(TY.TypeVec512,1)),record(TY.Types[types.TCOMPLEX128],TY.Types[types.TCOMPLEX128]),record(TY.Types[types.TCOMPLEX128],TY.Types[types.TCOMPLEX128],TY.Types[types.TCOMPLEX128])}
+ for j,t:=range cases{ok:=CanSSA(t);a,b:=t.Registers();out=append(out,fmt.Sprintf("%t:%d:%t:%d:%d:%d:%d",simd,j,ok,t.Size(),t.Alignment(),a,b))}
+ }
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

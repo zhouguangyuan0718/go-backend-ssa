@@ -63,6 +63,7 @@
 46. [M3 原生 deadlocals](docs/m3-deadlocals.md)：实例独立的无用局部赋值消除、闭包符号初始化及原生差分。
 47. [M3 原生 escape](docs/m3-escape.md)：原生逃逸分析、参数摘要、闭包捕获分类和实例缓存。
 48. [M3 原生 slice 优化](docs/m3-slice.md)：切片独占性分析、原生堆转移节点及实例化依赖。
+49. [M3 原生 CanSSA](docs/m3-canssa.md)：按输入类型所属目标进行 SSA 表示判定，供 walk 使用。
 
 ## 当前可运行的工具
 

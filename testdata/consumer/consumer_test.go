@@ -22,6 +22,7 @@ import (
 	"go-backend-ssa/reflectdata"
 	"go-backend-ssa/rttype"
 	"go-backend-ssa/slice"
+	"go-backend-ssa/ssa"
 	"go-backend-ssa/ssagen"
 	"go-backend-ssa/staticdata"
 	"go-backend-ssa/staticinit"
@@ -760,5 +761,22 @@ func TestPublicInlinability(t *testing.T) {
 	graph.Base.PGOHash = hash
 	if hash.MatchPkgFunc("p", "F", nil) {
 		t.Fatal("public hash gate")
+	}
+}
+
+func TestNativeCanSSAFromPublicModule(t *testing.T) {
+	layout, err := target.NewLayout("linux", "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := &gcbridge.Link{}
+	u, err := types.NewUniverseWithPositions(layout, &link.PosTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	typecheck.NewContext(ir.NewContext(u, link)).InitUniverse()
+	i := u.Types[types.Int]
+	if !ssa.CanSSA(u.NewSlice(i)) || ssa.CanSSA(u.NewArray(i, 2)) || ssa.MaxStruct != 4 {
+		t.Fatal("public native SSA representation predicate")
 	}
 }

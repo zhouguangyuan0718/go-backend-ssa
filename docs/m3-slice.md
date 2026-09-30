@@ -34,3 +34,5 @@ Context 只绑定已有 escape 和 reflectdata 实例，不新建分析状态模
 ## 下一步
 
 先接入 walk 所需的原生 CanSSA 类型判定与架构输入，再迁入完整 walk 生产包。walk 的预分析缓存、运行时字段缓存、select 类型和接口计数器归实例；已有 typecheck/IR/reflectdata/staticinit 的数据继续共享。随后连接 SSA 构造、对外结果及原生后端消费，最终以实际替换后的编译器构建、可执行程序和自举作为验收。
+
+后续进展：CanSSA 已迁入，见 [walk 类型表示判定依赖](m3-canssa.md)。
