@@ -3,6 +3,7 @@ package consumer
 import (
 	"encoding/binary"
 	"fmt"
+	"go-backend-ssa/abi"
 	"go-backend-ssa/bitvec"
 	"go-backend-ssa/compare"
 	"go-backend-ssa/deadlocals"
@@ -400,6 +401,12 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 		}
 	})
 
+	abiLayout := abi.NewContext(graph)
+	cfg := abiLayout.NewABIConfig(2, 2, 0, 1)
+	assigned := cfg.ABIAnalyzeFuncType(cmpfn.Type())
+	if assigned.Config() != cfg || len(assigned.InParams()) != 2 || len(assigned.OutParams()) != 1 || len(abiLayout.RegisterTypes(assigned.InParams())) != 2 {
+		t.Fatal("public ABI layout", assigned)
+	}
 	lowering := walk.NewContext(writer, analysis)
 	seen := map[*ir.Func]bool{}
 	for _, root := range result.Funcs {

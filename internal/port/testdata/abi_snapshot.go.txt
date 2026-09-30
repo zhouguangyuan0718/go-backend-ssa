@@ -1,0 +1,46 @@
+package abi
+import("fmt";"encoding/json";"encoding/binary";"os";"testing";"IMPORT_TYPES";"IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian}
+ switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ pos:=LINK.PosTable.XPos(src.MakePos(src.NewFileBase("abi.go","/src/abi.go"),3,1))
+ var out []string
+ field:=func(name string,typ *types.Type)*types.Field{return TY.NewField(pos,TY.LocalPkg.Lookup(name),typ)}
+ pad:=TY.NewStruct([]*types.Field{field("a",TY.Types[types.TUINT16]),field("b",TY.Types[types.TUINT8]),field("c",TY.Types[types.TINT32]),field("d",TY.Types[types.TINT32])})
+ empty:=TY.NewStruct(nil)
+ pair:=TY.NewStruct([]*types.Field{field("x",TY.Types[types.TINT]),field("y",TY.Types[types.TFLOAT64])})
+ tail:=TY.NewStruct([]*types.Field{field("x",TY.Types[types.TINT]),field("z",empty)})
+ nested:=TY.NewStruct([]*types.Field{field("a",TY.NewArray(pair,1)),field("b",TY.Types[types.TBOOL])})
+ cases:=[][]*types.Type{
+ nil,{TY.Types[types.TINT64],TY.Types[types.TFLOAT64],TY.Types[types.TINT32]},
+ {TY.Types[types.TSTRING],TY.NewSlice(TY.Types[types.TINT]),TY.Types[types.TINTER]},
+ {TY.Types[types.TINT],pad,TY.Types[types.TINT],TY.Types[types.TCOMPLEX128]},
+ {empty,TY.NewArray(TY.Types[types.TINT],0),TY.NewArray(TY.Types[types.TINT],1),TY.NewArray(TY.Types[types.TINT],2)},
+ {nested,tail,TY.NewPtr(pad),TY.NewChan(TY.Types[types.TINT],types.Cboth)},
+ {TY.TypeVec128,TY.TypeVec256,TY.TypeVec512,TY.TypeMask},
+ }
+ snapshot:=func(label string,r *ABIParamResultInfo){
+ cfg:=r.Config();out=append(out,fmt.Sprintf("%s:%v:%d:%d:%d:%d:%d:%d:%s",label,cfg.Which(),cfg.LocalsOffset(),r.ArgWidth(),r.InRegistersUsed(),r.OutRegistersUsed(),r.SpillAreaOffset(),r.SpillAreaSize(),r.String()))
+ for side,ps:=range [][]ABIParamAssignment{r.InParams(),r.OutParams()}{
+ out=append(out,fmt.Sprintf("types:%d:%v",side,UP.RegisterTypes(ps)))
+ for j:=range ps{p:=&ps[j];ts,offs:=p.RegisterTypesAndOffsets();padding:=func()(result []uint64){defer func(){if failure:=recover();failure!=nil{if target.size!=4||fmt.Sprint(failure)!="internal error"{t.Fatalf("unexpected padding failure %s/%d/%d: %v",label,side,j,failure)};out=append(out,fmt.Sprintf("padding-panic:%s:%d:%d:%v",label,side,j,failure))}}();return p.ComputePadding(make([]uint64,256))}();out=append(out,fmt.Sprintf("param:%d:%d:%v:%v:%v:%v:%s",side,j,ts,offs,padding,p.Registers,p.ToString(cfg,true)))
+ if side==0||len(p.Registers)==0{out=append(out,fmt.Sprintf("frame:%d",p.FrameOffset(r)))}
+ if len(p.Registers)==0{out=append(out,fmt.Sprintf("stack:%d",p.Offset()))}else{for _,reg:=range p.Registers{out=append(out,fmt.Sprintf("reg:%d:%d",reg,cfg.FloatIndexFor(reg)))}}
+ }
+ }
+ }
+ for _,budget:=range [][3]int{{0,0,0},{1,1,0},{2,1,16},{9,15,32}}{
+ cfg:=UP.NewABIConfig(budget[0],budget[1],int64(budget[2]),uint8(1));if budget[0]==0{cfg=UP.NewABIConfig(0,0,int64(budget[2]),0)}
+ for i,ts:=range cases{snapshot(fmt.Sprintf("%v/%d",budget,i),cfg.ABIAnalyzeTypes(ts,ts))}
+ // Include receiver and actual Name frame-offset/output-register mutations.
+ for _,setNames:=range []bool{false,true}{
+ makeField:=func(name string,typ *types.Type,class ir.Class)*types.Field{f:=field(name,typ);n:=GRAPH.NewNameAt(pos,f.Sym,typ);n.Class=class;n.SetFrameOffset(123);f.Nname=n;return f}
+ recv:=makeField("recv",TY.Types[types.TINT],ir.PPARAM)
+ sig:=TY.NewSignature(recv,[]*types.Field{makeField("in",TY.Types[types.TSTRING],ir.PPARAM)},[]*types.Field{makeField("result",TY.Types[types.TINT],ir.PPARAMOUT),makeField("pair",pair,ir.PPARAMOUT)})
+ snapshot(fmt.Sprintf("signature:%v:%t",budget,setNames),cfg.ABIAnalyze(sig,setNames))
+ for _,f:=range sig.RecvParamsResults(){n:=f.Nname.(*ir.Name);out=append(out,fmt.Sprintf("name:%s:%d:%d:%t",n.Sym().Name,f.Offset,n.FrameOffset(),n.IsOutputParamInRegisters()))}
+ }
+ }
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}

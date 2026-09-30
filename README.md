@@ -68,6 +68,7 @@
 51. [M3 walk 架构输入](docs/m3-walk-target.md)：原生索引/调用判定及按类型绑定架构字段。
 52. [M3 局部零值调度器绑定](docs/m3-zero-schedule.md)：为原生 walk 的常量赋值保留零值行为。
 53. [M3 原生 walk](docs/m3-walk.md)：完整排序/改写、实例缓存和公开 Walk 入口。
+54. [M3 ABI 参数布局](docs/m3-abi-layout.md)：原生寄存器/栈分配、参数分解和实例合成类型缓存。
 
 ## 当前可运行的工具
 

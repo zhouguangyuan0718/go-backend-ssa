@@ -211,6 +211,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, sliceMigration()...)
 	plan.Units = append(plan.Units, ssaValueMigration()...)
 	plan.Units = append(plan.Units, walkMigration()...)
+	plan.Units = append(plan.Units, abiMigration()...)
 	// base's symbol helpers now consume the native obj package. Keep their
 	// entire package after obj/buildcfg and before the compiler types package.
 	var baseUnits, units []Unit
