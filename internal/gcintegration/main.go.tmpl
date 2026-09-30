@@ -1,0 +1,108 @@
+// Generated integration driver. Replaces cmd/compile/main.go in an isolated tree.
+package main
+
+import (
+    "cmd/compile/internal/amd64"
+    "cmd/compile/internal/base"
+    "cmd/compile/internal/ssagen"
+    "cmd/internal/obj"
+    "cmd/internal/objabi"
+    "context"
+    "encoding/json"
+    "flag"
+    "fmt"
+    "go-backend-ssa/compiler"
+    "internal/buildcfg"
+    "io/fs"
+    "log"
+    "os"
+    "runtime"
+)
+
+const bridgeRevision = "{{CONTENT_HASH}}"
+
+func main() {
+    log.SetFlags(0)
+    log.SetPrefix("compile: ")
+    if err := run(); err != nil { fmt.Fprintln(os.Stderr, "compile:", err); os.Exit(1) }
+}
+
+func run() error {
+    // cmd/go hashes this identity into its build cache. It must differ from
+    // the original compiler and change with the complete vendored library.
+    for _, arg := range os.Args[1:] {
+        if arg == "-V" || arg == "-V=full" {
+            fmt.Printf("compile version %s (go-backend-ssa %s)\n", compiler.Version, bridgeRevision)
+            return nil
+        }
+    }
+    buildcfg.Check()
+    if buildcfg.GOOS != "linux" || buildcfg.GOARCH != "amd64" {
+        return fmt.Errorf("go-backend-ssa currently supports linux/amd64, got %s/%s", buildcfg.GOOS, buildcfg.GOARCH)
+    }
+    for _, key := range []string{"GOCOMPILEDEBUG", "GOSSAFUNC", "GOSSADIR"} {
+        if os.Getenv(key) != "" { return fmt.Errorf("unsupported compiler environment setting %s", key) }
+    }
+    // Retain the official driver parser, config-file readers and diagnostics.
+    // This native graph is used only to parse driver settings. Source loading
+    // and every compiler pass run exclusively through compiler.Compile below.
+    amd64.Init(&ssagen.Arch)
+    base.Ctxt = obj.Linknew(ssagen.Arch.LinkArch)
+    base.Ctxt.DiagFunc = base.Errorf
+    base.Ctxt.DiagFlush = base.FlushErrors
+    base.Ctxt.UseBASEntries = base.Ctxt.Headtype != objabi.Hdarwin
+    base.ParseFlags()
+    supported := map[string]bool{
+        "p": true, "o": true, "lang": true, "std": true, "+": true,
+        "complete": true, "buildid": true, "goversion": true,
+        "trimpath": true, "nolocalimports": true, "D": true,
+        "importcfg": true, "embedcfg": true, "symabis": true,
+        "pack": true, "asmhdr": true, "c": true, "N": true,
+        "l": true, "dwarf": true,
+    }
+    var unsupported string
+    flag.Visit(func(f *flag.Flag) { if !supported[f.Name] && unsupported == "" { unsupported = f.Name } })
+    if unsupported != "" { return fmt.Errorf("unsupported go-backend-ssa compiler option -%s", unsupported) }
+    if base.Ctxt.Pkgpath == obj.UnlinkablePkg { return fmt.Errorf("go-backend-ssa driver currently requires an explicit -p package path") }
+    if base.Flag.N != 0 && base.Flag.N != 1 { return fmt.Errorf("unsupported optimization mode -N=%d",base.Flag.N) }
+    if base.Flag.LowerL != 0 && base.Flag.LowerL != 1 { return fmt.Errorf("unsupported inline mode -l=%d", base.Flag.LowerL) }
+    req := compiler.Request{
+        ImportPath: base.Ctxt.Pkgpath,
+        Target: compiler.Target{GOOS: buildcfg.GOOS, GOARCH: buildcfg.GOARCH, GOAMD64: buildcfg.GOAMD64, Experiments: buildcfg.Experiment.String()},
+        Paths: compiler.SourcePaths{WorkingDirectory: base.Ctxt.Pathname, GOROOT: buildcfg.GOROOT, HostOS: runtime.GOOS},
+        Options: compiler.Options{
+            Workers: base.Flag.LowerC, DisableOptimization: base.Flag.N != 0,
+            DisableInlining: base.Flag.LowerL == 1, DisableDwarf: !base.Flag.Dwarf,
+            Complete: base.Flag.Complete, Standard: base.Flag.Std, CompilingRuntime: base.Flag.CompilingRuntime,
+            AssemblyHeader: base.Flag.AsmHdr != "", NoLocalImports: base.Flag.NoLocalImports,
+            Language: base.Flag.Lang, BuildID: base.Flag.BuildID, TrimPath: base.Flag.TrimPath, LocalImportPrefix: base.Flag.D,
+        },
+        Imports: map[string][]byte{}, ImportMap: base.Flag.Cfg.ImportMap,
+        Embed: compiler.EmbedConfig{Patterns: base.Flag.Cfg.Embed.Patterns, Files: base.Flag.Cfg.Embed.Files, Open: func(path string)(fs.File,error){ return os.Open(path) }},
+    }
+    for _, name := range flag.Args() {
+        data, err := os.ReadFile(name); if err != nil { return err }
+        req.Files = append(req.Files, compiler.SourceFile{Name: name, Data: data})
+    }
+    for path, name := range base.Flag.Cfg.PackageFile {
+        data, err := os.ReadFile(name); if err != nil { return err }
+        req.Imports[path] = data
+    }
+    if base.Flag.SymABIs != "" {
+        data, err := os.ReadFile(base.Flag.SymABIs); if err != nil { return err }; req.SymABIs = data
+    }
+    result, err := compiler.Compile(context.Background(), req)
+    if err != nil { return err }
+    for _, d := range result.Diagnostics { fmt.Fprintln(os.Stderr, d.String()) }
+    if err = os.WriteFile(base.Flag.LowerO, result.Archive, 0666); err != nil { return err }
+    if base.Flag.AsmHdr != "" {
+        if err = os.WriteFile(base.Flag.AsmHdr, result.AssemblyHeader, 0666); err != nil { return err }
+    }
+    // Explicit opt-in audit evidence records successful calls into the library.
+    if path := os.Getenv("GO_SSA_BRIDGE_TRACE"); path != "" {
+        record, err := json.Marshal(struct{ Package, Library, Upstream string }{req.ImportPath, bridgeRevision, compiler.UpstreamCommit}); if err != nil { return err }
+        f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); if err != nil { return err }
+        _, err = f.Write(append(record, '\n')); closeErr := f.Close(); if err != nil { return err }; return closeErr
+    }
+    return nil
+}

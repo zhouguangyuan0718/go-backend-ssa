@@ -45,18 +45,19 @@ type Context struct {
 	RaceEnabled bool
 	random      *rand.Rand
 
-	header              *objabi.Context
-	archiveModes        ObjectMode
-	archiveFailed       bool
-	output              *archiveOutput
-	outputMessages      []string
-	Writer              *objw.Context
-	Package             *pkginit.Context
-	functionDataDone    bool
-	dataFailed          bool
-	declarationsStarted bool
-	declarationsRunning bool
-	declarationsFailed  bool
+	header                           *objabi.Context
+	assemblyStarted, assemblyRunning bool
+	archiveModes                     ObjectMode
+	archiveFailed                    bool
+	output                           *archiveOutput
+	outputMessages                   []string
+	Writer                           *objw.Context
+	Package                          *pkginit.Context
+	functionDataDone                 bool
+	dataFailed                       bool
+	declarationsStarted              bool
+	declarationsRunning              bool
+	declarationsFailed               bool
 }
 
 func NewContext(writer *objw.Context) *Context {
@@ -108,7 +109,14 @@ func (c *Context) DumpGlobal(n *ir.Name) { c.checkGlobal(n); c.dumpGlobal(n) }
 
 // DumpGlobalConst emits the native typed integer constant DWARF record.
 func (c *Context) DumpGlobalConst(n *ir.Name) { c.checkGlobal(n); c.dumpGlobalConst(n) }
-func (c *Context) fatalf(f string, a ...any)  { panic(fmt.Errorf(f, a...)) }
+func (c *Context) fatalf(f string, a ...any) {
+	if c.assemblyRunning && len(a) == 1 {
+		if cause, ok := a[0].(error); ok {
+			panic(&bio.OutputError{Message: fmt.Sprintf(f, a...), Cause: cause})
+		}
+	}
+	panic(fmt.Errorf(f, a...))
+}
 
 // ObjectConfig carries explicit target features and compiler version for the
 // native compatibility header. Experiments come from the bound Universe.
@@ -402,4 +410,28 @@ func (c *Context) CheckPackage() {
 		panic("final compiler checks require a completed package")
 	}
 	c.checkPackage()
+}
+
+// WriteAssemblyHeader emits the pinned assembler constants and type offsets.
+// Call after the archive and before CheckPackage. The caller owns output.
+// An attempted write consumes the stage, including when output fails.
+func (c *Context) WriteAssemblyHeader(output io.WriteSeeker) (err error) {
+	if c == nil || c.Package == nil || c.assemblyStarted || c.output != nil || output == nil || c.archiveModes != CombinedObject || c.archiveFailed || c.finishFailed || c.errors() != 0 || c.Package.Noder.Flag.AsmHdr == "" {
+		return fmt.Errorf("assembly header requires a completed archive and enabled header output")
+	}
+	c.assemblyStarted, c.assemblyRunning = true, true
+	c.output = &archiveOutput{WriteSeeker: output}
+	defer func() {
+		c.output = nil
+		c.assemblyRunning = false
+		if p := recover(); p != nil {
+			if e, ok := p.(*bio.OutputError); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	c.dumpasmhdr()
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"go-backend-ssa/internal/base"
+	"go/version"
 	"io"
 	"io/fs"
 	"maps"
@@ -61,17 +62,27 @@ type Options struct {
 	Workers                                            int
 	DisableInlining, DisableOptimization, DisableDwarf bool
 	Complete, Standard, CompilingRuntime               bool
+	AssemblyHeader, NoLocalImports                     bool
+	// Language defaults to go1.27 and may select an earlier language version.
+	Language, BuildID, TrimPath, LocalImportPrefix string
 }
 type EmbedConfig struct {
 	Patterns map[string][]string
 	Files    map[string]string
 	Open     func(string) (fs.File, error)
 }
+
+// SourcePaths controls native position and import path handling without reading
+// process state. Empty WorkingDirectory and HostOS use / and linux.
+type SourcePaths struct {
+	WorkingDirectory, GOROOT, HostOS string
+}
 type Request struct {
 	ImportPath string
 	Files      []SourceFile
 	Target     Target
 	Options    Options
+	Paths      SourcePaths
 	// Imports maps canonical import paths to complete matching compiler archives.
 	// Inputs must remain unchanged during Compile. Returned data is independent.
 	Imports   map[string][]byte
@@ -81,11 +92,12 @@ type Request struct {
 	Embed   EmbedConfig
 }
 type Result struct {
-	Archive     []byte
-	PackageName string
-	ImportPath  string
-	Target      Target
-	Diagnostics []diagnostic.Diagnostic
+	Archive        []byte
+	AssemblyHeader []byte
+	PackageName    string
+	ImportPath     string
+	Target         Target
+	Diagnostics    []diagnostic.Diagnostic
 }
 type Error struct{ Diagnostics []diagnostic.Diagnostic }
 
@@ -117,12 +129,27 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 	if req.ImportPath == "" || len(req.Files) == 0 || req.Options.Workers < 0 {
 		return nil, fmt.Errorf("compiler requires an import path, source files and nonnegative worker count")
 	}
+	language := req.Options.Language
+	if language == "" {
+		language = "go1.27"
+	}
+	if !version.IsValid(language) || version.Lang(language) != language || version.Compare(language, "go1.27") > 0 {
+		return nil, fmt.Errorf("unsupported Go language version %q", language)
+	}
+	workingDirectory := req.Paths.WorkingDirectory
+	if workingDirectory == "" {
+		workingDirectory = "/"
+	}
+	hostOS := req.Paths.HostOS
+	if hostOS == "" {
+		hostOS = "linux"
+	}
 	exp, e := buildcfg.ParseGOEXPERIMENT(req.Target.GOOS, req.Target.GOARCH, req.Target.Experiments)
 	if e != nil {
 		return nil, e
 	}
 	arch := sys.NewContext().ArchAMD64
-	link := &obj.Link{Arch: &obj.LinkArch{Arch: arch}, TargetOS: req.Target.GOOS, Pkgpath: req.ImportPath, Pathname: "/", Flag_locationlists: !req.Options.DisableDwarf}
+	link := &obj.Link{Arch: &obj.LinkArch{Arch: arch}, TargetOS: req.Target.GOOS, Pkgpath: req.ImportPath, Pathname: workingDirectory, UseBASEntries: true, Flag_locationlists: !req.Options.DisableDwarf}
 	if e = link.Headtype.Set(req.Target.GOOS); e != nil {
 		return nil, e
 	}
@@ -153,7 +180,14 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 	tc.InitUniverse()
 	tc.InitRuntime()
 	flags := &graph.Base.Flag
-	flags.Lang = "go1.27"
+	flags.Lang = language
+	flags.BuildID = req.Options.BuildID
+	flags.TrimPath = req.Options.TrimPath
+	flags.NoLocalImports = req.Options.NoLocalImports
+	flags.D = req.Options.LocalImportPrefix
+	if req.Options.AssemblyHeader {
+		flags.AsmHdr = "explicit-output"
+	}
 	flags.Complete = req.Options.Complete
 	flags.Std = req.Options.Standard
 	flags.CompilingRuntime = req.Options.CompilingRuntime
@@ -176,6 +210,7 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 	if exp.LoopVar {
 		graph.Debug.LoopVar = 1
 	}
+	graph.Base.PrepareNativeFlags(&graph.Debug)
 	graph.Base.ConvertHash = graph.Base.NewHashDebug("converthash", "qn", nil)
 	flags.Cfg.ImportMap = maps.Clone(req.ImportMap)
 	flags.Cfg.PackageFile = make(map[string]string, len(req.Imports))
@@ -193,6 +228,7 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 	if e != nil {
 		return nil, e
 	}
+	nd.GOROOT = req.Paths.GOROOT
 	writer := objw.NewContext(u, link, req.Target.GOOS)
 	rt := rttype.NewContext(writer)
 	rt.Init()
@@ -217,7 +253,7 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 	producer.Var(new(countFlag), "N", "")
 	producer.Var(new(countFlag), "l", "")
 	producer.Bool("dwarf", true, "")
-	if req.Options.DisableOptimization {
+	if flags.N != 0 {
 		_ = producer.Set("N", "1")
 	}
 	if req.Options.DisableInlining {
@@ -234,7 +270,7 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 	dwarf.RecordFlags("N", "l", "dwarf")
 	backend.InitTables()
 	config := gc.ObjectConfig{GOOS: req.Target.GOOS, GOARCH: req.Target.GOARCH, GOAMD64: req.Target.GOAMD64, Version: Version}
-	nd.BindImports(config, "linux", func(name string) (noder.DependencyFile, error) {
+	nd.BindImports(config, hostOS, func(name string) (noder.DependencyFile, error) {
 		data, ok := archives[name]
 		if !ok {
 			return nil, fmt.Errorf("dependency archive not supplied: %q", name)
@@ -303,6 +339,12 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 	if e = finalizer.WriteArchive(&output, gc.CombinedObject); e != nil {
 		return nil, e
 	}
+	var assembly archiveOutput
+	if req.Options.AssemblyHeader {
+		if e = finalizer.WriteAssemblyHeader(&assembly); e != nil {
+			return nil, e
+		}
+	}
 	finalizer.CheckPackage()
 	if errors() {
 		return nil, &Error{Diagnostics: diagnostics()}
@@ -310,7 +352,7 @@ func Compile(ctx context.Context, req Request) (result *Result, err error) {
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
-	return &Result{Archive: output.data, PackageName: u.LocalPkg.Name, ImportPath: req.ImportPath, Target: req.Target, Diagnostics: diagnostics()}, nil
+	return &Result{Archive: output.data, AssemblyHeader: assembly.data, PackageName: u.LocalPkg.Name, ImportPath: req.ImportPath, Target: req.Target, Diagnostics: diagnostics()}, nil
 }
 
 type archiveInput struct {

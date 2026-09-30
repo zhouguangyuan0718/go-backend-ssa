@@ -129,3 +129,50 @@ func TestCompileEmbeddedDataAndProviderFailure(t *testing.T) {
 		t.Fatal("missing embedded input accepted")
 	}
 }
+
+func TestNativeDriverOptions(t *testing.T) {
+	req := request("internal/runtime/atomic", "package atomic;func F(x int)int{return x*4+7}")
+	req.Options.Standard = true
+	optimized, err := compiler.Compile(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Options.DisableOptimization = true
+	forced, err := compiler.Compile(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(optimized.Archive, forced.Archive) {
+		t.Fatal("native runtime optimization normalization differs")
+	}
+	req = request("p", "package p;func F(){for range 4{}}")
+	req.Options.Language = "go1.21"
+	if result, err := compiler.Compile(context.Background(), req); result != nil || err == nil || !strings.Contains(err.Error(), "go1.22") {
+		t.Fatal("language version was ignored", result, err)
+	}
+	req.Options.Language = "go1.22"
+	if _, err := compiler.Compile(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	for _, language := range []string{"nonsense", "go1.28", "go1.22.1"} {
+		req.Options.Language = language
+		if result, err := compiler.Compile(context.Background(), req); result != nil || err == nil {
+			t.Fatal("invalid language version accepted", language)
+		}
+	}
+	req = request("p", "package p; const C=17; const F=1.5; type Header struct{_ byte;A int64;B [3]byte}")
+	req.Options.AssemblyHeader = true
+	result, err := compiler.Compile(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := string(result.AssemblyHeader)
+	for _, want := range []string{"#define const_C 17", "#define Header__size 24", "#define Header_A 8", "#define Header_B 16"} {
+		if !strings.Contains(header, want) {
+			t.Fatalf("missing %q in %s", want, header)
+		}
+	}
+	if strings.Contains(header, "const_F") || strings.Contains(header, "Header__ ") {
+		t.Fatal("unsupported/blank header declaration", header)
+	}
+}

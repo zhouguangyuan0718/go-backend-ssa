@@ -56,9 +56,14 @@ func TestNativeCompileLinkAndRun(t *testing.T) {
 		t.Fatal("runtime archive missing")
 	}
 	depSource := `package dep
+import "unsafe"
+func FromUintptr(u uintptr)*int{return (*int)(unsafe.Pointer(u))}
 var Offset=3
 func Twice[T ~int](x T)T{return x*2}
 type Value int
+type Header struct{ _ byte; A int64; B [3]byte }
+const Word=17
+const Fraction=1.5
 func(x Value)Get()int{return int(x)+Offset}
 `
 	mainSource := `package main
@@ -111,15 +116,22 @@ func main(){ch:=make(chan int);go func(){ch<-dep.Twice(M[1])}();var v interface{
 		}
 		return b
 	}
-	for _, mode := range []string{"default", "noopt", "nodwarf"} {
+	for _, mode := range []string{"default", "noopt", "nodwarf", "driver"} {
 		t.Run(mode, func(t *testing.T) {
 			opts := compiler.Options{Complete: true, Workers: 4}
+			depHeader, mainHeader := filepath.Join(dir, mode+"-dep.h"), filepath.Join(dir, mode+"-main.h")
 			args := []string{"tool", "compile", "-p", "example/dep", "-complete"}
 			switch mode {
 			case "noopt":
 				opts.DisableInlining = true
 				opts.DisableOptimization = true
 				args = append(args, "-N", "-l")
+			case "driver":
+				opts.AssemblyHeader = true
+				opts.BuildID = "explicit-driver-build-id"
+				opts.TrimPath = dir + "=>module"
+				opts.Language = "go1.22"
+				args = append(args, "-asmhdr", depHeader, "-buildid", opts.BuildID, "-trimpath", opts.TrimPath, "-lang", opts.Language)
 			case "nodwarf":
 				opts.DisableDwarf = true
 				args = append(args, "-dwarf=false")
@@ -132,6 +144,15 @@ func main(){ch:=make(chan int);go func(){ch<-dep.Twice(M[1])}();var v interface{
 			dep, e := compiler.Compile(context.Background(), req)
 			if e != nil {
 				t.Fatal(e)
+			}
+			if opts.AssemblyHeader {
+				header, e := os.ReadFile(depHeader)
+				if e != nil {
+					t.Fatal(e)
+				}
+				if !bytes.Equal(dep.AssemblyHeader, header) {
+					t.Fatalf("assembly header differs: library=%s native=%s", dep.AssemblyHeader, header)
+				}
 			}
 			refBytes, e := os.ReadFile(refDep)
 			if e != nil {
@@ -170,10 +191,21 @@ func main(){ch:=make(chan int);go func(){ch<-dep.Twice(M[1])}();var v interface{
 			switch mode {
 			case "noopt":
 				args = append(args, "-N", "-l")
+			case "driver":
+				args = append(args, "-asmhdr", mainHeader, "-buildid", opts.BuildID, "-trimpath", opts.TrimPath, "-lang", opts.Language)
 			case "nodwarf":
 				args = append(args, "-dwarf=false")
 			}
 			run(t, append(args, mainFile)...)
+			if opts.AssemblyHeader {
+				header, e := os.ReadFile(mainHeader)
+				if e != nil {
+					t.Fatal(e)
+				}
+				if !bytes.Equal(result.AssemblyHeader, header) {
+					t.Fatalf("main assembly header differs: library=%s native=%s", result.AssemblyHeader, header)
+				}
+			}
 			refMainBytes, e := os.ReadFile(refMain)
 			if e != nil {
 				t.Fatal(e)

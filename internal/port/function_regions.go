@@ -51,7 +51,7 @@ func prepareFunctionRegions(fs *token.FileSet, file *ast.File, data []byte, unit
 	if copied {
 		// One token file keeps comment lines ordered for go/printer. Parsing
 		// the combined source also resolves package identifiers in each copy.
-		parsed, e := parser.ParseFile(fs, unit.Source+"#regions", combined, parser.ParseComments)
+		parsed, e := parser.ParseFile(fs, unit.Source, combined, parser.ParseComments)
 		if e != nil {
 			return e
 		}
@@ -310,20 +310,20 @@ func regionSelector(expr ast.Expr) (*ast.Ident, string) {
 	return root, strings.Join(members, ".")
 }
 func regionAnchor(file *ast.File, stmt ast.Stmt, anchor SourceCallAnchor) (bool, error) {
-	if anchor.Assignment != "" {
+	assignment := func(stmt ast.Node) bool {
 		a, ok := stmt.(*ast.AssignStmt)
 		if !ok || a.Tok != token.ASSIGN || len(a.Lhs) != 1 || len(a.Rhs) != 1 {
-			return false, nil
+			return false
 		}
 		root, member := regionSelector(a.Lhs[0])
 		if root == nil || regionImports(file)[root.Name] != "" || root.Obj != nil && root.Obj != file.Scope.Lookup(root.Name) {
-			return false, nil
+			return false
 		}
 		name := root.Name
 		if member != "" {
 			name += "." + member
 		}
-		return name == anchor.Assignment, nil
+		return name == anchor.Assignment
 	}
 	match := func(call *ast.CallExpr) bool {
 		root, member := regionSelector(call.Fun)
@@ -346,6 +346,9 @@ func regionAnchor(file *ast.File, stmt ast.Stmt, anchor SourceCallAnchor) (bool,
 		return true
 	}
 	if anchor.Enclosing == "" {
+		if anchor.Assignment != "" {
+			return assignment(stmt), nil
+		}
 		e, ok := stmt.(*ast.ExprStmt)
 		if !ok {
 			return false, nil
@@ -370,13 +373,17 @@ func regionAnchor(file *ast.File, stmt ast.Stmt, anchor SourceCallAnchor) (bool,
 		if _, ok := n.(*ast.FuncLit); ok {
 			return false
 		}
-		if call, ok := n.(*ast.CallExpr); ok && match(call) {
+		if anchor.Assignment != "" {
+			if assignment(n) {
+				count++
+			}
+		} else if call, ok := n.(*ast.CallExpr); ok && match(call) {
 			count++
 		}
 		return true
 	})
 	if count > 1 {
-		return false, fmt.Errorf("ambiguous call in enclosing region statement: %s.%s", anchor.Package, anchor.Member)
+		return false, fmt.Errorf("ambiguous anchor in enclosing region statement: %s.%s%s", anchor.Package, anchor.Member, anchor.Assignment)
 	}
 	return count == 1, nil
 }

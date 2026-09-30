@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v68"
+const ToolVersion = "syncgo-m3-v69"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -292,7 +292,7 @@ func (p Plan) Validate() error {
 			}
 			for _, a := range []SourceCallAnchor{r.First, r.Last} {
 				if a.Assignment != "" {
-					if !memberPath(a.Assignment) || a.Package != "" || a.Member != "" || a.Enclosing != "" || a.StringArgument != nil {
+					if !memberPath(a.Assignment) || a.Package != "" || a.Member != "" || (a.Enclosing != "" && a.Enclosing != "if" && a.Enclosing != "range") || a.StringArgument != nil {
 						return fmt.Errorf("invalid assignment region anchor: %s", name)
 					}
 					continue

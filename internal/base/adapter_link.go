@@ -3,6 +3,7 @@ package base
 import (
 	"fmt"
 	"go-backend-ssa/internal/cmd/obj"
+	"go-backend-ssa/internal/cmd/objabi"
 	"go-backend-ssa/internal/go/bisect"
 	"io"
 )
@@ -52,4 +53,19 @@ func DefaultDebugFlags() DebugFlags {
 	c := newLinkContext()
 	c.initializeDebugDefaults()
 	return c.debugDefaults
+}
+
+// PrepareNativeFlags applies the pinned package/runtime normalization after
+// explicit flags and debug settings have been supplied.
+func (c *LinkContext) PrepareNativeFlags(debug *DebugFlags) {
+	if c == nil || c.Ctxt == nil || debug == nil {
+		panic("native flags require compiler state")
+	}
+	c.debugDefaults = *debug
+	c.preparePackageFlags()
+	c.normalizePackageFlags()
+	*debug = c.debugDefaults
+}
+func (c *LinkContext) lookupPkgSpecial(path string) objabi.PkgSpecial {
+	return objabi.NewContext().LookupPkgSpecial(path)
 }

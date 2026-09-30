@@ -108,3 +108,7 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 ### 源码到原生归档
 
 公开 `compiler.Compile` 已串起显式源码/依赖与原生完整编译，并在三种模式下完成官方归档逐字节比较和真实 Linux/amd64 链接运行，见[阶段记录](m3-native-source-compiler.md)。后续推进隔离官方驱动接入、标准库重建/自举、独立 Built/EarlyOptimized 边界和第二目标验收。
+
+### 隔离上游编译驱动
+
+已通过隔离 Go 1.27.1 的真实 `cmd/compile` 调用本库，强制重建 Linux/amd64 无 cgo 标准库，并验证自编译的编译器继续生成一致归档，见[驱动接入记录](m3-upstream-compiler-driver.md)。后续继续完整 bootstrap、所需驱动能力与回归、第二目标及独立 SSA 阶段接口。

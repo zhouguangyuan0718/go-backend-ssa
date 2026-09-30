@@ -45,6 +45,16 @@ func archiveMigration(units []Unit) []Unit {
 			u.Calls = append(u.Calls, CallRule{Source: internal + "bio/buf.go", Function: "Create", Method: "createOutput"}, CallRule{Source: internal + "objabi/util.go", Function: "HeaderString", Method: "header.HeaderString"}, CallRule{Source: compiler + "noder/export.go", Function: "WriteExports", Method: "Package.Noder.WriteExports"}, CallRule{Source: compiler + "base/print.go", Function: "FlushErrors", Method: "flushErrors"}, CallRule{Source: compiler + "base/print.go", Function: "ErrorExit", Method: "errorExit"})
 		}
 	}
+	for _, u := range units {
+		if u.Source == compiler+"gc/obj.go" {
+			header := u
+			header.Source = compiler + "gc/export.go"
+			header.Functions = []string{"dumpasmhdr"}
+			header.Declarations = nil
+			units = append(units, header)
+			break
+		}
+	}
 	ctx := func() *ContextRule {
 		return &ContextRule{Type: "Context", Constructor: "initContext", Initialize: true, PreserveNilArgs: true, RedirectTrace: true, Adapter: "adapter_context.go", Selective: true}
 	}
