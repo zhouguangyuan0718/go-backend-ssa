@@ -907,6 +907,7 @@ func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	u.LocalPkg = u.NewPkg("example/ssa", "ssa")
 	graph := ir.NewContext(u, link)
 	tc := typecheck.NewContext(graph)
 	tc.InitUniverse()
@@ -917,7 +918,8 @@ func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
 	cfg := c.NewConfig("amd64", *c.NewTypes(), link, true, false)
 	var cache ssa.Cache
 	cache.Reset()
-	f := cfg.NewFunc(nil, &cache)
+	fe := &publicSplitFrontend{}
+	f := cfg.NewFunc(fe, &cache)
 	f.Name = "public"
 	f.Type = u.NewSignature(nil, nil, nil)
 	f.ABISelf = cfg.ABI1
@@ -931,7 +933,27 @@ func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
 	if !strings.Contains(f.String(), "InitMem") {
 		t.Fatal("native graph formatting unavailable")
 	}
+	n := graph.NewNameAt(position.XPos{}, u.LocalPkg.Lookup("s"), cfg.Types.String)
+	n.Class = ir.PPARAM
+	slot := &ssa.LocalSlot{N: n, Type: cfg.Types.String}
+	ptr, length := f.SplitString(slot)
+	ptr2, length2 := f.SplitString(slot)
+	if ptr != ptr2 || length != length2 || ptr.Type != cfg.Types.BytePtr || length.Type != cfg.Types.Int || length.Off != 8 || fe.calls != 2 {
+		t.Fatal("public native local-slot decomposition")
+	}
+
 	var _ *ssa.Value = v
 	var _ *ssa.Block = b
 	var _ *ssa.Func = f
+}
+
+// Parameter slots retain their Name and offset under the native Frontend contract.
+type publicSplitFrontend struct {
+	ssa.Frontend
+	calls int
+}
+
+func (fe *publicSplitFrontend) SplitSlot(parent *ssa.LocalSlot, suffix string, offset int64, typ *types.Type) ssa.LocalSlot {
+	fe.calls++
+	return ssa.LocalSlot{N: parent.N, Type: typ, Off: parent.Off + offset}
 }

@@ -1,0 +1,308 @@
+package ssa
+
+import (
+	IMPORT_BASE
+	"IMPORT_IR"
+	"IMPORT_OBJ"
+	"IMPORT_SRC"
+	"IMPORT_SYS"
+	"IMPORT_TYPECHECK"
+	"IMPORT_TYPES"
+	LOWER_IMPORT
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"math"
+	"os"
+	"testing"
+)
+
+type snapshotGenericFrontend struct {
+	Frontend
+	splits []string
+}
+
+func (*snapshotGenericFrontend) Log() bool { return false }
+func (*snapshotGenericFrontend) Fatalf(pos src.XPos, f string, args ...any) {
+	panic(fmt.Sprintf("%d:%s", pos.Line(), fmt.Sprintf(f, args...)))
+}
+func (*snapshotGenericFrontend) Warnl(src.XPos, string, ...any) {}
+func (fe *snapshotGenericFrontend) SplitSlot(parent *LocalSlot, suffix string, offset int64, t *types.Type) LocalSlot {
+	// The fixture uses parameter slots. Keep the existing Name and accumulate its
+	// offset, exactly the non-auto branch of the native Frontend contract.
+	if parent.N.Class != ir.PPARAM {
+		panic("fixture expects a parameter slot")
+	}
+	fe.splits = append(fe.splits, fmt.Sprintf("%s/%s/%d/%v", parent.N.Sym().Name, suffix, offset, t))
+	return LocalSlot{N: parent.N, Type: t, Off: parent.Off + offset}
+}
+func TestSyncgoNativeSnapshot(t *testing.T) {
+	target := struct {
+		arch  string
+		size  int
+		order binary.ByteOrder
+	}{os.Getenv("SYNCGO_TARGET"), 8, binary.LittleEndian}
+	switch target.arch {
+	case "386", "mips":
+		target.size = 4
+	}
+	switch target.arch {
+	case "mips", "ppc64":
+		target.order = binary.BigEndian
+	}
+	SETUP
+	LOWER_FEATURES.GOAMD64 = 1
+	LOWER_FEATURES.GOARM.Version = 7
+	LOWER_FEATURES.GOPPC64 = 8
+	LOWER_FEATURES.GORISCV64 = 20
+	switch target.arch {
+	case "386":
+		LINK.Arch.Family = sys.I386
+	case "amd64":
+		LINK.Arch.Family = sys.AMD64
+	case "arm64":
+		LINK.Arch.Family = sys.ARM64
+	case "mips":
+		LINK.Arch.Family = sys.MIPS
+	case "ppc64":
+		LINK.Arch.Family = sys.PPC64
+	}
+	cfg := UP.NewConfig(target.arch, *UP.NewTypes(), LINK, true, false)
+	ty := cfg.Types
+	var out []string
+	add := func(label string, args ...any) { out = append(out, label+":"+fmt.Sprint(args...)) }
+	file := src.NewFileBase("generic.go", "generic.go")
+	pos := LINK.PosTable.XPos(src.MakePos(file, 10, 1))
+	fresh := func() (*Func, *snapshotGenericFrontend) {
+		cache := new(Cache)
+		cache.Reset()
+		fe := &snapshotGenericFrontend{}
+		f := cfg.NewFunc(fe, cache)
+		f.Name = "generic"
+		f.Type = TY.NewSignature(nil, nil, nil)
+		f.ABISelf = cfg.ABI1
+		f.pass = &pass{name: "generic"}
+		f.Entry = f.NewBlock(BlockRet)
+		f.Entry.Pos = pos
+		return f, fe
+	}
+	constInt := func(f *Func, k int64) *Value {
+		if target.size == 4 {
+			return f.ConstInt32(ty.Int, int32(k))
+		}
+		return f.ConstInt64(ty.Int, k)
+	}
+	finish := func(label string, f *Func, fe *snapshotGenericFrontend) {
+		checkFunc(f)
+		numberLines(f)
+		decomposeUser(f)
+		opt(f)
+		divisible(f)
+		divmod(f)
+		decomposeBuiltin(f)
+		softfloat(f)
+		opt(f)
+		deadcode(f)
+		f.invalidateCFG()
+		checkFunc(f)
+		add(label+"-generic", f.String())
+		add(label+"-splits", fe.splits)
+		for _, n := range f.Names {
+			add(label+"-name", n, " ", f.NamedValues[*n])
+		}
+		lower(f)
+		lateLower(f)
+		deadcode(f)
+		f.invalidateCFG()
+		checkFunc(f)
+		checkLower(f)
+		add(label+"-lower", f.String())
+	}
+	// A signed constant division and a remainder comparison exercise the native
+	// divmod and divisible callbacks before 64-bit shift counts are decomposed.
+	for _, d := range []int32{3, 7, 8, 17, -3} {
+		f, fe := fresh()
+		b := f.Entry
+		x := b.NewValue0(pos, OpArg, ty.Int32)
+		divisor := f.ConstInt32(ty.Int32, d)
+		q := b.NewValue2(pos, OpDiv32, ty.Int32, x, divisor)
+		rem := b.NewValue2(pos, OpMod32, ty.Int32, x, divisor)
+		equal := b.NewValue2(pos, OpEq32, ty.Bool, rem, f.ConstInt32(ty.Int32, 0))
+		pred := b.NewValue1(pos, OpCvtBoolToUint8, ty.UInt8, equal)
+		wide := b.NewValue1(pos, OpZeroExt8to32, ty.Int32, pred)
+		result := b.NewValue2(pos, OpAdd32, ty.Int32, q, wide)
+		mem := b.NewValue0(pos, OpInitMem, TY.TypeMem)
+		ptr := b.NewValue0I(pos, OpArg, ty.Int32Ptr, 8)
+		mem = b.NewValue3A(pos, OpStore, TY.TypeMem, ty.Int32, ptr, result, mem)
+		b.SetControl(mem)
+		finish(fmt.Sprint("division-", d), f, fe)
+	}
+	{
+		f, fe := fresh()
+		b := f.Entry
+		GRAPH.Syms.Zerobase = &obj.LSym{Name: "runtime.zerobase"}
+		info := cfg.ABI1.ABIAnalyzeTypes([]*types.Type{ty.BytePtr, ty.Int, ty.Int}, []*types.Type{ty.BytePtr})
+		aux := StaticAuxCall(&obj.LSym{Name: "runtime.makeslice"}, info)
+		mem := b.NewValue0(pos, OpInitMem, TY.TypeMem)
+		call := b.NewValue0A(pos, OpStaticLECall, aux.LateExpansionResultType(), aux)
+		call.AddArgs(f.ConstNil(ty.BytePtr), constInt(f, 0), constInt(f, 0), mem)
+		ptr := b.NewValue1I(pos, OpSelectN, ty.BytePtr, 0, call)
+		next := b.NewValue1I(pos, OpSelectN, TY.TypeMem, 1, call)
+		result := b.NewValue2(pos, OpMakeResult, TY.TypeMem, ptr, next)
+		b.SetControl(result)
+		finish("empty-allocation", f, fe)
+	}
+
+	// Compound values enter through real constructors, not aggregate Arg nodes
+	// that need the separately migrated call-expansion stage.
+	nested := TY.NewStruct([]*types.Field{TY.NewField(pos, TY.LocalPkg.Lookup("X"), ty.Int8), TY.NewField(pos, TY.LocalPkg.Lookup("Y"), ty.Int16)})
+	record := TY.NewStruct([]*types.Field{TY.NewField(pos, TY.LocalPkg.Lookup("A"), TY.NewArray(ty.Int32, 1)), TY.NewField(pos, TY.LocalPkg.Lookup("B"), nested)})
+	cases := []struct {
+		name string
+		t    *types.Type
+	}{{"record", record}, {"array", TY.NewArray(record, 1)}, {"empty", TY.NewArray(ty.Int32, 0)}, {"string", ty.String}, {"slice", TY.NewSlice(ty.UInt8)}, {"iface", TY.NewInterface(nil)}, {"complex64", TY.Types[types.TCOMPLEX64]}, {"complex128", TY.Types[types.TCOMPLEX128]}, {"int64", ty.Int64}}
+	for _, test := range cases {
+		f, fe := fresh()
+		e := f.Entry
+		e.Reset(BlockIf)
+		cond := e.NewValue0(pos, OpArg, ty.Bool)
+		e.SetControl(cond)
+		left, right, join := f.NewBlock(BlockPlain), f.NewBlock(BlockPlain), f.NewBlock(BlockRet)
+		left.Pos = pos
+		right.Pos = pos
+		join.Pos = pos
+		e.AddEdgeTo(left)
+		e.AddEdgeTo(right)
+		left.AddEdgeTo(join)
+		right.AddEdgeTo(join)
+		mem := e.NewValue0(pos, OpInitMem, TY.TypeMem)
+		ptr := e.NewValue0I(pos, OpArg, TY.NewPtr(test.t), 8)
+		bytes := e.NewValue0I(pos, OpArg, ty.BytePtr, 16)
+		var makeValue func(*Block, *types.Type, int64) *Value
+		makeValue = func(b *Block, t *types.Type, k int64) *Value {
+			switch {
+			case t.IsStruct():
+				v := b.NewValue0(pos, OpStructMake, t)
+				for _, field := range t.Fields() {
+					v.AddArg(makeValue(b, field.Type, k+1))
+				}
+				return v
+			case t.IsArray():
+				if t.NumElem() == 0 {
+					return b.NewValue0(pos, OpEmpty, t)
+				}
+				return b.NewValue1(pos, OpArrayMake1, t, makeValue(b, t.Elem(), k+2))
+			case t.IsString():
+				return b.NewValue2(pos, OpStringMake, t, bytes, constInt(f, k))
+			case t.IsSlice():
+				return b.NewValue3(pos, OpSliceMake, t, bytes, constInt(f, k), constInt(f, k+5))
+			case t.IsInterface():
+				return b.NewValue2(pos, OpIMake, t, e.NewValue0I(pos, OpArg, ty.Uintptr, k+32), bytes)
+			case t.IsComplex():
+				if t.Size() == 8 {
+					return b.NewValue2(pos, OpComplexMake, t, f.ConstFloat32(ty.Float32, float64(k)+0.25), f.ConstFloat32(ty.Float32, float64(k)+0.5))
+				}
+				return b.NewValue2(pos, OpComplexMake, t, f.ConstFloat64(ty.Float64, float64(k)+0.25), f.ConstFloat64(ty.Float64, float64(k)+0.5))
+			default:
+				switch t.Size() {
+				case 1:
+					return f.ConstInt8(t, int8(k))
+				case 2:
+					return f.ConstInt16(t, int16(k))
+				case 4:
+					return f.ConstInt32(t, int32(k))
+				case 8:
+					return f.ConstInt64(t, 0x1122334455667700+k)
+				}
+			}
+			panic("unsupported fixture type")
+		}
+		a, z := makeValue(left, test.t, 3), makeValue(right, test.t, 7)
+		phi := join.NewValue2(pos, OpPhi, test.t, a, z)
+		n := GRAPH.NewNameAt(pos, TY.LocalPkg.Lookup("local_"+test.name), test.t)
+		n.Class = ir.PPARAM
+		slot := &LocalSlot{N: n, Type: test.t}
+		f.Names = append(f.Names, slot)
+		f.NamedValues[*slot] = []*Value{phi, phi}
+		if test.t.Size() != 0 {
+			mem = join.NewValue3A(pos, OpStore, TY.TypeMem, test.t, ptr, phi, mem)
+		}
+		join.SetControl(mem)
+		finish(test.name, f, fe)
+	}
+	// Soft-float conversion includes NaN and signed-zero bit patterns. Check only
+	// after the mandatory conversion; float values are forbidden in soft mode.
+	for _, test := range []struct {
+		size  int
+		value float64
+	}{{4, math.Copysign(0, -1)}, {8, math.Copysign(0, -1)}, {4, math.Float64frombits(0x7ff8123412345678)}, {8, math.Float64frombits(0x7ff8123412345678)}} {
+		size, value := test.size, test.value
+		f, fe := fresh()
+		cfg.SoftFloat = true
+		b := f.Entry
+		t := ty.Float64
+		op := OpNeg64F
+		round := OpRound64F
+		var constant *Value
+		if size == 4 {
+			t = ty.Float32
+			op = OpNeg32F
+			round = OpRound32F
+			constant = f.ConstFloat32(t, value)
+		}
+		if size == 8 {
+			constant = f.ConstFloat64(t, value)
+		}
+		neg := b.NewValue1(pos, op, t, constant)
+		v := b.NewValue1(pos, round, t, neg)
+		mem := b.NewValue0(pos, OpInitMem, TY.TypeMem)
+		ptr := b.NewValue0(pos, OpArg, TY.NewPtr(t))
+		mem = b.NewValue3A(pos, OpStore, TY.TypeMem, t, ptr, v, mem)
+		b.SetControl(mem)
+		numberLines(f)
+		softfloat(f)
+		opt(f)
+		deadcode(f)
+		checkFunc(f)
+		add(fmt.Sprintf("soft-%d-%x", size, math.Float64bits(value)), f.String())
+		add("soft-splits", fe.splits)
+		lower(f)
+		lateLower(f)
+		deadcode(f)
+		checkFunc(f)
+		checkLower(f)
+		add(fmt.Sprintf("soft-lower-%d-%x", size, math.Float64bits(value)), f.String())
+		cfg.SoftFloat = false
+	}
+	// Explicit block features let us test the native ternary pass independently
+	// of the CPU-feature dataflow pass that supplies these bits in Compile.
+	for _, enabled := range []bool{false, true} {
+		f, _ := fresh()
+		b := f.Entry
+		t := TY.TypeVec128
+		if enabled {
+			f.maxCPUFeatures = CPUavx512
+			b.CPUfeatures = CPUavx512
+		}
+		x := b.NewValue0(pos, OpArg, t)
+		y := b.NewValue0I(pos, OpArg, t, 16)
+		z := b.NewValue0I(pos, OpArg, t, 32)
+		a := b.NewValue2(pos, OpOrInt8x16, t, x, y)
+		v := b.NewValue2(pos, OpAndInt8x16, t, a, z)
+		mem := b.NewValue0(pos, OpInitMem, TY.TypeMem)
+		ptr := b.NewValue0I(pos, OpArg, TY.NewPtr(t), 48)
+		mem = b.NewValue3A(pos, OpStore, TY.TypeMem, t, ptr, v, mem)
+		b.SetControl(mem)
+		checkFunc(f)
+		numberLines(f)
+		rewriteTern(f)
+		deadcode(f)
+		checkFunc(f)
+		add(fmt.Sprint("tern-", enabled), f.String())
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("SYNCGO_IR=" + string(data))
+}

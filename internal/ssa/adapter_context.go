@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go-backend-ssa/internal/abi"
 	"go-backend-ssa/internal/cmd/obj"
+	"go-backend-ssa/internal/cmd/src"
 	"go-backend-ssa/internal/go/buildcfg"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/logopt"
@@ -333,4 +334,8 @@ func (c *Context) checkConfig(arch string, ts Types, link *obj.Link, optimize, s
 			panic("SSA lowering requires explicit GORISCV64 rva20, rva22 or rva23")
 		}
 	}
+}
+
+func (c *Context) fatalfAt(pos src.XPos, format string, args ...any) {
+	panic(fmt.Errorf("%s: %s", c.IR.Base.FmtPos(pos), fmt.Sprintf(format, args...)))
 }

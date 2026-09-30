@@ -84,6 +84,7 @@
 67. [M3 SSA 死代码清理](docs/m3-ssa-deadcode.md)：原生 numberLines/deadcode、语句位置迁移与死图回收。
 68. [M3 SSA 完整校验](docs/m3-ssa-check.md)：原生 verifier、内存检查、循环嵌套与分支预测。
 69. [M3 SSA 配置与 lowering](docs/m3-ssa-lowering.md)：完整原生架构配置、19 份重写文件、公共图构造与实例绑定。
+70. [M3 SSA 通用重写与拆分](docs/m3-ssa-generic.md)：原生 generic/除法规则、复合值与软浮点拆分、SIMD 真值表及数值执行验证。
 
 ## 当前可运行的工具
 
