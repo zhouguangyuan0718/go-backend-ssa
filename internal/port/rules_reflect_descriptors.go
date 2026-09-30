@@ -30,11 +30,3 @@ func reflectDescriptors(u *Unit) {
 		}
 	}
 }
-
-func compareMigration() []Unit {
-	return []Unit{{Source: "src/cmd/compile/internal/compare/compare.go", Functions: []string{"IsRegularMemory"},
-		Context:     &ContextRule{Type: "typeContext", Constructor: "newTypeContext", Adapter: "adapter_context.go", Selective: true},
-		ContextFrom: map[string]ContextSource{"IsRegularMemory": {Argument: "t", Resolver: "typeContextOf"}},
-		Calls:       []CallRule{{Source: "src/cmd/compile/internal/types/alg.go", Function: "AlgType", Method: "Types.AlgType"}},
-	}}
-}

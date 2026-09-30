@@ -1,0 +1,37 @@
+package noder
+import("encoding/binary";"os";"strings";"testing";"go-backend-ssa/internal/cmd/obj";"go-backend-ssa/internal/cmd/sys";"go-backend-ssa/internal/ir";"go-backend-ssa/internal/typecheck";"go-backend-ssa/internal/types";"go-backend-ssa/internal/types2";"go-backend-ssa/internal/syntax")
+func TestSyncgoBodyFixture(t *testing.T){
+ arch:=strings.SplitN(os.Getenv("SYNCGO_TARGET"),"-",2)[0];size:=8;var order binary.ByteOrder=binary.LittleEndian;frames:=0;if strings.HasSuffix(os.Getenv("SYNCGO_TARGET"),"-nosync"){frames=-1};switch arch{case "386":size=4;case "mips":size=4;order=binary.BigEndian;case "ppc64":order=binary.BigEndian}
+ link:=&obj.Link{Pathname:"/src",Arch:&obj.LinkArch{Arch:&sys.Arch{Name:arch,PtrSize:size,RegSize:size,ByteOrder:order}}};u:=types.NewUniverseWithPositions(size,size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");g:=ir.NewContext(u,link);tc:=typecheck.NewContext(g);tc.InitUniverse();g.Base.Flag.Lang="go1.27";g.Base.Flag.Complete=true;g.Debug.SyncFrames=frames;g.Debug.RangeFuncCheck=1
+ c,err:=NewContext(types2.NewContext(),tc);if err!=nil{t.Fatal(err)}
+ source:=`package p
+ type Mixed struct { S string; Bytes [4]byte; N int; I any; T string; More [4]byte; M int }
+ type Nested struct { A [2]any; B struct{ X int; Y float64 } };func CompareNested(a,b Nested)bool{return a==b}
+ type Padded struct { A byte; B int64; C byte }
+ type Blanks struct { A int; _ any; B int }
+ type Large struct { A [64]byte; B int };func CompareLarge(a,b Large)bool{return a==b}
+ type Words struct { A,B,C,D,E,F int }
+ type Halfwords struct { A,B,C,D uint16 }
+ type Small struct { A,B int }
+ type Float struct { A float64; B complex128 }
+ type I interface { M() }
+ type Text string
+ func CompareMixed(a,b Mixed)bool{return a==b}
+ func ComparePadded(a,b Padded)bool{return a==b}
+ func CompareBlanks(a,b Blanks)bool{return a==b}
+ func CompareWords(a,b Words)bool{return a==b}
+ func CompareHalfwords(a,b Halfwords)bool{return a==b}
+ func CompareSmall(a,b Small)bool{return a==b}
+ func CompareFloat(a,b Float)bool{return a==b}
+ func CompareString(a,b string)bool{return a==b}
+ func CompareNamedString(a,b Text)bool{return a==b}
+ func CompareEmpty(a,b any)bool{return a==b}
+ func CompareIface(a,b I)bool{return a==b}
+ func CompareLiteral(a string)bool{return a=="constant"}
+`
+ file,err:=syntax.Parse(syntax.NewFileBase("input.go"),strings.NewReader(source),nil,nil,syntax.CheckBranches);if err!=nil{t.Fatal(err)}
+ info:=&types2.Info{StoreTypesInSyntax:true,Defs:map[*syntax.Name]types2.Object{},Uses:map[*syntax.Name]types2.Object{},Selections:map[*syntax.SelectorExpr]*types2.Selection{},Implicits:map[syntax.Node]types2.Object{},Scopes:map[syntax.Node]*types2.Scope{},Instances:map[*syntax.Name]types2.Instance{},FileVersions:map[*syntax.PosBase]string{}}
+ conf:=types2.Config{Context:c.Checker,GoVersion:"go1.27",Sizes:c.Checker.SizesFor("gc",arch)};files:=[]*syntax.File{file};pkg,err:=conf.Check("example/p",files,info);if err!=nil{t.Fatal(err)}
+ closures,err:=c.RewriteRangeFuncs(pkg,info,files);if err!=nil{t.Fatal(err)};data,err:=c.WritePackage(pkg,info,files,closures);if err!=nil{t.Fatal(err)}
+ if err:=os.WriteFile(BODY_INPUT_PATH,[]byte(data),0600);err!=nil{t.Fatal(err)}
+}

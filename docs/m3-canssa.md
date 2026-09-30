@@ -20,3 +20,5 @@ GO_SSA_SOURCE_REPO=/path/to/go GOTOOLCHAIN=go1.27.1 \
 两版四目标定向差分通过（39.56s，`_work/m3-canssa-source.log`）。完整 `go test -race -timeout 20m ./...` 通过，internal/port 用时 56.481s（`_work/m3-canssa-unit.log`）；补充的旧图实验开关隔离回归也通过 race（`_work/m3-canssa-isolation.log`）。generate/check 均验证 271 个文件，267 个既有生成 Go 文件仅工具版本头变化。上一阶段完整流水线验证见 [slice 记录](m3-slice.md)；本阶段单独验证新增谓词及全部普通 race 回归，未再次运行完整流水线双版本矩阵。
 
 下一步继续迁入 walk：补齐 compare 的原生比较构造、架构输入绑定和零值静态调度器的实例归属，再连接原生排序及表达式/语句改写。
+
+后续进展：原生 compare 整文件已迁入，见 [比较构造记录](m3-compare.md)。

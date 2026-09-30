@@ -64,6 +64,7 @@
 47. [M3 原生 escape](docs/m3-escape.md)：原生逃逸分析、参数摘要、闭包捕获分类和实例缓存。
 48. [M3 原生 slice 优化](docs/m3-slice.md)：切片独占性分析、原生堆转移节点及实例化依赖。
 49. [M3 原生 CanSSA](docs/m3-canssa.md)：按输入类型所属目标进行 SSA 表示判定，供 walk 使用。
+50. [M3 原生比较构造](docs/m3-compare.md)：完整 compare 算法、目标成本和有序比较 IR 构造。
 
 ## 当前可运行的工具
 

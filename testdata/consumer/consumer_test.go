@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"go-backend-ssa/bitvec"
+	"go-backend-ssa/compare"
 	"go-backend-ssa/deadlocals"
 	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/escape"
@@ -189,7 +190,7 @@ func TestNativeSyntaxFromPublicModule(t *testing.T) {
 }
 
 func TestNativeCheckerFromPublicModule(t *testing.T) {
-	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return};func UseId(x int)int{return Id(x)};func Twice(x int)int{return Id(Id(x))};type Number int;func(n Number)M(x int)int{return int(n)+x};func Method(n Number)func(int)int{return n.M};func Captures(xs []int)(out []*int){for _,v:=range xs{out=append(out,&v)};return};func Dead(p int){p=1};func RetPtr()*int{x:=7;return &x};func Grow(n int)[]int{var s []int;for i:=0;i<n;i++{s=append(s,i)};return s}"), nil, nil, syntax.CheckBranches)
+	file, err := syntax.Parse(syntax.NewFileBase("id.go"), strings.NewReader("package p;func Id[T any](x T)T{return x};var X=Id(1);func Each(y func(int)bool){y(1)};func Sum()(n int){for x:=range Each{n+=x};return};func UseId(x int)int{return Id(x)};func Twice(x int)int{return Id(Id(x))};type Number int;func(n Number)M(x int)int{return int(n)+x};func Method(n Number)func(int)int{return n.M};func Captures(xs []int)(out []*int){for _,v:=range xs{out=append(out,&v)};return};func Dead(p int){p=1};func RetPtr()*int{x:=7;return &x};func Grow(n int)[]int{var s []int;for i:=0;i<n;i++{s=append(s,i)};return s};func CompareStrings(a,b string)bool{return a==b}"), nil, nil, syntax.CheckBranches)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,6 +387,18 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 	if moves != 1 {
 		t.Fatal("public slice optimization failed", moves)
 	}
+	cmpfn, err := writer.LookupFunc("example/p.CompareStrings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph.WithFunc(cmpfn, func() {
+		e := cmpfn.Body[0].(*ir.ReturnStmt).Results[0].(*ir.BinaryExpr)
+		eq, call := compare.NewContext(tc).EqString(e.X, e.Y)
+		if eq.Op() != ir.OEQ || call.Fun.(*ir.Name).Sym().Name != "memequal" || !graph.OwnsNode(eq) || !graph.OwnsNode(call) {
+			t.Fatal("public comparison construction")
+		}
+	})
+
 }
 
 func TestNativeObjectGraph(t *testing.T) {

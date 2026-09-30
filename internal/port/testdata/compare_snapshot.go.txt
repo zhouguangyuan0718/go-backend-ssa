@@ -1,0 +1,30 @@
+package compare_test
+import("fmt";"encoding/json";"encoding/binary";"bytes";"os";"strings";"testing";"IMPORT_COMPARE";"IMPORT_TYPES";BODY_TYPES2 "IMPORT_IR";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_NODER";EXPAND_RUNTIME AUTO_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ mode:=os.Getenv("SYNCGO_TARGET")
+ target:=struct{arch string;size int;order binary.ByteOrder}{strings.SplitN(mode,"-",2)[0],8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ LINK.Arch.Alignment=1;LINK.Arch.CanMergeLoads=true
+ if target.arch=="mips"||target.arch=="ppc64"||strings.HasSuffix(mode,"-aligned"){LINK.Arch.Alignment=4;LINK.Arch.CanMergeLoads=false}
+ if strings.HasSuffix(mode,"-nomerge"){LINK.Arch.CanMergeLoads=false}
+ data,err:=os.ReadFile(BODY_INPUT_PATH);if err!=nil{t.Fatal(err)}
+ PKGINIT_READ
+ CMP_SETUP
+ var out []string
+ for _,fn:=range TC.Target.Funcs{
+ if !strings.HasPrefix(fn.Sym().Name,"Compare"){continue}
+ e:=fn.Body[0].(*ir.ReturnStmt).Results[0].(*ir.BinaryExpr);typ:=e.X.Type()
+ if typ.IsStruct(){TY.CalcSize(typ);out=append(out,fmt.Sprintf("cost:%s:%d:%t:%t",fn.Sym().Name,compare.EqStructCost(typ),compare.EqCanPanic(typ),compare.IsRegularMemory(typ)));for i,f:=range typ.Fields(){if !f.Sym.IsBlank()&&compare.IsRegularMemory(f.Type){size,next:=compare.Memrun(typ,i);out=append(out,fmt.Sprintf("run:%d:%d:%d",i,size,next))}}}
+ // The oversized run deliberately exercises the failure preserved in this pin.
+ if fn.Sym().Name=="CompareLarge"&&!strings.HasSuffix(mode,"-large"){continue}
+ // Words exceeds the walk inline gate on targets without merge support.
+ if fn.Sym().Name=="CompareWords" {continue}
+ GRAPH.WithFunc(fn,func(){
+ var nodes []ir.Node;canPanic:=false
+ switch {case typ.IsStruct():nodes,canPanic=CMP.EqStruct(typ,e.X,e.Y);case typ.IsString():a,b:=CMP.EqString(e.X,e.Y);nodes=[]ir.Node{a,b};case typ.IsInterface():a,b:=CMP.EqInterface(e.X,e.Y);nodes=[]ir.Node{a,b}}
+ out=append(out,fmt.Sprintf("comparison:%s:%t:%d",fn.Sym().Name,canPanic,len(nodes)))
+ for _,n:=range nodes{var buf bytes.Buffer;ir.FDump(&buf,"cond",n);out=append(out,buf.String())}
+ })
+ }
+ b,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(b))
+}
