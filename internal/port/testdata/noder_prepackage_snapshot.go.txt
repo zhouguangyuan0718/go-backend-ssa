@@ -6,7 +6,7 @@ func TestSyncgoNativeSnapshot(t *testing.T){
  SETUP
  SOURCE_BIND
  PRE_BIND
- ND_DEBUG.SyncFrames=-1;ND_DEBUG.RangeFuncCheck=1;ND_DEBUG.AstDump="~.*\\.(F|Other)";RD_FLAG.Lang="go1.27";RD_FLAG.Complete=true;RD_FLAG.LowerL=1
+ ND_DEBUG.SyncFrames=-1;ND_DEBUG.RangeFuncCheck=1;ND_DEBUG.AstDump="~.*\\.(F|Other|Benchmark)";RD_FLAG.Lang="go1.27";RD_FLAG.Complete=true;RD_FLAG.LowerL=1
  _=src.XPos{};_=types2.Int;_=syntax.CheckBranches;_=bytes.NewBuffer
  sources:=[]string{`package p
 import "example/dep"
@@ -40,7 +40,10 @@ var Meta=[4]byte{1,2,3,4};var PkgID uint32;var Counter0 [8]uint32;var OrdinaryVa
  SOURCE_RUN
  counterMode:="set";gran:="perblock";if strings.Contains(mode,"atomic"){counterMode="atomic"};if strings.Contains(mode,"testmain"){counterMode="testmain"};if strings.Contains(mode,"perfunc"){gran="perfunc"}
  if mode!="disabled"{RD_FLAG.Cfg.CoverageInfo=&covcmd.CoverFixupConfig{MetaVar:"Meta",PkgIdVar:"PkgID",CounterPrefix:"Counter",CounterMode:counterMode,CounterGranularity:gran,MetaHash:"0123456789abcdef0123456789abcdef",MetaLen:4}}
+ for _,fn:=range TC.Target.Funcs{if GRAPH.MatchAstDump(fn,"start"){GRAPH.AstDump(fn,"start, "+ir.FuncName(fn))}}
  PRE_RUN
+ for _,fn:=range TC.Target.Funcs{if GRAPH.MatchAstDump(fn,"finish"){GRAPH.AstDump(fn,"finish, "+ir.FuncName(fn))}}
+ GRAPH.CloseHTMLWriters()
  var out []string
  for _,n:=range TC.Target.Externs{out=append(out,fmt.Sprintf("extern:%v:%v:%t:%t:%d",n.Sym(),n.Type(),n.Readonly(),n.CoverageAuxVar(),n.Linksym().Type))}
  var objects []string;for sym:=range UP.objReader{objects=append(objects,sym.Pkg.Path+"."+sym.Name)};sort.Strings(objects);out=append(out,fmt.Sprint("objects:",objects))
@@ -55,9 +58,10 @@ var Meta=[4]byte{1,2,3,4};var PkgID uint32;var Counter0 [8]uint32;var OrdinaryVa
  for _,name:=range []string{"example/dep.Exported","example/dep.Number.M"}{fn,e:=UP.LookupFunc(name);if e!=nil{t.Fatal(e)};out=append(out,fmt.Sprintf("lookup:%s:%v:%t",name,fn.Type(),TC.HaveInlineBody(fn)))}
  UP.PostLookupCleanup()
  SOURCE_REPORTS
+ IR_REPORTS
  names:=make([]string,0,len(reports));for p:=range reports{names=append(names,p)};sort.Strings(names)
  ptr:=regexp.MustCompile(`(scope [^\n<>]* )0x[0-9a-f]+`)
  for _,name:=range names{out=append(out,"html:"+name+":"+ptr.ReplaceAllString(reports[name],"${1}<address>"))}
- if len(names)!=2{t.Fatalf("expected two reports, have %v",names)}
+ if len(names)!=11{t.Fatalf("expected eleven reports, have %v",names)}
  data,e:=json.Marshal(out);if e!=nil{t.Fatal(e)};fmt.Println("SYNCGO_IR="+string(data))
 }

@@ -39,6 +39,17 @@ func reviewedHostCalls(files []*ast.File, before, after *types.Info, pkg *types.
 	metrics := false
 	flags := false
 	for _, unit := range units {
+		// Explicit scalar host inputs may also supply adapter defaults. Native
+		// references are separately rewritten to the typed instance field; this
+		// authorizes only the named constants, never ambient calls or variables.
+		for _, rule := range unit.HostConstants {
+			for id, object := range after.Uses {
+				if hostConstantObject(object, rule) {
+					reviewed[id] = true
+				}
+			}
+		}
+
 		for _, rule := range unit.HostCalls {
 			var original *types.Func
 			for _, object := range before.Uses {

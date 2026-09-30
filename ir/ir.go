@@ -13,6 +13,10 @@ import (
 
 type Context = compiler.Context
 
+// HTMLWriter and HTMLWriterBase are the native instance-bound IR report types.
+type HTMLWriter = compiler.HTMLWriter
+type HTMLWriterBase = compiler.HTMLWriterBase
+
 // NewContext binds types and IR to the same native Link. Construct the Universe
 // with types.NewUniverseWithPositions(layout, &link.PosTable). All inputs and
 // mutable nodes must belong to that instance; node fields remain native and

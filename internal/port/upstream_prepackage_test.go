@@ -58,12 +58,15 @@ func prepackageSnapshotFixture(t *testing.T, code, dir string, native bool) stri
 	t.Helper()
 	imports := `"go-backend-ssa/internal/bloop";"go-backend-ssa/internal/coverage";"go-backend-ssa/internal/cmd/cov/covcmd";`
 	bind := `c.Flag.Cfg.PackageFile["testing"]=ARCHIVE;path:="example/p";if strings.Contains(mode,"main"){path="main"};if strings.Contains(mode,"runtime"){path="runtime"};link.Pkgpath=path;u.LocalPkg=u.NewPkg(path,"")`
+	bind += `;irReports:=map[string]*sourceOutput{};graph.OpenAST=func(p string,f int,m fs.FileMode)(io.WriteCloser,error){w:=irReports[p];if w==nil{w=new(sourceOutput);irReports[p]=w};if f&os.O_TRUNC!=0{w.Reset()};return w,nil};graph.ASTWorkingDirectory=func()(string,error){return "/reports",nil}`
 	run := `coverage.NewContext(tc).Fixup();bloop.NewContext(tc).Walk(tc.Target)`
+	collect := `for p,w:=range irReports{if strings.HasSuffix(p,".ast")&&w.closed!=3||strings.HasSuffix(p,".html")&&w.closed!=1{t.Fatalf("wrong close count %s: %d",p,w.closed)};reports[p]=w.String()}`
 	if native {
 		imports = `"cmd/compile/internal/bloop";"cmd/compile/internal/coverage";"cmd/internal/cov/covcmd";`
 		bind = `base.Flag.Cfg.PackageFile["testing"]=ARCHIVE;path:="example/p";if strings.Contains(mode,"main"){path="main"};if strings.Contains(mode,"runtime"){path="runtime"};base.Ctxt.Pkgpath=path;types.LocalPkg=types.NewPkg(path,"");ir.Pkgs.Coverage=types.NewPkg("go.coverage","runtime/coverage");ir.Pkgs.Coverage.Prefix="runtime/coverage"`
 		run = `coverage.Fixup();bloop.Walk(typecheck.Target)`
+		collect = `for _,pattern:=range []string{"*.ast","*.html"}{paths,e:=filepath.Glob(pattern);if e!=nil{t.Fatal(e)};for _,p:=range paths{b,e:=os.ReadFile(p);if e!=nil{t.Fatal(e)};reports[p]=string(b)}}`
 	}
 	bind = strings.ReplaceAll(bind, "ARCHIVE", fmt.Sprintf("%q", filepath.Join(dir, "testing.a")))
-	return strings.NewReplacer("PRE_IMPORTS", imports, "PRE_BIND", bind, "PRE_RUN", run).Replace(code)
+	return strings.NewReplacer("PRE_IMPORTS", imports, "PRE_BIND", bind, "PRE_RUN", run, "IR_REPORTS", collect).Replace(code)
 }

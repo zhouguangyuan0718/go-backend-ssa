@@ -31,13 +31,21 @@ func TestNativeInlinabilityFromSource(t *testing.T) {
   `, "Small", "Caller", "No", "Defer")
 			objects["No"].Func.Pragma |= ir.Noinline
 			c.Debug.AstDump = "Small"
+			reports := bindIRReports(t, c)
+			defer c.Typecheck.IR.CloseHTMLWriters()
 			c.Inline.CanInlineFuncs(c.Typecheck.Target.Funcs, nil)
 			small, caller := objects["Small"].Func, objects["Caller"].Func
 			if small.Inl == nil || caller.Inl == nil || objects["No"].Func.Inl != nil || objects["Defer"].Func.Inl != nil {
 				t.Error("native inlinability lost")
 				return
 			}
-			if !strings.Contains(trace.String(), "inline, OK") {
+			hasInlineDump := false
+			for p, w := range reports {
+				if strings.HasSuffix(p, ".ast") && strings.Contains(w.String(), "inline, OK") {
+					hasInlineDump = true
+				}
+			}
+			if !hasInlineDump || !strings.Contains(trace.String(), "Writing text ast output") {
 				t.Error("missing native AST dump")
 			}
 			if small.Inl.Cost != 4 || !small.Inl.HaveDcl {

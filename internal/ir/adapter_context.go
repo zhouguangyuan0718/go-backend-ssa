@@ -11,14 +11,28 @@ import (
 	"go-backend-ssa/internal/types"
 	"go/constant"
 	"io"
+	"io/fs"
+	"os"
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // Context owns native IR state. A context and its graph are used serially;
 // independent contexts share no mutable compiler state.
 type Context struct {
+	astAppendFlag, astReadWriteFlag, astCreateFlag, astTruncateFlag int
+	// OpenAST supplies native text and HTML report streams. The caller honors
+	// the passed append/create/truncate flags and owns the output destination.
+	OpenAST             func(string, int, fs.FileMode) (io.WriteCloser, error)
+	ASTWorkingDirectory func() (string, error)
+	astMu               sync.Mutex
+	astDumpFiles        map[string]bool
+	astHTMLWriters      map[*Func]*HTMLWriter
+	astOrderedFuncs     []*Func
+	dumpIndentBytes     []byte
+
 	safePhaseNameString *regexp.Regexp
 	Syms                symsStruct
 	Pkgs                struct{ Go, Itab, Runtime, InternalMaps, Coverage *types.Pkg }
@@ -51,7 +65,7 @@ func NewContext(u *types.Universe, link *obj.Link) *Context {
 		panic("IR target layout mismatch")
 	}
 	u.BindLink(link)
-	c := &Context{Types: u, Base: u.LinkContext()}
+	c := &Context{Types: u, Base: u.LinkContext(), astAppendFlag: os.O_APPEND, astReadWriteFlag: os.O_RDWR, astCreateFlag: os.O_CREATE, astTruncateFlag: os.O_TRUNC}
 	c.initialize()
 	// Native driver pseudo-packages from gc/main.go. Keep their source identity
 	// separate from real imported packages while using the original link prefixes.
@@ -174,15 +188,6 @@ func (c *Context) checkOracleNode(n Node) {
 	}
 }
 
-// AstDump writes the native textual IR dump to this compilation's trace sink.
-// File naming, HTML reports, and opening files belong to the host driver.
-func (c *Context) AstDump(fn *Func, why string) {
-	if nodeContext(fn) != c {
-		panic("AST dump belongs to another compilation")
-	}
-	FDump(c.traceWriter(), why, fn)
-}
-
 // OwnsNode checks the existing native node's compilation owner.
 func (c *Context) OwnsNode(n Node) bool {
 	if n == nil {
@@ -216,4 +221,45 @@ func htmlBaseContext(w *HTMLWriterBase) *Context {
 		panic("HTML writer has no compilation owner")
 	}
 	return w.w.compilation
+}
+
+func (c *Context) openAST(path string, flags int, mode fs.FileMode) (io.WriteCloser, error) {
+	if c.OpenAST == nil {
+		return nil, fmt.Errorf("IR AST output provider is not configured")
+	}
+	w, e := c.OpenAST(path, flags, mode)
+	if e == nil && w == nil {
+		return nil, fmt.Errorf("IR AST output provider returned nil writer")
+	}
+	return w, e
+}
+func (c *Context) astWorkingDirectory() (string, error) {
+	if c.ASTWorkingDirectory == nil {
+		return "", fmt.Errorf("IR AST working directory provider is not configured")
+	}
+	return c.ASTWorkingDirectory()
+}
+func (c *Context) checkAstDump(fn *Func, why string) {
+	if fn == nil || !c.OwnsNode(fn) {
+		panic("AST dump belongs to another compilation")
+	}
+}
+func (c *Context) checkDumpNodeHTML(fn *Func, why string, n Node) {
+	c.checkAstDump(fn, why)
+	if n == nil || !c.OwnsNode(n) {
+		panic("HTML dump node belongs to another compilation")
+	}
+}
+func (c *Context) checkHTMLWriter(path string, fn *Func, cfgMask string) { c.checkAstDump(fn, "") }
+func (c *Context) checkDumpAny(w io.Writer, root any, filter string, depth int) {
+	if n, ok := root.(Node); ok {
+		// Native FDumpAny handles typed nil pointers before dereferencing them.
+		v := reflect.ValueOf(n)
+		if v.Kind() == reflect.Pointer && v.IsNil() {
+			return
+		}
+		if !c.OwnsNode(n) {
+			panic("generic AST dump belongs to another compilation")
+		}
+	}
 }

@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v64"
+const ToolVersion = "syncgo-m3-v65"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -472,7 +472,8 @@ func (p Plan) Validate() error {
 		seenHostConstants := map[string]bool{}
 		for _, r := range u.HostConstants {
 			key := r.Package + "." + r.Constant
-			if key != "runtime.GOOS" || u.Context == nil || u.Context.Adapter == "" || !memberPath(r.Field) || seenHostConstants[key] {
+			allowed := key == "runtime.GOOS" || key == "os.O_APPEND" || key == "os.O_RDWR" || key == "os.O_CREATE" || key == "os.O_TRUNC"
+			if !allowed || u.Context == nil || u.Context.Adapter == "" || !memberPath(r.Field) || seenHostConstants[key] {
 				return fmt.Errorf("invalid host constant: %s", key)
 			}
 			seenHostConstants[key] = true

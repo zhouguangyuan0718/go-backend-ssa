@@ -130,8 +130,9 @@ func TestNativeSliceIsolation(t *testing.T) {
 			var trace bytes.Buffer
 			c.Escape.Typecheck.IR.TraceWriter = &trace
 			c.Escape.Typecheck.IR.Debug.AstDump = "Grow"
+			reportText := capturePhaseReports(t, c.Escape.Typecheck.IR)
 			c.Funcs(c.Escape.Typecheck.Target.Funcs)
-			if escapeDump(old.Escape) != before || len(sliceMoves(c, "Grow")) != 1 || !strings.Contains(trace.String(), "slice, Grow") {
+			if escapeDump(old.Escape) != before || len(sliceMoves(c, "Grow")) != 1 || !strings.Contains(reportText(), "slice, Grow") {
 				t.Fatal("retained graph or trace isolation")
 			}
 		})

@@ -209,6 +209,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, importerMigration()...)
 	plan.Units = append(plan.Units, noderMigration()...)
 	plan.Units = noderDiagnosticMigration(plan.Units)
+	plan.Units = irDiagnosticMigration(plan.Units)
 	plan.Units = noderSourceMigration(plan.Units)
 	plan.Units = append(plan.Units, prepackageMigration()...)
 	plan.Units = append(plan.Units, pkginitMigration()...)

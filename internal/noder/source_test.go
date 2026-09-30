@@ -89,7 +89,17 @@ func TestNativeSourceFrontend(t *testing.T) {
 			if len(c.syntaxHTMLWriters) != 0 || len(c.syntaxOrderedFuncs) != 0 || !strings.Contains(trace.String(), "Writing html syntax output") {
 				t.Fatal("HTML cleanup missing")
 			}
+			irReports := bindIRReports(t, c)
 			c.Interleaved.DevirtualizeAndInlinePackage(target, nil)
+			c.Typecheck.IR.CloseHTMLWriters()
+			if len(irReports) == 0 {
+				t.Fatal("inlining did not emit requested IR reports")
+			}
+			for p, w := range irReports {
+				if w.opens != w.closes {
+					t.Fatal("unclosed IR report", p)
+				}
+			}
 			if c.Diagnostics.HasErrors() {
 				t.Fatal(c.Diagnostics.Diagnostics())
 			}

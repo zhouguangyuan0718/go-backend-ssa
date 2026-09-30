@@ -6,7 +6,7 @@
 
 保留原生 `testing.(*B).Loop` 识别、表达式寻址、空白赋值临时变量、多返回值与实参保活，以及嵌套语句遍历。生成的 `runtime.KeepAlive` 调用保留 `IsCompilerVarLive` 和 `NoInline`，临时声明仍位于循环体，供后续逃逸分析使用。
 
-原生值接收者 `editor` 持有实例 Context；类型、临时变量与诊断均归属于输入 typecheck/IR 实例。入口在改写前校验目标包身份与全部函数归属。阶段的 AstDump 调用继续使用已有 IR 文本诊断适配；完整原生 IR HTML 输出仍待接入。
+原生值接收者 `editor` 持有实例 Context；类型、临时变量与诊断均归属于输入 typecheck/IR 实例。入口在改写前校验目标包身份与全部函数归属。阶段的 AstDump 调用现已接入[完整原生 IR 文本和 HTML 报告](m3-ir-reports.md)，由宿主提供输出流。
 
 ## 覆盖率
 

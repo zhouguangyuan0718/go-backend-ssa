@@ -142,8 +142,9 @@ func TestNativeDeadLocalsIsolation(t *testing.T) {
 			var trace bytes.Buffer
 			c.IR.TraceWriter = &trace
 			c.IR.Debug.AstDump = "~."
+			reportText := capturePhaseReports(t, c.IR)
 			c.Funcs(c.target.Funcs)
-			if before != deadDump(old) || c.IR.BlankNode == old.IR.BlankNode || !strings.Contains(trace.String(), "deadLocals") || !strings.Contains(trace.String(), "deadlocals closure skipped") {
+			if before != deadDump(old) || c.IR.BlankNode == old.IR.BlankNode || !strings.Contains(reportText(), "deadLocals") || !strings.Contains(reportText(), "deadlocals closure skipped") || !strings.Contains(trace.String(), "Writing text ast output") {
 				t.Fatal("retained graph or instance trace failed")
 			}
 		})
