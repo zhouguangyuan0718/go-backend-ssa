@@ -97,6 +97,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	if err := rewritePackageContext(fs, original, info, units, before.recovering); err != nil {
 		return nil, nil, err
 	}
+	if err := rewriteHostFields(original, info, units); err != nil {
+		return nil, nil, err
+	}
 	if err := extendNativeContext(original, info, units); err != nil {
 		return nil, nil, err
 	}
@@ -166,6 +169,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		}
 		for _, rule := range u.FixedSizeof {
 			prov.Declarations = append(prov.Declarations, "fixed-sizeof:"+rule.Function+":"+rule.Type)
+		}
+		for _, rule := range u.HostFields {
+			prov.Declarations = append(prov.Declarations, "host-stream-field:"+rule.Type+"."+rule.Field+":"+strings.Join(rule.Methods, ","))
 		}
 		for _, rule := range u.HostCalls {
 			prov.Declarations = append(prov.Declarations, "host-call:"+rule.Package+"."+rule.Function+":"+rule.Method+":"+strings.Join(rule.stringArguments(), ","))

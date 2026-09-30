@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v52"
+const ToolVersion = "syncgo-m3-v53"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -57,6 +57,7 @@ type Unit struct {
 	ConstantFields         []ConstantFieldRule // Stateless reads of immutable scalar fields in an instance-owned array.
 	FixedSizeof            []FixedSizeofRule
 	SliceReinterpretations []SliceReinterpretationRule
+	HostFields             []HostFieldRule
 	HostResources          []HostResourceRule
 	HostCalls              []HostCallRule
 	State                  []StateRule
@@ -75,6 +76,13 @@ type Unit struct {
 // ContextParamCallRule passes Field from the caller Context to a selected
 // ContextParamExports method. ContextType must match the defining unit.
 type ContextParamCallRule struct{ Source, Method, Field, ContextType string }
+
+// HostFieldRule replaces a private *os.File field with an interface carrying
+// only reviewed native stream methods. It does not authorize any file factory.
+type HostFieldRule struct {
+	Type, Field string
+	Methods     []string
+}
 
 // HostResourceRule binds a reviewed standard-library resource factory to a
 // compilation method. Only listed members on its nonescaping local result are
@@ -342,6 +350,22 @@ func (p Plan) Validate() error {
 		for _, literal := range u.Literals {
 			if u.Context == nil || !safePath(literal.Source) || portPath(literal.Source) == "" || !token.IsIdentifier(literal.Type) || !memberPath(literal.Method) || literal.Pointer && literal.NilPointer || literal.MakeSlice && (literal.Pointer || literal.NilPointer) {
 				return fmt.Errorf("invalid literal binding")
+			}
+		}
+
+		seenHostFields := map[string]bool{}
+		for _, field := range u.HostFields {
+			key := field.Type + "." + field.Field
+			if !token.IsIdentifier(field.Type) || !token.IsIdentifier(field.Field) || token.IsExported(field.Field) || field.Field == "_" || len(field.Methods) == 0 || seenHostFields[key] {
+				return fmt.Errorf("invalid host stream field: %s", key)
+			}
+			seenHostFields[key] = true
+			methods := map[string]bool{}
+			for _, name := range field.Methods {
+				if (name != "Read" && name != "Write" && name != "Seek" && name != "Close") || methods[name] {
+					return fmt.Errorf("invalid host stream method: %s", name)
+				}
+				methods[name] = true
 			}
 		}
 		for _, resource := range u.HostResources {

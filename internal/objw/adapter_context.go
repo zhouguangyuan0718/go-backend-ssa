@@ -3,9 +3,12 @@ package objw
 import (
 	"fmt"
 	"go-backend-ssa/diagnostic"
+	"go-backend-ssa/internal/cmd/bio"
 	"go-backend-ssa/internal/cmd/obj"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/types"
+	"io"
+	"strings"
 )
 
 // Context binds the native writer to an existing compiler Universe and Link.
@@ -69,4 +72,49 @@ func flushContext(pp *Progs) *Context {
 		panic("instruction flush requires compiler DWARF callbacks")
 	}
 	return c
+}
+
+// WriteObject numbers symbols and writes the native Go object payload. Finish
+// all functions, static/type data and DWARF fixups first. Each Link can be
+// serialized once; failure also consumes this stage. The caller owns output,
+// including any partial bytes after failure, and supplies file-backed data via
+// Link.OpenObjectInput. This is the binary payload, without an archive/export
+// header. Operations within the compiler instance must be serialized.
+func (c *Context) WriteObject(output io.WriteSeeker) (err error) {
+	if c == nil || c.Link == nil || c.Types == nil || output == nil {
+		return fmt.Errorf("object writing requires a compiler context and output stream")
+	}
+	if c.Link.Errors != 0 {
+		return fmt.Errorf("cannot write object after %d diagnostics", c.Link.Errors)
+	}
+	b := bio.NewWriter(output)
+	link := c.Link
+	oldDiag := link.DiagFunc
+	var messages []string
+	link.DiagFunc = func(f string, a ...any) {
+		messages = append(messages, fmt.Sprintf(f, a...))
+		if oldDiag != nil {
+			oldDiag(f, a...)
+		}
+	}
+	defer func() {
+		link.DiagFunc = oldDiag
+		if p := recover(); p != nil {
+			if e, ok := p.(*bio.OutputError); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	link.PrepareObject(c.Types.Experiment.RegabiWrappers)
+	link.NumberSyms()
+	obj.WriteObjFile(link, b)
+	if e := b.Flush(); e != nil {
+		return e
+	}
+	if len(messages) != 0 {
+		return fmt.Errorf("object writing: %s", strings.Join(messages, "; "))
+	}
+	return nil
 }

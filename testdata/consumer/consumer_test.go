@@ -12,6 +12,7 @@ import (
 	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/dwarfgen"
 	"go-backend-ssa/escape"
+	compilergc "go-backend-ssa/gc"
 	"go-backend-ssa/gcbridge"
 	"go-backend-ssa/inline"
 	"go-backend-ssa/inline/inlheur"
@@ -498,6 +499,16 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 		}
 		pp.Free()
 		graph.CurFunc = nil
+	}
+
+	link.DwFixups.Finalize(link.Pkgpath, false)
+	compilergc.NewContext(writer.ReflectData.Runtime.Writer).AddGCLocals()
+	var artifact consumerObjectOutput
+	if err := writer.ReflectData.Runtime.Writer.WriteObject(&artifact); err != nil {
+		t.Fatal(err)
+	}
+	if len(artifact.data) < 8 || string(artifact.data[:8]) != "\x00go120ld" {
+		t.Fatal("public native object output missing")
 	}
 
 	if len(seen) == 0 {
@@ -1110,3 +1121,35 @@ func (fe *publicSplitFrontend) SplitSlot(parent *ssa.LocalSlot, suffix string, o
 }
 
 func (fe *publicSplitFrontend) Func() *ir.Func { return fe.fn }
+
+// A caller-provided in-memory output; the compiler performs all object encoding.
+type consumerObjectOutput struct {
+	data   []byte
+	offset int64
+}
+
+func (b *consumerObjectOutput) Write(p []byte) (int, error) {
+	end := b.offset + int64(len(p))
+	if end > int64(len(b.data)) {
+		b.data = append(b.data, make([]byte, end-int64(len(b.data)))...)
+	}
+	copy(b.data[b.offset:end], p)
+	b.offset = end
+	return len(p), nil
+}
+func (b *consumerObjectOutput) Seek(n int64, whence int) (int64, error) {
+	switch whence {
+	case 0:
+	case 1:
+		n += b.offset
+	case 2:
+		n += int64(len(b.data))
+	default:
+		return 0, fmt.Errorf("invalid whence")
+	}
+	if n < 0 {
+		return 0, fmt.Errorf("negative offset")
+	}
+	b.offset = n
+	return n, nil
+}

@@ -1,4 +1,7 @@
-// Package objw exposes the native compiler's object data and relocation writer.
+// Package objw exposes native object data, relocations and binary object
+// serialization. WriteObject emits a raw Go object payload after the caller
+// completes function, data and DWARF finalization; it does not write a package
+// archive or export section.
 package objw
 
 import (

@@ -59,6 +59,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_emit")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_assemble")
 	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_flush")
+	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_object")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -84,7 +85,8 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if len(snapshots) > 0 {
 		snapshotName = snapshots[0]
 	}
-	isFlushSSA := snapshotName == "ssagen_flush"
+	isObjectSSA := snapshotName == "ssagen_object"
+	isFlushSSA := snapshotName == "ssagen_flush" || isObjectSSA
 	isAssembleSSA := snapshotName == "ssagen_assemble"
 	isEmitSSA := snapshotName == "ssagen_emit" || isAssembleSSA || isFlushSSA
 	isBuildSSA := snapshotName == "ssagen_build" || isEmitSSA
@@ -291,6 +293,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		}
 		writeTestFile(t, dir, "internal/ssagen/export_snapshot_test.go", code)
 	}
+	if isObjectSSA {
+		ported = objectSnapshotFixture(t, ported, false)
+	}
 	writeTestFile(t, dir, "internal/"+pkgName+"/adapter_snapshot_test.go", ported)
 	snapshotTarget := ""
 	run := func(args ...string) []byte {
@@ -328,6 +333,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	if isEmitSSA {
 		packages = append(packages, "cmd/compile/internal/amd64", "cmd/internal/dwarf")
+		if isObjectSSA {
+			packages = append(packages, "cmd/internal/goobj", "cmd/internal/bio")
+		}
 	}
 	for _, pkg := range packages {
 		for _, name := range s.PackageFiles(pkg) {
@@ -491,6 +499,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		overlay[filepath.Join(goroot, "src/cmd/internal/obj/syncgo_assembler_observer.go")] = filepath.Join(dir, "reference/assembler_observer.go")
 		portedCode := strings.NewReplacer(`"cmd/internal/objabi"`, `"go-backend-ssa/internal/cmd/objabi"`, `"internal/abi"`, `"go-backend-ssa/internal/go/abi"`).Replace(code)
 		writeTestFile(t, dir, "internal/cmd/obj/adapter_assembler_observer.go", portedCode)
+	}
+	if isObjectSSA {
+		native = objectSnapshotFixture(t, native, true) + nativeGCObjectObserver(t, s)
 	}
 	writeTestFile(t, dir, "reference/"+pkgName+"_snapshot_test.go", native)
 	overlay[filepath.Join(goroot, "src/cmd/compile/internal/"+pkgName+"/syncgo_snapshot_test.go")] = filepath.Join(dir, "reference/"+pkgName+"_snapshot_test.go")

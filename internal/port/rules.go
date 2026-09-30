@@ -235,6 +235,7 @@ func Migration() Plan {
 	plan.Units = amd64EmissionMigration(plan.Units)
 	plan.Units = x86AssemblerMigration(plan.Units)
 	plan.Units = objectFlushMigration(plan.Units)
+	plan.Units = objectFileMigration(plan.Units)
 	for i := range plan.Units {
 		if plan.Units[i].Source == "src/cmd/internal/obj/link.go" {
 			plan.Units[i].Declarations = append(plan.Units[i].Declarations, "AXXX", "ABase386", "LSym.CanBeAnSSASym", "LSym.CanBeAnSSAAux")
