@@ -587,7 +587,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				needs := check != "" || len(nullable) != 0
 				refs := replacements(ctx)
 				ast.Inspect(fn, func(n ast.Node) bool {
-					if id, ok := n.(*ast.Ident); ok && (refs[id] != nil || parameterMethods[info.Uses[id]]) {
+					if id, ok := n.(*ast.Ident); ok && (refs[id] != nil || parameterMethods[info.Uses[id]] || boundMethods[info.Uses[id]] != "") {
 						needs = true
 					}
 					return true

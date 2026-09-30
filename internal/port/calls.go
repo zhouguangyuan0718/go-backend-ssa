@@ -268,6 +268,34 @@ func checkCallAdapters(units []Unit, before *packageImporter, out *types.Package
 				}
 				return p.Path()
 			})
+			// A retained local body may have an explicitly reviewed host-stream
+			// signature. Compare its transformed callable signature after that
+			// projection, rather than requiring the removed concrete OS type.
+			if call.KeepDefinition {
+				for _, owner := range units {
+					if owner.Source != call.Source {
+						continue
+					}
+					for _, host := range owner.HostSignatures {
+						if host.Function != call.Function {
+							continue
+						}
+						name := call.Function
+						if mapped := owner.ContextMethods[name]; mapped != "" {
+							name = mapped
+						}
+						native, _, _ := lookupAdapterMember(types.NewPointer(ctx.Type()), out, name)
+						if native == nil {
+							native = out.Scope().Lookup(name)
+						}
+						fn, ok := native.(*types.Func)
+						if !ok {
+							return fmt.Errorf("missing retained host-stream function %s", name)
+						}
+						want = types.TypeString(unnamedSignature(fn.Type()), nil)
+					}
+				}
+			}
 			if got := types.TypeString(unnamedSignature(adapter.Type()), nil); got != want {
 				return fmt.Errorf("adapter signature mismatch for %s: got %s, want %s", call.Method, got, want)
 			}

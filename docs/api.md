@@ -1,8 +1,8 @@
 # 公共 API 与后端契约
 
-已实现源码级 `compiler.Build(ctx, Request)`，返回 Built 阶段的 `compiler.Package`，见[源码到 Built SSA](m3-source-build.md)。它复用 `compiler.Compile` 的显式输入，只运行构图前的原生流程，独立保留每张图及包元数据；当前支持 Linux/amd64，依赖通过显式原生归档适配器传入。
+已实现源码级 `compiler.Build(ctx, Request)`，返回 Built 阶段的 `compiler.Package`，见[源码到 Built SSA](m3-source-build.md)。它复用 `compiler.Compile` 的显式输入，只运行构图前的原生流程，独立保留每张图及包元数据；当前支持 Linux/amd64，依赖通过 `Request.Artifacts` 传入严格版本化 artifact，或通过 `Request.Imports` 使用显式原生归档适配器。
 
-下文是完整目标契约；其中严格 import artifact、EarlyOptimized 和能力集仍属拟议设计。当前实际声明以 `compiler/build.go` 与 `compiler/compiler.go` 为准。原生归档输出继续使用 `compiler.Compile`；低层 `ssagen.Context.ConstructSSA` 另提供一次性原生 continuation，见[SSA 构建分界](m3-ssa-construction.md)。
+下文是完整目标契约；其中 EarlyOptimized 和完整能力集仍属拟议设计；artifact 的实际契约见[阶段记录](m4-import-artifact.md)。当前实际声明以 `compiler/build.go` 与 `compiler/compiler.go` 为准。原生归档输出继续使用 `compiler.Compile`；低层 `ssagen.Context.ConstructSSA` 另提供一次性原生 continuation，见[SSA 构建分界](m3-ssa-construction.md)。
 
 ## 入口
 
@@ -12,8 +12,9 @@ func Build(ctx context.Context, req Request) (*Package, error)
 type Request struct {
     ImportPath string
     Files      []SourceFile
-    Target     target.Config
-    Imports    ImportResolver
+    Target     Target
+    Artifacts  map[string]*Artifact
+    Imports    map[string][]byte // 显式原生归档适配器
     Options    Options
 }
 
@@ -27,24 +28,25 @@ type Options struct {
 }
 ```
 
-语言固定为 Go 1.27，文件内版本约束仍按该版本规则检查；不隐式接受宿主 Go 语言版本。源文件已经由调用者按构建约束筛选，但影响文件语义的指令仍须处理。Target 显式包含 GOOS、GOARCH、CPU 特性等已支持配置；零值或不支持配置报错，不能回落到宿主环境。
+语言默认 Go 1.27，也可通过显式选项选择已支持的较早语言版本；artifact 严格匹配所选版本，不隐式接受宿主 Go 语言版本。源文件已经由调用者按构建约束筛选，但影响文件语义的指令仍须处理。Target 显式包含 GOOS、GOARCH、CPU 特性等已支持配置；零值或不支持配置报错，不能回落到宿主环境。
 
 Build 不修改输入；调用期间输入字节不得被外部并发改写。需要在返回后保存的输入数据由库复制或转为自身拥有的对象。所有外部内容通过输入或 resolver 获取，不读取 cwd、GOFLAGS、GOSSAFUNC 来控制语义。
 
 ## 依赖解析
 
-第一版编译单包，Imports 返回匹配本库前端的不可变 artifact；依赖编译顺序由调用者负责。后续可提供单独的 BuildGraph，复用同一套阶段设施。
+当前编译单包，Build 返回 `Package.Artifact`，`Bytes` / `DecodeArtifact` 支持独立存储与加载；调用方通过 `Artifacts` 提供不可变 artifact 和精确依赖闭包，依赖编译顺序由调用者负责。后续可提供单独的 BuildGraph，复用同一套阶段设施。
 
-artifact 需要包含类型信息以及泛型实例化、跨包内联所需的函数体/Unified IR 信息，不能仅用公开导出符号代替。解码进入本次 Universe，不接受另一次 Build 的可变 *types.Type / *ir.Package 作为隐式共享缓存。
+artifact 包含原生类型信息以及泛型实例化、跨包内联所需的函数体/Unified IR 信息。解码进入本次 Universe，不接受另一次 Build 的可变 *types.Type / *ir.Package 作为隐式共享缓存。
 
-artifact header 至少标记 format、upstream revision、语言版本、目标和实验配置；内容使用 hash 验证。初期严格匹配，不假定任意 Go 1.27 patch 的 gc export data 都可互换。直接导入官方 .a 是未来单独验收的适配器，不是默认承诺。
+artifact header 标记 format、精确上游版本/提交、语言、目标、实验、包身份、原生对象引用能力及依赖哈希；完整容器用 SHA-256 验证。校验严格匹配，不假定不同 Go patch 可互换。官方 .a 已作为显式 `Imports` 适配器验收，同一路径的两种输入不能混用。
 
-为打通第一条跨包路径，库需有 Package → 自身 import artifact 的生产能力，并验证泛型函数体信息未丢失。处理标准库从最小依赖闭包起步；不默认与宿主标准库缓存混用。
+Package → artifact → 新 Universe 的三包往返已验证泛型、类型别名和跨包内联。纯 artifact 闭包使用名称引用；原生归档混合输入保留其原生对象身份，并通过 `NativeObjectReferences` 显式标记。处理标准库从最小依赖闭包起步；不默认与宿主标准库缓存混用。
 
 ## 输出对象
 
 ```text
 Package
+  Artifact       严格版本化的类型和函数体导出
   Metadata       语言、源码 pin、目标、阶段、能力集
   Functions      本库 ssa.Func 图，包含生成函数
   Types          本次调用的类型环境/可查询类型集合

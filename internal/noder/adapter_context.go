@@ -1,6 +1,7 @@
 package noder
 
 import (
+	"bytes"
 	"fmt"
 	"go-backend-ssa/diagnostic"
 	"go-backend-ssa/internal/go/buildcfg"
@@ -56,6 +57,7 @@ type Context struct {
 	importStarted, importFailed bool
 
 	exportDone                                       bool
+	independentExport                                bool
 	allowedStdPragmas                                map[string]bool
 	GOOS                                             string
 	Interleaved                                      *interleaved.Context
@@ -388,9 +390,10 @@ func (c *Context) checkWrapperTarget(target *ir.Package) {
 }
 
 // checkExport protects the native reader relocation caches and ensures exported
-// symbol indices come from completed object numbering.
+// local symbol indices come from completed object numbering, except for the
+// explicitly selected independent export policy.
 func (c *Context) checkExport(out io.Writer) {
-	if c == nil || out == nil || !c.ExportAvailable() || !c.Ctxt.ObjectNumbered() || c.Ctxt.ObjectWritten() {
+	if c == nil || out == nil || !c.ExportAvailable() || (!c.Ctxt.ObjectNumbered() && !c.independentExport) || c.Ctxt.ObjectWritten() {
 		panic("export requires a local package and unconsumed numbered symbols")
 	}
 	c.exportDone = true
@@ -673,4 +676,57 @@ func (c *Context) CompileParsedPackage(parsed []*ParsedFile) (target *ir.Package
 	}()
 	c.unified(posMap{compilation: c}, noders)
 	return c.Typecheck.Target, nil
+}
+
+// ExportIndependentUnified retains native Unified IR encoding while representing
+// local object references by name. Imported extension records retain their
+// original policy; native archive inputs may contain native object indices.
+// The declaration fixed point and escape/inlining preparation must be complete.
+// Export consumes this context once, just like native ExportUnified.
+func (c *Context) ExportIndependentUnified(out io.Writer) error {
+	if c == nil || !c.ExportAvailable() || c.Ctxt.ObjectNumbered() || c.Ctxt.InParallel || c.Typecheck.IR.CurFunc != nil || c.independentExport {
+		panic("independent export requires an idle unnumbered local package")
+	}
+	c.independentExport = true
+	defer func() { c.independentExport = false }()
+	return c.ExportUnified(out)
+}
+
+func (c *Context) exportSymbolIndex(l *linker, w *pkgbits.Encoder, linkname string, sym *obj.LSym) bool {
+	if l == nil || l.compilation != c {
+		panic("foreign export linker")
+	}
+	if c.independentExport {
+		// lsymIdx uses a nonempty linkname only to select its native name fallback;
+		// its caller still encodes the actual linkname. This token is never emitted.
+		linkname = "independent-export"
+	}
+	return l.lsymIdx(w, linkname, sym)
+}
+
+// NewUnifiedDependency supplies already validated Unified IR through the same
+// native package/type/body reader used by archives. The enclosing artifact's
+// compatibility and integrity checks belong to the source API before this call.
+func NewUnifiedDependency(name, data string) DependencyFile {
+	return &unifiedDependency{Reader: bytes.NewReader([]byte(data)), name: name, data: data}
+}
+
+type unifiedDependency struct {
+	*bytes.Reader
+	name, data string
+}
+
+func (f *unifiedDependency) Close() error { return nil }
+func (f *unifiedDependency) Name() string { return f.name }
+func (c *Context) readDependencyExport(f interface {
+	Read([]byte) (int, error)
+	ReadAt([]byte, int64) (int, error)
+	Seek(int64, int) (int64, error)
+	Close() error
+	Name() string
+}) (string, error) {
+	if u, ok := f.(*unifiedDependency); ok {
+		return u.data, nil
+	}
+	return c.readExportData(f)
 }

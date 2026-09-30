@@ -95,7 +95,10 @@ type Request struct {
 	Paths      SourcePaths
 	// Imports maps canonical import paths to complete matching compiler archives.
 	// Inputs must remain unchanged during Compile. Returned data is independent.
-	Imports   map[string][]byte
+	Imports map[string][]byte
+	// Artifacts supplies immutable library import artifacts. Include their exact
+	// dependency closure; an import path cannot also appear in Imports.
+	Artifacts map[string]*Artifact
 	ImportMap map[string]string
 	// SymABIs supplies native assembler ABI declarations, when present.
 	SymABIs    []byte
@@ -162,6 +165,9 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	}
 	exp, e := buildcfg.ParseGOEXPERIMENT(req.Target.GOOS, req.Target.GOARCH, req.Target.Experiments)
 	if e != nil {
+		return nil, e
+	}
+	if e = validateArtifactInputs(req, language, exp.String()); e != nil {
 		return nil, e
 	}
 	arch := sys.NewContext().ArchAMD64
@@ -237,6 +243,10 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		flags.Cfg.PackageFile[name] = name
 		archives[name] = bytes.Clone(data)
 	}
+	artifacts := maps.Clone(req.Artifacts)
+	for name := range artifacts {
+		flags.Cfg.PackageFile[name] = name
+	}
 	flags.Cfg.Embed.Files = maps.Clone(req.Embed.Files)
 	flags.Cfg.Embed.Patterns = make(map[string][]string, len(req.Embed.Patterns))
 	for pattern, files := range req.Embed.Patterns {
@@ -290,6 +300,9 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	backend.InitTables()
 	config := gc.ObjectConfig{GOOS: req.Target.GOOS, GOARCH: req.Target.GOARCH, GOAMD64: req.Target.GOAMD64, Version: Version}
 	nd.BindImports(config, hostOS, func(name string) (noder.DependencyFile, error) {
+		if a := artifacts[name]; a != nil {
+			return noder.NewUnifiedDependency(name, a.payload), nil
+		}
 		data, ok := archives[name]
 		if !ok {
 			return nil, fmt.Errorf("dependency archive not supplied: %q", name)
@@ -378,7 +391,14 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		if err = ownEmbeddedData(ctx, req, link.Data); err != nil {
 			return nil, err
 		}
+		var unified bytes.Buffer
+		if err = nd.ExportIndependentUnified(&unified); err != nil {
+			return nil, err
+		}
 		pkg := builtPackage(req, language, finalizer, held, diagnostics())
+		if pkg.Artifact, err = packageArtifact(req, pkg, unified.String()); err != nil {
+			return nil, err
+		}
 		if errors() {
 			return nil, &Error{Diagnostics: diagnostics()}
 		}

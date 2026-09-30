@@ -58,7 +58,7 @@ func archiveMigration(units []Unit) []Unit {
 	ctx := func() *ContextRule {
 		return &ContextRule{Type: "Context", Constructor: "initContext", Initialize: true, PreserveNilArgs: true, RedirectTrace: true, Adapter: "adapter_context.go", Selective: true}
 	}
-	units = append(units, Unit{Source: compiler + "noder/linker.go", WholeFile: true, Context: ctx(), Owner: &OwnerRule{Types: []string{"linker"}, Context: "Context", Field: "compilation"}}, Unit{Source: compiler + "noder/export.go", WholeFile: true, Context: ctx()}, Unit{Source: internal + "archive/archive.go", Functions: []string{"FormatHeader"}, Declarations: []string{"HeaderSize"}})
+	units = append(units, Unit{Source: compiler + "noder/linker.go", WholeFile: true, Context: ctx(), Owner: &OwnerRule{Types: []string{"linker"}, Context: "Context", Field: "compilation"}, MethodCalls: []MethodCallRule{{Source: compiler + "noder/linker.go", Method: "linker.lsymIdx", Adapter: "exportSymbolIndex"}}}, Unit{Source: compiler + "noder/export.go", WholeFile: true, Context: ctx()}, Unit{Source: internal + "archive/archive.go", Functions: []string{"FormatHeader"}, Declarations: []string{"HeaderSize"}})
 	var ordered []Unit
 	for _, u := range units {
 		if u.sourcePackage() == "cmd/internal/archive" {

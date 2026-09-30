@@ -130,3 +130,49 @@ func TestCalls(t *testing.T){c:=newContext();if n:=c.Run(3);n!=14||c.calls!=2||c
 		}
 	})
 }
+
+func TestRetainedHostStreamCall(t *testing.T) {
+	const file = "src/cmd/compile/internal/p/p.go"
+	const source = `package p
+import "os"
+var count int
+func native(f *os.File)(string,error){count++;return f.Name(),nil}
+func Run(f *os.File)(string,error){return native(f)}
+`
+	const adapter = `package p
+type Context struct{count int}
+func(c *Context)gate(f interface{Name()string})(string,error){s,e:=c.native(f);return s+"!",e}
+`
+	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", file: source})
+	src, err := OpenSource(context.Background(), repo, pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{{Source: file, WholeFile: true, Context: &ContextRule{Type: "Context", Constructor: "newContext", Selective: true, Adapter: "adapter_context.go", Fields: map[string]string{"count": "count"}}, Calls: []CallRule{{Source: file, Function: "native", Method: "gate", KeepDefinition: true}}, HostSignatures: []HostSignatureRule{{Function: "native", Methods: []string{"Name"}}, {Function: "Run", Methods: []string{"Name"}}}}}}
+	dir := t.TempDir()
+	writeTestFile(t, dir, "internal/p/adapter_context.go", adapter)
+	rendered, err := Render(src, plan, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = Install(dir, rendered); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
+	writeTestFile(t, dir, "internal/p/check_test.go", `package p
+import "testing"
+type input string
+func(i input)Name()string{return string(i)}
+func TestStream(t *testing.T){c:=newContext();s,e:=c.Run(input("owned"));if s!="owned!"||e!=nil||c.count!=1{t.Fatal(s,e,c.count)}}
+`)
+	cmd := exec.Command("go", "test", "-race", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.27.1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	writeTestFile(t, dir, "internal/p/adapter_context.go", strings.ReplaceAll(adapter, "(string,error)", "(any,error)"))
+	if _, err := Render(src, plan, dir); err == nil {
+		t.Fatalf("altered projected return signature accepted: %v", err)
+	}
+}

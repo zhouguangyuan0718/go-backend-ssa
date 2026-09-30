@@ -21,9 +21,6 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := loadMethodCallSignatures(s, units, before, signatureSources); err != nil {
-		return nil, nil, err
-	}
 	fs := token.NewFileSet()
 	var original []*ast.File
 	regionSources := make([]map[string]string, len(units))
@@ -88,6 +85,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 			}
 			return true
 		})
+	}
+	if err := loadMethodCallSignatures(s, units, before, signatureSources); err != nil {
+		return nil, nil, err
 	}
 	continuations, err := prepareFunctionContinuations(original, info, units)
 	if err != nil {

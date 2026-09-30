@@ -112,3 +112,49 @@ func TestBoundary(t *testing.T){
 		t.Fatalf("unused binding accepted: %v", e)
 	}
 }
+
+func TestBoundLocalNativeMethod(t *testing.T) {
+	const file = "src/cmd/compile/internal/local/local.go"
+	const code = `package local
+type Cell struct{N int}
+type Host struct{}
+func(h *Host)Run(c *Cell,x int)int{return c.Value(x)}
+func Make()*Host{return new(Host)}
+func(c *Cell)Value(x int)int{return c.N+x}
+func(c *Cell)Catch(){recover()}
+func Run(c *Cell,x int)int{return c.Value(x)}
+`
+	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", file: code})
+	source, err := OpenSource(context.Background(), repo, pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := Plan{InspectRoots: []string{"cmd/compile/internal/local"}, Units: []Unit{{Source: file, WholeFile: true, Context: &ContextRule{Type: "Context", Constructor: "NewContext", Selective: true, Adapter: "adapter_context.go"}, Owner: &OwnerRule{Types: []string{"Host"}, Context: "Context", Field: "compilation"}, MethodCalls: []MethodCallRule{{Source: file, Method: "Cell.Value", Adapter: "bound"}}}}}
+	dir := t.TempDir()
+	writeTestFile(t, dir, "internal/local/adapter_context.go", `package local
+type Context struct{Bias int}
+func(c *Context)bound(v *Cell,x int)int{return v.Value(x)+c.Bias}
+`)
+	rendered, err := Render(source, plan, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = Install(dir, rendered); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
+	writeTestFile(t, dir, "internal/local/adapter_test.go", `package local
+import "testing"
+func TestLocal(t *testing.T){a,b:=NewContext(),NewContext();a.Bias=7;b.Bias=11;c:=&Cell{N:3};if a.Run(c,2)!=12||b.Run(c,2)!=16||c.Value(2)!=5||a.Make().Run(c,2)!=12||b.Make().Run(c,2)!=16{t.Fatal("local method body or instance boundary changed")}}
+`)
+	cmd := exec.Command("go", "test", "-race", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.27.1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	plan.Units[0].MethodCalls[0].Method = "Cell.Catch"
+	if _, err = Render(source, plan, dir); err == nil || !strings.Contains(err.Error(), "unsupported method") {
+		t.Fatalf("local recover boundary accepted: %v", err)
+	}
+}

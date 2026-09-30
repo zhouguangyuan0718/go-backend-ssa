@@ -35,8 +35,9 @@ type RuntimeType struct {
 type Import struct {
 	Path, Name string
 	// ArchiveSHA256 identifies the explicit native archive adapter input.
-	ArchiveSHA256 [sha256.Size]byte
-	Fingerprint   gcbridge.Fingerprint
+	ArchiveSHA256  [sha256.Size]byte
+	ArtifactSHA256 [sha256.Size]byte
+	Fingerprint    gcbridge.Fingerprint
 }
 type InitDependency struct {
 	ImportPath string
@@ -62,6 +63,7 @@ type Initialization struct {
 // work. This result is not an archive and does not provide a native finish call.
 type Package struct {
 	Name, ImportPath string
+	Artifact         *Artifact
 	Metadata         Metadata
 	Functions        []*ssa.Func
 	Declarations     *ir.Package
@@ -79,7 +81,8 @@ type Package struct {
 // Build runs the source frontend and native declaration fixed point, stopping
 // every function after Phi insertion. The current stage is Built; scheduling is
 // serial regardless of Options.Workers. Imports use Request's explicit native
-// archive adapter, not a standalone import-artifact format.
+// archive adapter or immutable versioned artifacts. The result includes its own
+// import artifact with complete native type and function-body export data.
 func Build(ctx context.Context, req Request) (*Package, error) {
 	var result *Package
 	_, err := compile(ctx, req, &result)
@@ -118,6 +121,9 @@ func builtPackage(req Request, language string, c *internalgc.Context, held []*s
 	tasks := map[*gcbridge.LinkSymbol]string{}
 	for _, pkg := range n.Typecheck.Target.Imports {
 		in := Import{Path: pkg.Path, Name: pkg.Name}
+		if a := req.Artifacts[pkg.Path]; a != nil {
+			in.ArtifactSHA256 = a.SHA256()
+		}
 		if data, ok := req.Imports[pkg.Path]; ok {
 			in.ArchiveSHA256 = sha256.Sum256(data)
 		}

@@ -25,6 +25,7 @@ func noderImportMigration(units []Unit) []Unit {
 			{Source: "src/internal/buildcfg/cfg.go", Variable: "GOROOT", Field: "GOROOT"},
 		},
 		Calls: []CallRule{
+			{Source: root + "noder/import.go", Function: "readExportData", Method: "readDependencyExport", KeepDefinition: true},
 			{Source: root + "base/print.go", Function: "Fatalf", Method: "fatalf"},
 			{Source: root + "types/pkg.go", Function: "NewPkg", Method: "Types.NewPkg"},
 			{Source: root + "importer/ureader.go", Function: "ReadPackage", Method: "typeImports.ReadPackage"},
