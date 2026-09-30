@@ -1,5 +1,5 @@
 // Package ssa exposes the currently migrated native SSA operations.
-// Native type collections, locations and the Frontend contract are available;
+// Native types, locations, opcode metadata and the Frontend contract are available;
 // SSA graph construction is not yet available.
 package ssa
 
@@ -20,6 +20,17 @@ type LocPair = compiler.LocPair
 type LocResults = compiler.LocResults
 type Spill = compiler.Spill
 type ID = compiler.ID
+type Op = compiler.Op
+type BlockKind = compiler.BlockKind
+type SymEffect = compiler.SymEffect
+
+const (
+	SymRead  = compiler.SymRead
+	SymWrite = compiler.SymWrite
+	SymAddr  = compiler.SymAddr
+	SymRdWr  = compiler.SymRdWr
+	SymNone  = compiler.SymNone
+)
 
 // NewTypes binds native SSA types to u. Initialize u with typecheck.InitUniverse
 // first. Copies of the returned Types retain the same universe; SetTypPtrs

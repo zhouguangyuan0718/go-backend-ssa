@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v27"
+const ToolVersion = "syncgo-m3-v28"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -43,24 +43,25 @@ type Unit struct {
 	// unit's handwritten adapter, with exactly the original receiver/signature.
 	AdapterMethods []string
 
-	ContextFrom    map[string]ContextSource
-	Source         string
-	Functions      []string
-	Declarations   []string // Types, complete constant groups, and Receiver.Method names.
-	Owner          *OwnerRule
-	WholeFile      bool                // Preserve types, constants and existing receivers.
-	ZeroValues     []string            // Reviewed zero-valued struct globals replaced by fresh values.
-	ReadTables     []string            // Constant array/slice/map lookups localized in their consuming functions.
-	ConstantFields []ConstantFieldRule // Stateless reads of immutable scalar fields in an instance-owned array.
-	State          []StateRule
-	ReceiverState  *ReceiverStateRule
-	Context        *ContextRule
-	ContextMethods map[string]string   // Free function -> method name when the native Context already uses that name.
-	ContextParams  []string            // Reviewed receiver methods that take an explicit context parameter.
-	Literals       []LiteralRule       // Reviewed external struct values bound to an instance.
-	Calls          []CallRule          // Reviewed external functions bound to context methods.
-	Nullable       map[string][]string // Reviewed owned pointers/receivers that accept nil.
-	Checks         map[string]string   // Selected function/method -> context argument validator.
+	ContextFrom     map[string]ContextSource
+	Source          string
+	Functions       []string
+	Declarations    []string // Types, complete constant groups, and Receiver.Method names.
+	ExportConstants bool     // Generate public aliases for this file's exported native constants.
+	Owner           *OwnerRule
+	WholeFile       bool                // Preserve types, constants and existing receivers.
+	ZeroValues      []string            // Reviewed zero-valued struct globals replaced by fresh values.
+	ReadTables      []string            // Constant array/slice/map lookups localized in their consuming functions.
+	ConstantFields  []ConstantFieldRule // Stateless reads of immutable scalar fields in an instance-owned array.
+	State           []StateRule
+	ReceiverState   *ReceiverStateRule
+	Context         *ContextRule
+	ContextMethods  map[string]string   // Free function -> method name when the native Context already uses that name.
+	ContextParams   []string            // Reviewed receiver methods that take an explicit context parameter.
+	Literals        []LiteralRule       // Reviewed external struct values bound to an instance.
+	Calls           []CallRule          // Reviewed external functions bound to context methods.
+	Nullable        map[string][]string // Reviewed owned pointers/receivers that accept nil.
+	Checks          map[string]string   // Selected function/method -> context argument validator.
 }
 
 // CallRule derives the upstream signature from Source; no replacement package
@@ -119,6 +120,9 @@ type ContextRule struct {
 func (u Unit) output() string        { return portPath(u.Source) }
 func (u Unit) sourcePackage() string { return strings.TrimPrefix(path.Dir(u.Source), "src/") }
 func (u Unit) adapterPath() string   { return path.Join(path.Dir(u.output()), u.Context.Adapter) }
+func (u Unit) constantsOutput() string {
+	return strings.TrimSuffix(strings.TrimPrefix(u.output(), "internal/"), ".go") + "_constants.go"
+}
 
 func (p Plan) importMap(module string) map[string]string {
 	imports := make(map[string]string, len(p.Units))
@@ -174,6 +178,13 @@ func (p Plan) Validate() error {
 		output := u.output()
 		if !safePath(u.Source) || !ownedPath(output) || path.Ext(output) != ".go" || (!u.WholeFile && len(u.Functions)+len(u.Declarations) == 0 && (u.Context == nil || len(u.Context.Fields) == 0)) || outputs[output] {
 			return fmt.Errorf("invalid migration source: %s", u.Source)
+		}
+		if u.ExportConstants {
+			facade := u.constantsOutput()
+			if !strings.HasPrefix(u.Source, "src/cmd/compile/internal/") || !ownedPath(facade) || strings.Count(facade, "/") != 1 || outputs[facade] {
+				return fmt.Errorf("invalid constant facade: %s", facade)
+			}
+			outputs[facade] = true
 		}
 		for _, r := range u.ConstantFields {
 			if !u.WholeFile || u.Context == nil || u.Context.Fields[r.Variable] == "" || !token.IsIdentifier(r.Variable) || !token.IsIdentifier(r.Field) || len(r.Functions) == 0 {

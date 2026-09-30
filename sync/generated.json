@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "tool": "syncgo-m3-v27",
+  "tool": "syncgo-m3-v28",
   "commit": "862c888e612ac346c7c4d99c9392bdfd265f33b0",
-  "plan_sha256": "ce3535ada621663370a9580e8406e3c3aa717b9be10994dd6fa887654c61e585",
+  "plan_sha256": "75d7329946e8c1db8a1ac9a60a450f2fca9e711a9460eb262e600632a8e66ab3",
   "files": [
     {
       "output": "internal/go/abi/compiletype.go",
       "source": "src/internal/abi/compiletype.go",
       "source_sha256": "2da8a691f7e8eb3385d058734494a56567e528dfd94134f98de061ad8dd2f4d8",
-      "output_sha256": "068c89dd034fc0b318341e6b1eb553ccc9478c1a32c84c4fc7551b616357925a",
+      "output_sha256": "f0e0cf751bca468ff1dffcde4eaad14681ec53986ebf4dfa316eecb2b91c8b77",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -18,7 +18,7 @@
       "output": "internal/go/abi/iface.go",
       "source": "src/internal/abi/iface.go",
       "source_sha256": "77d2ebbef46f0e23651df634cf018ef79bb17fd83a26300875f2ef8f0d181b11",
-      "output_sha256": "971462a6b92850381440c1cc90dc1a83d018c2dba84d8e96c84f9d40b63a3b0f",
+      "output_sha256": "efde6bbb2180be78cd8a852379c15bd71de8c8446007ca38488b0b60e030c190",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "ITab"
@@ -28,7 +28,7 @@
       "output": "internal/go/abi/map.go",
       "source": "src/internal/abi/map.go",
       "source_sha256": "39edc7935b336065e2702a2f5c35a375e0cf6297b31e531d7928fe655dd03e77",
-      "output_sha256": "3e5f5210201cc3351eec9e83848d6ffa681d66fbc20eddb67965b1c175a74bc5",
+      "output_sha256": "61384813d24903f5536779d23c2d6580e3659d7ac0f7cbb09b352caac1800559",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "MapType",
@@ -40,7 +40,7 @@
       "output": "internal/go/abi/rangefuncconsts.go",
       "source": "src/internal/abi/rangefuncconsts.go",
       "source_sha256": "b0350d4021e6e279675e082416cc9280c296cfff6a123863ed7f2d693c82a14f",
-      "output_sha256": "91b361e0bdc8217bb7e254d49350b8e7752403ec567fa2f14c407f118f91c3c9",
+      "output_sha256": "cb97d3b0974096ba8b0278e07de9b5aab2500cfe66fd51c69d2f610dc14efd09",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -50,7 +50,7 @@
       "output": "internal/go/abi/runtime.go",
       "source": "src/internal/abi/runtime.go",
       "source_sha256": "4e5e32bebcb05a34756123a330e4c4a79c0e4eb2fba3e81253fd3e616aca50ec",
-      "output_sha256": "deef6e5a768b27a5b48f8964b9808c7fb424d89eedf058de9cccbff09d23c79f",
+      "output_sha256": "125e330e89e5a9824e881a03166b5e8a3d1f37b14306e7bdae062a30d8f8503b",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "ZeroValSize"
@@ -60,7 +60,7 @@
       "output": "internal/go/abi/switch.go",
       "source": "src/internal/abi/switch.go",
       "source_sha256": "d2b5f220dd726af671f4f04bd5851188d280084a2d55f46df6ab623d136094f6",
-      "output_sha256": "4d28edb75899f99f7efa3708e2e88e080000e4514348c56dbb4732d5fbc76bbb",
+      "output_sha256": "0895b4ab78e91fd69557801ea3cdcb1d7dcc43502977ece2425813ba04278c2a",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "InterfaceSwitch",
@@ -75,7 +75,7 @@
       "output": "internal/go/abi/symtab.go",
       "source": "src/internal/abi/symtab.go",
       "source_sha256": "2f3d299e58f35669206f58a0e637a27e3d2a49a5e07dbbe8ad62a0155051fe91",
-      "output_sha256": "a6ed50e03911a436ce5cb846c19bef11563ddafa9ad6498f6c8dbec4ba5f48cf",
+      "output_sha256": "cec37c77d36838396a505666d284f789014a6ac7d433643fb0e2f40d7a1e613c",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -85,7 +85,7 @@
       "output": "internal/go/abi/type.go",
       "source": "src/internal/abi/type.go",
       "source_sha256": "f485a7ac76228ee3a40d5d7d5e06c5f94abb7328ebdc947f2688fac16cc703ee",
-      "output_sha256": "fd3c3b8c75a02add04ed80717fe71a38fce0064cbc1258d3f5f8336f0c27e5ca",
+      "output_sha256": "8ecce09ea58eb63ea23aa5feea74a71dd274a0574e8e3ba3b59f370aef9077fa",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "MaxPtrmaskBytes",
@@ -117,7 +117,7 @@
       "output": "internal/cmd/src/pos.go",
       "source": "src/cmd/internal/src/pos.go",
       "source_sha256": "f04854c4dc76867b158930a81577e5af0d1ec0180da6d6f1027681aacb36dee6",
-      "output_sha256": "4d08a3a890feda1daececbac3fc805ac558f2591748bbcea6a430597632a4757",
+      "output_sha256": "4857e8e3ddce7ce2a6e772c44718813ff561af3fcc7f75ae43cee7fd13a26c1c",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*",
@@ -129,7 +129,7 @@
       "output": "internal/cmd/src/xpos.go",
       "source": "src/cmd/internal/src/xpos.go",
       "source_sha256": "7b128399215c4115fb5d7801c3217a278262a6eecbece68ea46f0d2188c915f0",
-      "output_sha256": "bfb18327d166a894902728698f1b9a61ee72ba07207c4ba4c472cdd2b7c033f4",
+      "output_sha256": "36917282e7df959e69f76df857f564aff07fbbd4ada9727832b938e6fa1fe0c7",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*",
@@ -140,7 +140,7 @@
       "output": "internal/syntax/branches.go",
       "source": "src/cmd/compile/internal/syntax/branches.go",
       "source_sha256": "e94d78e61926b4df2731e3b9d66b37a97b9287560a18fc32b60b489ba8cb899d",
-      "output_sha256": "fa2129e02078408fcee8add87dbf7ed7e492f26b4369678d0de394bacadce250",
+      "output_sha256": "3bce816287c4c373a81e3cfd092d6e5a4ed1842a0e0712d6352660665cb07a58",
       "rule": "package-state-to-existing-receiver-v1",
       "declarations": [
         "*",
@@ -151,7 +151,7 @@
       "output": "internal/syntax/dumper.go",
       "source": "src/cmd/compile/internal/syntax/dumper.go",
       "source_sha256": "f4d27d4b834327604cb7a896cae4461d7abfb66825c5c22f0634da218754d236",
-      "output_sha256": "7df4fad17c9e2c3889807ae7bb2b0aa6ef05f7787f95c5c98ecb968cd59b6f8a",
+      "output_sha256": "1cd08ae0359722cb04d9441251f41073532d1aaacde3ab417d8a2c7379ff263b",
       "rule": "package-state-to-existing-receiver-v1",
       "declarations": [
         "*",
@@ -162,7 +162,7 @@
       "output": "internal/syntax/nodes.go",
       "source": "src/cmd/compile/internal/syntax/nodes.go",
       "source_sha256": "f73adbd3d4e37fb7c84edd61e5f481a9989f3f25e9d473170aa827f9b8634039",
-      "output_sha256": "fad40c5fbf48d9edf60ae5f08cdc502d7e5f452ce90982f3f4e7ed8694662f6d",
+      "output_sha256": "7740491eb59b2b18bceac08089977f4feffb6c9b11c6c64b077dfef502b26b45",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -172,7 +172,7 @@
       "output": "internal/syntax/operator_string.go",
       "source": "src/cmd/compile/internal/syntax/operator_string.go",
       "source_sha256": "59946110d83da0391a61e6344865858a18054f76c547ae1fdf29c9c452e1547d",
-      "output_sha256": "36460322aa6d8fb89430e75729b12d3d30031a21a329345e9e2f2ea014778cdc",
+      "output_sha256": "1c05947629c158311ebf125e14f51341af5f4037d5e520c4e95574c1bfc184c3",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*",
@@ -183,7 +183,7 @@
       "output": "internal/syntax/parser.go",
       "source": "src/cmd/compile/internal/syntax/parser.go",
       "source_sha256": "acbfca2f40fa2022739d35036831566dbcf3656ab2f835f91ef9e51718bdfbe9",
-      "output_sha256": "11cb07d7e122e3f0e29ed6b2779aa9b0879240d944ab27058185d057108315e3",
+      "output_sha256": "b136cea74c820639b01de752135220676a16d27289fc2a32a61bc8535f7352f9",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -193,7 +193,7 @@
       "output": "internal/syntax/pos.go",
       "source": "src/cmd/compile/internal/syntax/pos.go",
       "source_sha256": "8aef7e7e79da418db94351539889b421bc414b004820d4af7c044697d1839923",
-      "output_sha256": "57825396cc94e64cf9d0f6c17c6c1c85a0af846eda51da26b5ab046735674342",
+      "output_sha256": "b946bbffaebdcfef50ef92a714e44e5cec09d6f616faf93fcc8e50c265d80e71",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -203,7 +203,7 @@
       "output": "internal/syntax/positions.go",
       "source": "src/cmd/compile/internal/syntax/positions.go",
       "source_sha256": "c23f2c9d9b418c7e8e66ca68870790f6991dc06e0bf513b9f7964eb5e2362fde",
-      "output_sha256": "4b38f10e04ecbc73e668e1529610ff9306c3f9846f16df62e3fc91303f19939c",
+      "output_sha256": "26b96d3f96b10823e77af05a5ae244f7b271b2aaf6d262734c4a10a692ff0a53",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -213,7 +213,7 @@
       "output": "internal/syntax/printer.go",
       "source": "src/cmd/compile/internal/syntax/printer.go",
       "source_sha256": "d8b6d8e4b51b39191dd623545b506809eff6558136521a7fcd61cb0c5f8abac1",
-      "output_sha256": "0937aaee4b4aa25fcc30b602e754a99511e52ccb81c90b0190e4a52b0a821fb2",
+      "output_sha256": "0501487b81e6da328e7ea8c6623c5f475977d9851edbbea2aa9a796db42ba997",
       "rule": "package-state-to-existing-receiver-v1",
       "declarations": [
         "*",
@@ -226,7 +226,7 @@
       "output": "internal/syntax/scanner.go",
       "source": "src/cmd/compile/internal/syntax/scanner.go",
       "source_sha256": "eb774e9a58f9d29c0296c29360338e19eb4040977a39ecc5753fd1762a18ee49",
-      "output_sha256": "1988d381148c72ff23b46ee1c9318dfb7a5c3a00c5f85355076dbfa31f67563c",
+      "output_sha256": "3633de03990d9bf41ed84a0f12355ce2fc4f2af011258004c24d70cb04baa4ae",
       "rule": "package-state-to-existing-receiver-v1",
       "declarations": [
         "*",
@@ -237,7 +237,7 @@
       "output": "internal/syntax/source.go",
       "source": "src/cmd/compile/internal/syntax/source.go",
       "source_sha256": "d3696fb7dc2f63ebb9aeee224423426ce9f6cf47096029d36aed41763eea7349",
-      "output_sha256": "54b637701bd5c2d239301066509e0117a8294db992ea1980f621c7f677a57a4e",
+      "output_sha256": "90f1e97cf8376bf175666d32b77de12d4c564f21574c3a8ba25615e524a52d46",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -247,7 +247,7 @@
       "output": "internal/syntax/syntax.go",
       "source": "src/cmd/compile/internal/syntax/syntax.go",
       "source_sha256": "8aece6eed03aa7c6a20a2893d1bd4b999e1d235d336d44259787f0c12de8caf1",
-      "output_sha256": "13815c6ffa502a20a7424bb9bf7dabe24d688c69a3b454708f580979274a0442",
+      "output_sha256": "2860827ce1ddcc041ff628fc2633ffa541952105b71be892465b4cd7a985998e",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "Parse",
@@ -264,7 +264,7 @@
       "output": "internal/syntax/testing.go",
       "source": "src/cmd/compile/internal/syntax/testing.go",
       "source_sha256": "aaf13f38493405602a46062b41cc62ff49d349343aa1bd060fa80af971af3353",
-      "output_sha256": "06eea98999f5465c01414b3694a0e112a202aad8a965642d6414539917eb01df",
+      "output_sha256": "e05b50907458eb0b161861b13cb02866a477406902d362b5dfd82a8d4af1185f",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -274,7 +274,7 @@
       "output": "internal/syntax/token_string.go",
       "source": "src/cmd/compile/internal/syntax/token_string.go",
       "source_sha256": "a59da3b0e566bba8dd963f2148ab0c5acbb93d1819886db6ffe7d6e9371be06e",
-      "output_sha256": "88bf648b9a3c01f08c5bce782b95b5489488fff6ad248340da56a355825d6c16",
+      "output_sha256": "c476df7232278f8cea977e29a3c2352b27c6aad6399e60ab4b4825838613721a",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*",
@@ -285,7 +285,7 @@
       "output": "internal/syntax/tokens.go",
       "source": "src/cmd/compile/internal/syntax/tokens.go",
       "source_sha256": "d9667c96873a3e1ae84fce948ef80d269a009a787496f088ab643b14b8bec192",
-      "output_sha256": "2d318eec983c5c4305a309d7c76c56960ae12010e4f72b936b472fffaa1642e5",
+      "output_sha256": "1a084f39ac6e8775fbc3d2d72e2fdf90a120c24cc04ee967c56f02be22b831c3",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -295,7 +295,7 @@
       "output": "internal/syntax/type.go",
       "source": "src/cmd/compile/internal/syntax/type.go",
       "source_sha256": "cf198a9e3d8385e14d486aa420586a0584bde44da90a736567c9432a2c71f3bb",
-      "output_sha256": "6a7f4f28459716efa47fc79b44c2744b28f1aefb59604e2f3be258d0c3bad992",
+      "output_sha256": "62d15966dd43ea3888b27e7752e8c05ee0c3a25c880aabeced878a0e5e501404",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -305,7 +305,7 @@
       "output": "internal/syntax/walk.go",
       "source": "src/cmd/compile/internal/syntax/walk.go",
       "source_sha256": "310a5d10ea526bc6db4e3f2dcf6c9d7d5e6c3092234c13eab9ae75c3ade3a80a",
-      "output_sha256": "02710a192437dba282f638b9fa3a0c417cedabb3c48e9de0fce7abe355f43696",
+      "output_sha256": "b9912b34176abf1cc9336c5f46aa7006399e9ab9e455a81af6ab9ff7c6e1a5dc",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -315,7 +315,7 @@
       "output": "internal/cmd/objabi/funcid.go",
       "source": "src/cmd/internal/objabi/funcid.go",
       "source_sha256": "2de61cb9b8531475fec5d201f1f0b947fa6b3447aa612a5a13a450cbc84916f9",
-      "output_sha256": "2ae01fe9a9c902fc021145586117aa3d3b357fee609f49fb814b215d3f72b658",
+      "output_sha256": "1f8725e9e9b47ea8f358b04cd496e0047d6b034516d453e151766ac0215ff481",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*",
@@ -326,7 +326,7 @@
       "output": "internal/cmd/objabi/head.go",
       "source": "src/cmd/internal/objabi/head.go",
       "source_sha256": "5be1369d6a6504b32367d69fa320002cfeed890da8341364cb75d885d83459c3",
-      "output_sha256": "f5146c0a860529f48242a9901fd74260384f58ad13b1873bf93b536eb53e134f",
+      "output_sha256": "36cc25b89f88f4ba460f69902d2a4af23492429d4d42c0966a969df31056dc68",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "HeadType"
@@ -336,7 +336,7 @@
       "output": "internal/cmd/objabi/line.go",
       "source": "src/cmd/internal/objabi/line.go",
       "source_sha256": "46eb2189b894046b998a5a48828db97f8024ab2b6bf60c4741127eb57370ddeb",
-      "output_sha256": "ac5646312961a65aff85b28f664f7cf233406c188192d2e4c1d8eac93672cd7c",
+      "output_sha256": "627f89aae8cf55e814e77c273ebb7aad6591f6a64692c2c0d6a7d7789455d86e",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "AbsFile",
@@ -353,7 +353,7 @@
       "output": "internal/cmd/objabi/path.go",
       "source": "src/cmd/internal/objabi/path.go",
       "source_sha256": "ff1e056f2f2b3aa1f757bf7be3da769f1f5241da65438e5ebb9f65a6716c8343",
-      "output_sha256": "601982cc67bcf55b64a9bd72e441d79861a9ae668b0c5bd71192221d099f5995",
+      "output_sha256": "6ebacce28fb7f078bad920fb3a7fce966f1cc106cf054442d5c5d084a58b1a68",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "PathToPrefix",
@@ -364,7 +364,7 @@
       "output": "internal/cmd/objabi/pkgspecial.go",
       "source": "src/cmd/internal/objabi/pkgspecial.go",
       "source_sha256": "662cf3f84610b131643d69065c94e91d97d41d88384c2d3ec71846d95cb5d429",
-      "output_sha256": "6a4e905de7bc5d3427e69affbdbf391d33b2e8239811979a0ae43f193c060346",
+      "output_sha256": "74e6c93458efd7ee8c00990d39d83e83a5960e2cba11d4f8b06860e1a4d6a77d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -380,7 +380,7 @@
       "output": "internal/cmd/objabi/reloctype.go",
       "source": "src/cmd/internal/objabi/reloctype.go",
       "source_sha256": "49bebd30a27d05a24de77398ab524dfbeb0630c8b88c06646c1e4734e4f1fc9d",
-      "output_sha256": "28b3f2e0bb9651a1fffa91f16c6454bdc016ae266f0b9f1f000e7d0aa315ed4a",
+      "output_sha256": "8ddfa225409aff9df16bf09bcfb9ea735be1c1b9a019ebefd0c2704ef1636f6e",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -390,7 +390,7 @@
       "output": "internal/cmd/objabi/reloctype_string.go",
       "source": "src/cmd/internal/objabi/reloctype_string.go",
       "source_sha256": "6e1a80d8c32bcb6c599a75e08a1e69d54f88a52941a0c831fb37b8e11ce3fc28",
-      "output_sha256": "655f3851fdeebb1f46a528dbfd85aced969230cf11b29600ccc34bf3e0d374f0",
+      "output_sha256": "4e3c704ee606d073df5058ab16ed21ef4778f19baa9322ff13ecb3ef71a09800",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*",
@@ -401,7 +401,7 @@
       "output": "internal/cmd/objabi/symkind.go",
       "source": "src/cmd/internal/objabi/symkind.go",
       "source_sha256": "de287864b7ff9a3614becc538cbabdccdecc030a848aad5d5bbef6ec7ec5c225",
-      "output_sha256": "42054453592dadda7f0a596096de28e49c2144c32b4cb71a7fb9478fbbe45565",
+      "output_sha256": "e15a8cb789e581931cfb5386aff2295cfecd4cc59ba0ec7b8a70529c3661d1a7",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -411,7 +411,7 @@
       "output": "internal/cmd/objabi/symkind_string.go",
       "source": "src/cmd/internal/objabi/symkind_string.go",
       "source_sha256": "4e9b1e08bc870a6bf71d3c3f8e86a27846fd09ae9a555c6abf9eb967159fa772",
-      "output_sha256": "e446d3c9f57d8274e54a2dba5f494768129e5cbb2238513ba2881b6ef42e3342",
+      "output_sha256": "f451d6b001ed9e01daf410d0ad30c7d1cc4f3d1450c5f1374cff5c674f4a974e",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*",
@@ -422,7 +422,7 @@
       "output": "internal/cmd/objabi/util.go",
       "source": "src/cmd/internal/objabi/util.go",
       "source_sha256": "65dc4ce3e609b52ff9aa3e7456bed6d6bd2989260ec04e30ac80832c7a3f9455",
-      "output_sha256": "97b0e856b391190348ddf213f473f8e937db5b856d1438d13d7a0c577783e62e",
+      "output_sha256": "481a62cb02ae2d2e6176978cdb6a76ecb24f7280d749272fd20be5446b79810b",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "GlobalDictPrefix"
@@ -432,7 +432,7 @@
       "output": "internal/go/bisect/bisect.go",
       "source": "src/internal/bisect/bisect.go",
       "source_sha256": "978d518986ba6867f5f96356531f35bfa59b865fbb363b98eb9052e862a2160c",
-      "output_sha256": "5fab39220c1a8b49a5ccc0eb50ac95e8e514f934819caeb6486817e13d18ee15",
+      "output_sha256": "c90236b82fdf85196ddfb17404c2dd06f1d3fa10d21d5eb93361604cfa199672",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "New",
@@ -459,7 +459,7 @@
       "output": "internal/cmd/hash/hash.go",
       "source": "src/cmd/internal/hash/hash.go",
       "source_sha256": "8574000887ab8f24695355bc9247f189a332698db89c63b2ac13a6149ca36350",
-      "output_sha256": "0d477b7fb0f6bc29a18cd11372143b05daf5c1da4708e1d41edc5230986afb40",
+      "output_sha256": "f5081c98412575d64b367627013a93c1b7d7b44b9daded47fa281ca1a3c96ab0",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -469,7 +469,7 @@
       "output": "internal/go/goarch/goarch.go",
       "source": "src/internal/goarch/goarch.go",
       "source_sha256": "4ba164d62956cbf38638637453837789c39761e739aeff267702b33bdf5908a9",
-      "output_sha256": "10d05fadce12ec394ff9083dd6873b3fd975364f9e1a8665802d0ab604b2c8ac",
+      "output_sha256": "378df61c948203b0a73fb9380fa6aaf35ad3475d134e2a66617aa2101f60d5cf",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "ArchFamilyType",
@@ -480,7 +480,7 @@
       "output": "internal/cmd/sys/arch.go",
       "source": "src/cmd/internal/sys/arch.go",
       "source_sha256": "07ac549fe63e0df269822d5b10b704ca710489b2aa25e176df5d98f2a2c6b8f2",
-      "output_sha256": "12952c5af90e9ac3c8cfb56e0e60d1757b6694046b86916f416332b1e6de01f0",
+      "output_sha256": "be08d44ba7106f4f0e9e6b036fa8801f8df40dd43f03b04fe735d819d96347a6",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "Arch",
@@ -492,7 +492,7 @@
       "output": "internal/cmd/dwarf/dwarf.go",
       "source": "src/cmd/internal/dwarf/dwarf.go",
       "source_sha256": "e608077914681daa41264b1cfa07d12ba9df9090b8f2b4bfc7242af890f2d91a",
-      "output_sha256": "d28b32a7230d370d65619c8daf70342af2433650d405d4c8eda106fc797f0135",
+      "output_sha256": "6646e62f63b3a8cb04a5c210688719eabb33e3dc1a9c64edae169ece998c1d03",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "InlCall",
@@ -509,7 +509,7 @@
       "output": "internal/cmd/goobj/funcinfo.go",
       "source": "src/cmd/internal/goobj/funcinfo.go",
       "source_sha256": "4822deea31b39862b90ecce2ad8498310e5f9da46525dfc7301ffb9ae14fceff",
-      "output_sha256": "688fb3c58558baae10ff897ed1b414549467e0d9dc146e7691930a7c010332ac",
+      "output_sha256": "2e8abfbad3327da5cdf5cb03c684412d727a52f15dd4e9ceff0305cf28c695df",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "CUFileIndex"
@@ -519,7 +519,7 @@
       "output": "internal/cmd/goobj/objfile.go",
       "source": "src/cmd/internal/goobj/objfile.go",
       "source_sha256": "caf835a17e23aa02cae9bda6e8723d8be359846fc4453bd53f3a3947744b938a",
-      "output_sha256": "7cc7f8ad154b5efb06fb5ed40007fd89d9400d9263d869ff8d108f331225c8c6",
+      "output_sha256": "34e9e6d2e2778ec53e9cee1ea38077305fe793aa3f5b246223be698fde859bda",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "FingerprintType",
@@ -530,7 +530,7 @@
       "output": "internal/cmd/cov/covcmd/cmddefs.go",
       "source": "src/cmd/internal/cov/covcmd/cmddefs.go",
       "source_sha256": "925700facaff2685223e2b83694d1e96da216f435e5fa9982d92a255e60327dc",
-      "output_sha256": "0ecf4277e587e115d962db74f580266aabcb1fbffd529bb60c88658cc531a934",
+      "output_sha256": "2b7fd62b27557c62cc4f59e3aeeee56d5426c8c4fb6bdc30c52b7ba33be4740c",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "CoverFixupConfig"
@@ -540,7 +540,7 @@
       "output": "internal/cmd/obj/abi_string.go",
       "source": "src/cmd/internal/obj/abi_string.go",
       "source_sha256": "8fe0ce9db1606dd6ac246e815c2a5eeebe889abc0ce8b7043a6b3c860ed7c894",
-      "output_sha256": "aeb82c12433a8562f265f6c04e9ca73226bb4ad9563cf5e2a8718eecf5eadc11",
+      "output_sha256": "9e55844ccdd0e3c7afa0ff6c56909acc94c399a655b5bc13de5f1a0e24d3d89c",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*",
@@ -551,7 +551,7 @@
       "output": "internal/cmd/obj/data.go",
       "source": "src/cmd/internal/obj/data.go",
       "source_sha256": "7f96b7e5ee46792a3f44b313ec74e231255895f37837db6c3726786c9939da35",
-      "output_sha256": "1eb579aa98cd6ce1cf2f5b8c7955e46472c2c1fff7bc1a492ab8cfb36001878e",
+      "output_sha256": "26fab4fa87b0922a0c7433b32dc4b9eca74280c129106c30b5fc69f1667be8c3",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -562,7 +562,7 @@
       "output": "internal/cmd/obj/dwarf.go",
       "source": "src/cmd/internal/obj/dwarf.go",
       "source_sha256": "46d1b0d61d3068f28928f716622098091a78f98f33311e7eb8a251fd80fd955d",
-      "output_sha256": "9b4cafac9a99f6319ab366ac1831946cacea3b8f956bb9d14d5f93b327e4130f",
+      "output_sha256": "7abec733f5f8c22f1b67382f79ffe2a158c011543f26ff169ebf37e080fe3489",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "DwarfFixupTable",
@@ -585,7 +585,7 @@
       "output": "internal/cmd/obj/fips140.go",
       "source": "src/cmd/internal/obj/fips140.go",
       "source_sha256": "25fba80147d77aa812720b5c4ec71304b1547491ff59f0221c12a3c504236137",
-      "output_sha256": "51794d1074b091ab1503848c722d0c7d00794ad455a291fc76434fddcb20366d",
+      "output_sha256": "9d35dc1b8e3b8df6e7fe06fa8eaed677b147a9695298291d09d51965e008aada",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -600,7 +600,7 @@
       "output": "internal/cmd/obj/inl.go",
       "source": "src/cmd/internal/obj/inl.go",
       "source_sha256": "768c3aa365cccd79b09abe47a4b5fc891e0f06484d6c45a56dbc2cdeea475c0d",
-      "output_sha256": "d148133d763c89f82c576c4099117feefe8478d39859244c952d0efadfd79ff0",
+      "output_sha256": "cc4c8117865358c6f4d8cfc32306cf632704a33339794a679d23af061fc5487c",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "InlTree",
@@ -621,7 +621,7 @@
       "output": "internal/cmd/obj/line.go",
       "source": "src/cmd/internal/obj/line.go",
       "source_sha256": "fed31ba13b8e0d9aae3532c6ff70ad7a52a281b26e0623490c0fd969870dae44",
-      "output_sha256": "585ade5f9fad591b20194fd8882d2f4d54d2638d65fa48d76cb019152d4abe6c",
+      "output_sha256": "f1b7ed355bb16afec1b2d74a63c53a1ad7ed7aab40227950a7283e5bd7fa77e5",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "Link.getFileIndexAndLine"
@@ -631,7 +631,7 @@
       "output": "internal/cmd/obj/link.go",
       "source": "src/cmd/internal/obj/link.go",
       "source_sha256": "918978ac6b04e839f5222282b2526230c6ca95b50248456ba9f73e9083258e1f",
-      "output_sha256": "d28e24a871ad72750f26e24d15bee581246e2f344592536163410c3f0b476495",
+      "output_sha256": "bf8b31fd42a3748b8007dc3d4c99e86819515fe84bf8f18472640ddcbe82e72e",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "ABISetOf",
@@ -699,7 +699,7 @@
       "output": "internal/cmd/obj/plist.go",
       "source": "src/cmd/internal/obj/plist.go",
       "source_sha256": "50c121d6c72c356c605176e02bce549dd6e0e8107af6c0eed467f7b3adb418e3",
-      "output_sha256": "dd0fa04bf7f30a3a0c4d53014f3d113f0810358418dcdaad51d667807e51c5a0",
+      "output_sha256": "b4b00eef4490067939dac02c1b2f365943a61c7ec1a3a85b0ce914644cf85796",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "ProgAlloc",
@@ -713,7 +713,7 @@
       "output": "internal/cmd/obj/sym.go",
       "source": "src/cmd/internal/obj/sym.go",
       "source_sha256": "2bb2646a6ccff23aa42d8c4960be7cf82af5570ae5a83a1a355b7b822ee2149d",
-      "output_sha256": "a2ad9e4d9678fc435809ea6eedf15c8b53a009491c35ca3461e77d4b6132a3a5",
+      "output_sha256": "efe41bc17b8490e0d86e21a577c3c07401425a42d3e97ead2b2e4da1be997d69",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "StaticNamePrefix",
@@ -729,7 +729,7 @@
       "output": "internal/cmd/obj/textflag.go",
       "source": "src/cmd/internal/obj/textflag.go",
       "source_sha256": "afa3e5159a72f183945555ff63324a169284959deab61d17f5e4942088e5ddb8",
-      "output_sha256": "6c3df743e563351a8e33b2f939c48cd1de4c502901742bd487103f0f413cdda6",
+      "output_sha256": "1f01ea0ca1a982bc5725e9387885c6aaad703ce39d2c73d3a495ba95a88e0682",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -739,7 +739,7 @@
       "output": "internal/cmd/obj/util.go",
       "source": "src/cmd/internal/obj/util.go",
       "source_sha256": "17c642abe98eb67970bf2bf9dded0b2d440fffa76a0cc80c37ebe74aae117c41",
-      "output_sha256": "5d469315756c6a4a2fa91ee742b9e88077bf4fc978f138078b3ae5a65c8243d9",
+      "output_sha256": "4e45afe6cd94e07b5ccd6b0238545b9230432f14a35128535e041e140b6e4583",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "Bool2int",
@@ -750,7 +750,7 @@
       "output": "internal/go/goexperiment/flags.go",
       "source": "src/internal/goexperiment/flags.go",
       "source_sha256": "e25f1ee2052c37f6f80d9cdb80570b565d886fb13e44c4b33e080cf285cc0121",
-      "output_sha256": "7b00d2a93be0ffbc93c63be77c118ac3d1f4b1baf6173b736ff9c52249311a65",
+      "output_sha256": "99bff649fd96ff3d69a39d8deba1fc137973fac4734ebcee17b81ab5c42abd64",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "Flags"
@@ -760,7 +760,7 @@
       "output": "internal/go/buildcfg/exp.go",
       "source": "src/internal/buildcfg/exp.go",
       "source_sha256": "5825d40b47471bca28a00c0c19215930efef22b758120b6d972da1a955f21fa0",
-      "output_sha256": "e2a86808722643a1af18d4b6326db324e48ef38b3da14c227d06f6fe6b74ec85",
+      "output_sha256": "c8da81d65175c19a603bddfea208bd78679f268d370e28de81fbc533500f5bb9",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "ExperimentFlags"
@@ -770,7 +770,7 @@
       "output": "internal/go/types/errors/code_string.go",
       "source": "src/internal/types/errors/code_string.go",
       "source_sha256": "0297a4ff31da233b3f50e2874e5c62aa5ac3a904db536dda6183ab35c461361c",
-      "output_sha256": "7d103df5b12389780d46daec06d25a2429f297fbac979179e50a6b18cca1cb84",
+      "output_sha256": "bcd3303435357525d3bd250a54bea20d263435b5a9147a734b2de08886dcb8f3",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*",
@@ -785,7 +785,7 @@
       "output": "internal/go/types/errors/codes.go",
       "source": "src/internal/types/errors/codes.go",
       "source_sha256": "34514b4fb658d7aa97d8b4cfdcaed208d7b7e96c4fb92db03f14a71e576deba4",
-      "output_sha256": "0dcf683000089509f0887749e34220d38c6cee7903b7e5d4dd7f50de83b7f681",
+      "output_sha256": "17833664dd69a41da6b47bca20489f1d0874bb924ad3c72eb654bf1b9320bdcd",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -795,7 +795,7 @@
       "output": "internal/base/base.go",
       "source": "src/cmd/compile/internal/base/base.go",
       "source_sha256": "2cfa9d3b3927e2ade103bc5ef7c91593ca86192c198d4851dc9c00028efa6094",
-      "output_sha256": "7ecfdbb6ec2fd598a7c12c0e0fbaa3d4ee779816785264b996996323675300f6",
+      "output_sha256": "6d0b3c5b4e2f6bc22568e2c39db49665dbd217970d125425d2a878c4121111a6",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "EnableTrace"
@@ -805,7 +805,7 @@
       "output": "internal/base/debug.go",
       "source": "src/cmd/compile/internal/base/debug.go",
       "source_sha256": "993de7fcc9bf1d1ae39e99277df18dbc04113aba450c155609a02238ea9050ab",
-      "output_sha256": "a0462ab976ba62e552f7ca315d5bcbb4c8dd831303ac71f8587062afea5cbc10",
+      "output_sha256": "16c5ee3629dfbef9f5e94e3b1b072da8a725cfbc2f8116504847cf00c8f19c69",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "DebugFlags"
@@ -815,7 +815,7 @@
       "output": "internal/base/flag.go",
       "source": "src/cmd/compile/internal/base/flag.go",
       "source_sha256": "4a0fa18857d702ea677247cc6c562795c780f4ae6a669e1a2e2352febdcb660a",
-      "output_sha256": "7e797a3523a3777112e096b606762f8482b91756bd89767a7fdfae8dbbafaabb",
+      "output_sha256": "326b851b7c94adfe0127eeb7565d6e903915c0afe8032240434af8f80c578467",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "CmdFlags",
@@ -828,7 +828,7 @@
       "output": "internal/base/hashdebug.go",
       "source": "src/cmd/compile/internal/base/hashdebug.go",
       "source_sha256": "4c70e684bf3c5fe50c280eea5e717f527d44708bb8f64bdbb04f67ba5b74982c",
-      "output_sha256": "924eb419409f76eba120daaef2adab2ba351416373e5c9118156ce7283b580f5",
+      "output_sha256": "d6c275d1c7c1d677015e24a1ef2f80f464095c135eece29bf8be3745e2e2c16d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -851,7 +851,7 @@
       "output": "internal/base/link.go",
       "source": "src/cmd/compile/internal/base/link.go",
       "source_sha256": "316af57f6117869dae6d8762325773c582a8fc7e8fc8638cb69f8d0381b111f8",
-      "output_sha256": "d79703df25dcb26cda77d8d65dd4a738909171d28b296059a48f38d4ef905743",
+      "output_sha256": "b4496941cacc40759013405e92f115a6b1a83b24cc7da08e29d53f4cfa813039",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "PkgLinksym",
@@ -866,7 +866,7 @@
       "output": "internal/base/print.go",
       "source": "src/cmd/compile/internal/base/print.go",
       "source_sha256": "286cc77a65f0380ad336c96659681115bd03c0bdaaa4993867f96754dfd44264",
-      "output_sha256": "8fe441ae6d637d82e15c907804f13793cbfc55fb7eb95d0765c8cad431387040",
+      "output_sha256": "2445d22a830bf4867b06b99c47082cbe9be8d8c2b2ef7186ed86abae222d6a81",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "FmtPos"
@@ -877,7 +877,7 @@
       "output": "internal/base/timings.go",
       "source": "src/cmd/compile/internal/base/timings.go",
       "source_sha256": "9157c9a713bb9105dad85a22a7c8656ab24682739fdc9db51c505c81f52b5124",
-      "output_sha256": "2dcbe274fdf57b5bf7b87227daf04f7e1f558beb5d2d0eae6de69e8202d4c8b0",
+      "output_sha256": "8d3098c817f11572856085f095e8ee945d26e5cbffd4c62dfcb61806cc31e53c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -889,7 +889,7 @@
       "output": "internal/types/alg.go",
       "source": "src/cmd/compile/internal/types/alg.go",
       "source_sha256": "9b4d6c846095292518c83f6ae1df49d9e7b18f3ec1578dc7672e2145c12caa19",
-      "output_sha256": "c58a7941c8364fd8356eff200c90efb409519e537872db9c3dc9fbccbaa09795",
+      "output_sha256": "f446cd3dfb2102ddebd0bba360b3076f0b586b5cf49eda8033185cb768e1c9cd",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "AlgType",
@@ -911,7 +911,7 @@
       "output": "internal/types/algkind_string.go",
       "source": "src/cmd/compile/internal/types/algkind_string.go",
       "source_sha256": "f32ab2fbc67e9455bb190edb454845037f4f06ab8908eb6f61fed558777fe52d",
-      "output_sha256": "46cae04d71955b43fdf7170a732bb212a617afb80a24c1ed2017a21098ef981a",
+      "output_sha256": "ebbd8abd16cb3bf6ce76cb13139c26cd8698cc350c02da4f1faa9b228721ccf5",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*",
@@ -922,7 +922,7 @@
       "output": "internal/types/fmt.go",
       "source": "src/cmd/compile/internal/types/fmt.go",
       "source_sha256": "0e3f8165f476d75becf0b245f443b8a79913225e900d311e3537e8bda9202be0",
-      "output_sha256": "c9542d114374ee6d3750d18f89f7333ec34712ea859d1d331c66dfb85d124913",
+      "output_sha256": "29b67e717a4b6c82e17693a6d404dea753cc4a8da2eb547cd0f1894d9f210810",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "sconv",
@@ -961,7 +961,7 @@
       "output": "internal/types/identity.go",
       "source": "src/cmd/compile/internal/types/identity.go",
       "source_sha256": "7efb500cfaecf7a9872dd4650295a1d50d53621abe04351252cd22672289ee1a",
-      "output_sha256": "50bbee168041d18c113aa3caa9a1dcdf8811c715bbed9380c6d9a84f1d94aecc",
+      "output_sha256": "f443f5b8fd109a8bad6aa42949d0598d971520b0f48ba1797597b9b1fe64c89e",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "Identical",
@@ -977,7 +977,7 @@
       "output": "internal/types/kind_string.go",
       "source": "src/cmd/compile/internal/types/kind_string.go",
       "source_sha256": "ade018adf886a14d3bfd2e90fdaf06bc8904fec30cf96d8d4aced98bfb7b0a75",
-      "output_sha256": "6264d7f563dac285c4aeaa619ab03d5b01390ad37f865436c7948eae0358ed2a",
+      "output_sha256": "f39dec5dcaa35796d1c5d9fe4fdac4365f760f1a8c97a1485676ed44793609b5",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*",
@@ -988,7 +988,7 @@
       "output": "internal/types/pkg.go",
       "source": "src/cmd/compile/internal/types/pkg.go",
       "source_sha256": "2ae44b87b8fdc7ad0eb80e8a25a7e4d710ae789261ede9d525b6560f96c4f785",
-      "output_sha256": "b324758c83e4538a32ad83307104a3e01cbf9ff1dd2037aeedbb2fd020a7b702",
+      "output_sha256": "9c7650fc72dca3f6318e2a9b5c04be2969ffac2a7e95bb7669fd23c92ea03ef0",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "InternString",
@@ -1011,7 +1011,7 @@
       "output": "internal/types/size.go",
       "source": "src/cmd/compile/internal/types/size.go",
       "source_sha256": "d32090d796ae53dc8d1430e206b9e98aee8e1e1b2407f952aa7fdd64b8fb9ad5",
-      "output_sha256": "219e07a1faff4c4af7571bf465e0b15db4b3eedd68fed9a42086a97f6f73184c",
+      "output_sha256": "322b5689d3e81bc35ea73c4c2cbc2eb61de607d50871e356869f7bd382d57a17",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "typePos",
@@ -1051,7 +1051,7 @@
       "output": "internal/types/sym.go",
       "source": "src/cmd/compile/internal/types/sym.go",
       "source_sha256": "9f27e5513bbf64e4560b8a5d9c19a2089f07e61b0025376d1d42d5453131e08f",
-      "output_sha256": "d6f62b4e9be2e8f6700fdd818763a54aa573c8405d95472deb357544ef17cea0",
+      "output_sha256": "f9b069cfa6ceb63db63a8762a183116ecff25a03f10c3fefd25a5b5505579262",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "IsExported",
@@ -1082,7 +1082,7 @@
       "output": "internal/types/type.go",
       "source": "src/cmd/compile/internal/types/type.go",
       "source_sha256": "50e7b9332dd700aebbd6999f9a5d1bc17e8d24e3f21b06b3c30a628ea751e696",
-      "output_sha256": "daaac1cc2dfa414ef3bb7c4bfbbe7dbdf47b3843bac679e178880b915f08f944",
+      "output_sha256": "2866dfb7c04d159f264cbeacf6776955547ebfd5afb799f43f558b2ea78693e8",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "IsReflexive",
@@ -1308,7 +1308,7 @@
       "output": "internal/types/universe.go",
       "source": "src/cmd/compile/internal/types/universe.go",
       "source_sha256": "410606b5ecb3e404bf3e6bc76d13b26c789dc0fb509d41b4b4ff95f158a8c40b",
-      "output_sha256": "3e4257306439689ed901bc1306da67095536658a1f6001ca53ca451dcb7ed46f",
+      "output_sha256": "bc5cf48d8423bd9f8dcfaf8dcf8a600625b529cf3779b4b016cf6e7701a7c987",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "InitTypes",
@@ -1326,7 +1326,7 @@
       "output": "internal/types/utils.go",
       "source": "src/cmd/compile/internal/types/utils.go",
       "source_sha256": "6b804ff89dd9f83c7c91e72420c0c2057ae6bfc99f5acedbe2622c35dd86dcc4",
-      "output_sha256": "1ba97664e484824ec7eed055f78a03b1a316c47b14ad97904070334badce6224",
+      "output_sha256": "cb7eb778ffe7aad04dacbeb7a1d7aa55602a5a7238ae3039c501cdca3dc97d87",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -1336,7 +1336,7 @@
       "output": "internal/ir/abi.go",
       "source": "src/cmd/compile/internal/ir/abi.go",
       "source_sha256": "5f72383e776e0b7c4d3780f867788d05515eabc9bd51bdb0d1d872574775645b",
-      "output_sha256": "30b967bb8e68babab870b0144ff2f35b91ff9e4b7e9490551f06ed4a6b8f5ece",
+      "output_sha256": "c1950838cd601d72db313ef17201bf65423a882e51711a0c7c6032310017a0cd",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1347,7 +1347,7 @@
       "output": "internal/ir/bitset.go",
       "source": "src/cmd/compile/internal/ir/bitset.go",
       "source_sha256": "eacf9ce1f572846d02a9cb866c480afdd143e94c865c3a483daa4f7f4754f27e",
-      "output_sha256": "33c1a3c3107f1bbc7b29c9716412e1a3134db1360d4ceaaf36a769859a479710",
+      "output_sha256": "e7fbbec0371711b1867883d34ec911eba4ccbc4f18532228f76344fa5302c2f0",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1358,7 +1358,7 @@
       "output": "internal/ir/cfg.go",
       "source": "src/cmd/compile/internal/ir/cfg.go",
       "source_sha256": "069646d001e299e91b5d09994b8332278b8594742f983e72417da967ed88173e",
-      "output_sha256": "6a43933b4d04349d6124cd279dc0edfbe252753cdfa00eef96f7309456269115",
+      "output_sha256": "df9bef51e9536b2b1483302f44fa41c04e1e5e062115b5a46734a7735e241d0f",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1372,7 +1372,7 @@
       "output": "internal/ir/check_reassign_no.go",
       "source": "src/cmd/compile/internal/ir/check_reassign_no.go",
       "source_sha256": "ed71ab7aebe0df6381704e73d559c8d000411423e7d24006eb344d884899ec22",
-      "output_sha256": "3db1f07d5d4171098dfa7099b388b941c2ffa4d43c8a51c8c2eeba5042cfc197",
+      "output_sha256": "c3cd162af08a83375ff8692fa9dcaccf838fad06218d93407d73b776339da334",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1383,7 +1383,7 @@
       "output": "internal/ir/class_string.go",
       "source": "src/cmd/compile/internal/ir/class_string.go",
       "source_sha256": "f78ff18bc7dae791022ce467817e0bacf799842025c8618334a0a41004d25eba",
-      "output_sha256": "e486511ad035101ee2efbf038de6bb51208f26ab4695b7d8b3ba51b113cec873",
+      "output_sha256": "4e7b10a149029995a31ccb48f47646c94b2bbc6b384750b3f589f811c8885052",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1395,7 +1395,7 @@
       "output": "internal/ir/const.go",
       "source": "src/cmd/compile/internal/ir/const.go",
       "source_sha256": "a1a14d0eb4a2b9b3d443e36360463ae8a7c53944274134522934acc0d715542a",
-      "output_sha256": "3193fb167b112c0b5d9e92199f8a149229288d419d1d7e7b0005e937a296811f",
+      "output_sha256": "362e6c24a6d8c0e82f34432925dc83e2c692ef36304127bb04d3bf774bea27dc",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1412,7 +1412,7 @@
       "output": "internal/ir/copy.go",
       "source": "src/cmd/compile/internal/ir/copy.go",
       "source_sha256": "725040906370e579c9558de5986f67383e71e04d5f5a4045f3407a8498d72690",
-      "output_sha256": "13fa5d4eeb1eb97f1403341725beedd6063ce1b0c88783d8e31af389978de9b9",
+      "output_sha256": "d976952f439affca2a9ff453b19efe82dfb71e1d503f7fe3e0eaf2670285de44",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1423,7 +1423,7 @@
       "output": "internal/ir/dump.go",
       "source": "src/cmd/compile/internal/ir/dump.go",
       "source_sha256": "14f8abb7bb236b46c6cd6dd258214fb5acb48282b6de1157fcabbe0ad0b21290",
-      "output_sha256": "7b9168dd39c279db46045341684e30f8782c46b82ebce4b2ba0f2f63d62fece3",
+      "output_sha256": "8dd815074eca3fce3819e0977069cf31964330de97a7fd2312cf10cb4f4efa73",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "MatchAstDump",
@@ -1447,7 +1447,7 @@
       "output": "internal/ir/expr.go",
       "source": "src/cmd/compile/internal/ir/expr.go",
       "source_sha256": "2bbf3953f62dff808fdc7deaeffad85111666d7e474b58da897d8a9aa0197b5c",
-      "output_sha256": "f5f491307cee055c8cf0c8dcec8a65bf84f3229cef131fab09b212fd77ca28b5",
+      "output_sha256": "c108de0254ceb003418636d5eafc5463d8a6cb18f4ff12cdb153ead5b67a331a",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1460,7 +1460,7 @@
       "output": "internal/ir/fmt.go",
       "source": "src/cmd/compile/internal/ir/fmt.go",
       "source_sha256": "12463dd5a41e1c345f4cf72ba4e5376da38fb86c028a141804ac2371fce334ce",
-      "output_sha256": "1474e938831296e02fa9b72e14c7accb22e87177c256fa0b772d7139b616c58a",
+      "output_sha256": "74e9fc17faac21d152322bb697c5bebd420b592baf58d2e6b1e94705bf47eb0d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1475,7 +1475,7 @@
       "output": "internal/ir/func.go",
       "source": "src/cmd/compile/internal/ir/func.go",
       "source_sha256": "185b5f070932048b28c173de6d770ee7415b0490c1130623ab8b69dadd2d8387",
-      "output_sha256": "6c9f0fea3803e17c28edafefa6242f9f8b67754a1a80a001814e728f88a7b056",
+      "output_sha256": "93da20f8e11630a822324865d4143c3142c7a3fdc7667337e7cfe442e7631ae7",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1488,7 +1488,7 @@
       "output": "internal/ir/mini.go",
       "source": "src/cmd/compile/internal/ir/mini.go",
       "source_sha256": "cd1f08881b11cd7d67a2e63f53d843ba42ef0e9507cdae17f3aad5c000bb2ed1",
-      "output_sha256": "ac3ada24d4f60e4d6d4e0d918e1ae760498ef746914704c37689b3878c3c0532",
+      "output_sha256": "246229209faae5a0287c2f3c59503169a7f171b2b14ba94057afc110f471817d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1499,7 +1499,7 @@
       "output": "internal/ir/name.go",
       "source": "src/cmd/compile/internal/ir/name.go",
       "source_sha256": "ded604a74bb741602d034c06be2ef9c2a4bf881aa7f77b5a63d90071d1619c3e",
-      "output_sha256": "3684de4e3b83565f6ab514ac63c8df70af0b316db2898e97473c6965bcd902fb",
+      "output_sha256": "e6d0839055b95527d6667d075f4e172774a42baf1d7afab7ee5641fa65c87301",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1510,7 +1510,7 @@
       "output": "internal/ir/node.go",
       "source": "src/cmd/compile/internal/ir/node.go",
       "source_sha256": "c3a15411b58f5d820724f7e488aea6693ec382dfdd84fea73a107a11388194c8",
-      "output_sha256": "72c3ac01f49ec92ec35a70a028a25b4d98f26f6938071c47a1c80411b60bb5ab",
+      "output_sha256": "6a740910a61961b08b4c165dda51c2695ff2e847a631e7c6aa1bbb4421851a7d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1522,7 +1522,7 @@
       "output": "internal/ir/node_gen.go",
       "source": "src/cmd/compile/internal/ir/node_gen.go",
       "source_sha256": "afa527121148a5b45a890c2968a2d4794ab8472f7e07aedffdd7cd98d460d8fd",
-      "output_sha256": "8dc67a6ded54a20100b96ca068733804b1079b76db04fdb4a16950a74ce2131f",
+      "output_sha256": "5b26450831dfcbf9b3e2a2a6246cce45c9231210ccd3a6701903891a4810f10d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1533,7 +1533,7 @@
       "output": "internal/ir/op_string.go",
       "source": "src/cmd/compile/internal/ir/op_string.go",
       "source_sha256": "4c5b2470355b4df8ddf93ea691a6d66845e99f26a636e684daf904d1e10f46e9",
-      "output_sha256": "5bfa6ba5e3d1198afa31febf0e5edff3c69a13fa3e846e710e54cd2dc837e1d4",
+      "output_sha256": "074c82e6812fcd92a7c66fd5da0a788b412aca7864480618c982cd9e2917be26",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1545,7 +1545,7 @@
       "output": "internal/ir/package.go",
       "source": "src/cmd/compile/internal/ir/package.go",
       "source_sha256": "c4fd54d2ced005e666ff4e1f3db996af140cb34eadd2f0aaebefd010400c720a",
-      "output_sha256": "3980f51eb959ddc2f0abf713f650c6361d6e6df3ce2a3a580b717ab92013ae67",
+      "output_sha256": "250baa9e2812b032399824939fd570735af57c54812a28d4bd31e6fd8bebd22d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1556,7 +1556,7 @@
       "output": "internal/ir/reassign_consistency_check.go",
       "source": "src/cmd/compile/internal/ir/reassign_consistency_check.go",
       "source_sha256": "98fe1ef015e5d3f59ca5f01a394f64ed0586d4efa3ed6dfa191f52c0a57f4650",
-      "output_sha256": "a8c303b7a1c0638ca91d31b1078da80a4822b07776c6494726940fd2de60b060",
+      "output_sha256": "dbad55ed8ccb686e014f9bb21bb31177b1c9d82678c44bb35e9e00627b1fe868",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1567,7 +1567,7 @@
       "output": "internal/ir/reassignment.go",
       "source": "src/cmd/compile/internal/ir/reassignment.go",
       "source_sha256": "21c0f41bc88e7d01315c95c83164de52cfef219a853def6f53223e463589dfcb",
-      "output_sha256": "70ad76b2bcf7d6294b3996f10b39aefb08953751b83219b3f13074e6479f4c7e",
+      "output_sha256": "1d325f85bd9c719d5d25e43350b8732e8d553382bb1cbbafd45b6220f68d811c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1578,7 +1578,7 @@
       "output": "internal/ir/scc.go",
       "source": "src/cmd/compile/internal/ir/scc.go",
       "source_sha256": "66ba739752fadf1f2369cc52aac73f79e8ce2ebe51c4cadbc8f3421aeb8162be",
-      "output_sha256": "4b2b2c39cd78557fd0d457150d39cffa2f08810cbb7a7f5ddf5daf0965ea2cde",
+      "output_sha256": "c7801143ab4f24a7eba90dfe45dac54e4cd7feba4fbf5d622b33e13ac9d5b3cd",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1589,7 +1589,7 @@
       "output": "internal/ir/stmt.go",
       "source": "src/cmd/compile/internal/ir/stmt.go",
       "source_sha256": "11ca6c04300f863eefddf8886ebc1d5ab7320dcabe04e53875de19bb07dd2994",
-      "output_sha256": "3cf6015f12898792eb24edf177bb01d3d214e70457f8536f111fa3e6b69e7c9c",
+      "output_sha256": "467856c7beb643e5fbdaced93b52e7547a3b9684f4b3b59d0b1320c0614b387b",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1600,7 +1600,7 @@
       "output": "internal/ir/symtab.go",
       "source": "src/cmd/compile/internal/ir/symtab.go",
       "source_sha256": "0aac16901a94fb1a152cd68370142df495d6b55e36103a6377d2b96fd17e06d2",
-      "output_sha256": "bc5e9518d56f6941e05aa3af24cf8ce8513da2f09af2de361f701748d85bda9e",
+      "output_sha256": "2e6b701faab6db90d38a8f23c9c011140b339eb8e6233741a7c938815d8249bb",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1613,7 +1613,7 @@
       "output": "internal/ir/type.go",
       "source": "src/cmd/compile/internal/ir/type.go",
       "source_sha256": "1dc6dad86f68b1d69bf5b46368de89ee5f52ac6d6b658353aaafd4646a8bdfab",
-      "output_sha256": "7337bca0dcbb6ab408a54b1676ff74a34141718ea9d263c61e9f9152ff6e54f7",
+      "output_sha256": "846a8bcb74b6fcd3f6bd3b18b1af4a1a14116d3acf0ff9560e27d86825341e62",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1624,7 +1624,7 @@
       "output": "internal/ir/val.go",
       "source": "src/cmd/compile/internal/ir/val.go",
       "source_sha256": "3be3539da1eb2e0683b7e4efe225b31242e77fd3cb7dd8e77086e4a5fd5dab45",
-      "output_sha256": "f19b16a6d2d7f337ad40121cab88dff641cf79e1d2f5b6b3321f89220331851c",
+      "output_sha256": "5b47e7935c04aee9ec72927df5f435da161c0d5ee144ad8ffb5d805f93807cd4",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1636,7 +1636,7 @@
       "output": "internal/ir/visit.go",
       "source": "src/cmd/compile/internal/ir/visit.go",
       "source_sha256": "899b05273a540187caf485d7f2d76ff46fe5745283811cdaebd6aeabf6c911c5",
-      "output_sha256": "c5c03217097846b9ab63862db1c6c8c3466234524e13a0613d0973c0287cd079",
+      "output_sha256": "88686f449a5c995f37278539362ff2717b44131d83ca7d52ecca08416a656e13",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1647,7 +1647,7 @@
       "output": "internal/typecheck/bexport.go",
       "source": "src/cmd/compile/internal/typecheck/bexport.go",
       "source_sha256": "82bd24c81487c1c0ae7926c702fcc40c847683467c8a347a65e9aca6f57b0c98",
-      "output_sha256": "d96f7688a0ab2a3f14ec31fa49a33cc35118cac15dac16737584267c1d04e431",
+      "output_sha256": "55925860c1a67a1236f5dcff7ef808f1eed53a9241801e09fc8e0cb4cc60fdc1",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -1657,7 +1657,7 @@
       "output": "internal/typecheck/builtin.go",
       "source": "src/cmd/compile/internal/typecheck/builtin.go",
       "source_sha256": "40aa037ad6f56aa3e7f093bfc82f605028d9f7c10ece7980d6b548990fcc204c",
-      "output_sha256": "f62954df4a1094f34a68b9e4f5d673277ea3b4ae925a307cd8e43ba42c893694",
+      "output_sha256": "978364ed942d1ae2ad6c0576d72c4d8fa979f20e2a233e01bf24623f43275183",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1670,7 +1670,7 @@
       "output": "internal/typecheck/const.go",
       "source": "src/cmd/compile/internal/typecheck/const.go",
       "source_sha256": "4cc3238f8b9afff771bf72a2753682f84f0b0be2d750179b0bb6d9daedfb8d4c",
-      "output_sha256": "33ecbfe48ba89fd9c524462cbe21574293112c017915b33cd096bc63b08d617f",
+      "output_sha256": "c8bc32f558b48bb552977efbfb6abd9d0374df91b86169b1b7d96938c194c1f1",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1681,7 +1681,7 @@
       "output": "internal/typecheck/dcl.go",
       "source": "src/cmd/compile/internal/typecheck/dcl.go",
       "source_sha256": "00f0fb20b54aa4fa2a0eaf56c8f106aaf0c69f7be4af9c12ab419524995d67fd",
-      "output_sha256": "ab5ade4c03b3018b82efda2e924ca1bc1989355015380b156743d426c8720e08",
+      "output_sha256": "1c98e8cf315482e1d5fd36993739dfee1ad49a033f4ee16d7dae27590b190a53",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1695,7 +1695,7 @@
       "output": "internal/typecheck/export.go",
       "source": "src/cmd/compile/internal/typecheck/export.go",
       "source_sha256": "d98e5e7602368133f16c4ea8dbbfac81aebacc403547e2ecd4b49637be2a714c",
-      "output_sha256": "20a3614f836161267e2fe01ad5883a4ed630e477a9628c160e7ab3633d5abd66",
+      "output_sha256": "565ae0a96704ad7e46d8bd3dc6fb81da675a94871fbdb32b53a01f152ba2d99a",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1706,7 +1706,7 @@
       "output": "internal/typecheck/expr.go",
       "source": "src/cmd/compile/internal/typecheck/expr.go",
       "source_sha256": "256e2517cf3040c76430bc47f428a9ef27c72bea9902c889e9cb846c7c5ad4b8",
-      "output_sha256": "05785dfd630c2957a4aeefa6d0e47fd481da734444335b6c875d3ae50c5a4da5",
+      "output_sha256": "58f57c4ea78820fd62b42042a2be826f485f2668b66853bf1c551d78767c56fa",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1717,7 +1717,7 @@
       "output": "internal/typecheck/func.go",
       "source": "src/cmd/compile/internal/typecheck/func.go",
       "source_sha256": "0e28cf2bff691dc146240eb144e00cf693831e342b2c144a3b5c75b8a80d9257",
-      "output_sha256": "a6acdcb3188764ab01854bb24ef1e5e783fd53154f2f3032f991aee4b9cceb53",
+      "output_sha256": "dcb861446e0410d52e01f35fc3ee831f896d5d326763f16b76e962685ce535cf",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1728,7 +1728,7 @@
       "output": "internal/typecheck/iexport.go",
       "source": "src/cmd/compile/internal/typecheck/iexport.go",
       "source_sha256": "5e99a70084ea696b037643674693d5ea434986c280e5ea841c2ffdcf655a0da8",
-      "output_sha256": "3c1d06afb7f4d910c94613b4371a3cc14691823655a2be72074db31db016f9ab",
+      "output_sha256": "b8bfd4576f6ec915793eafb1fd16e0960da68f8e45183c5cbd4c5be236cdbe60",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1739,7 +1739,7 @@
       "output": "internal/typecheck/iimport.go",
       "source": "src/cmd/compile/internal/typecheck/iimport.go",
       "source_sha256": "c30a6b9b75d2d758160ba4796b192d1039ae0775fc5cace6807ef770e8b712db",
-      "output_sha256": "5970886012f1f04d0c1dd3080c6a267058b5e96a0f404bb2845e82b08ab550a7",
+      "output_sha256": "333eceac528e71ffeab196050819fa5e9cbf58e6df2d8db6fc4fa0e94ba20a8d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1752,7 +1752,7 @@
       "output": "internal/typecheck/stmt.go",
       "source": "src/cmd/compile/internal/typecheck/stmt.go",
       "source_sha256": "9981fb739354882d622534ebc125f873b19da31a7b971934609a9f4dbd1065a5",
-      "output_sha256": "ece5708edd4a29c0f5613cca8fde89a006b173dc0631c6235376a75873dc0459",
+      "output_sha256": "4ca41eaf6759414b7795b97a4ccf9aa3758182fee783e059db94c89d467c563b",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1763,7 +1763,7 @@
       "output": "internal/typecheck/subr.go",
       "source": "src/cmd/compile/internal/typecheck/subr.go",
       "source_sha256": "5c1a3dd3ac2abe6ab245f455d75e02598aecb63a89fd7b22ad6644d469d6c056",
-      "output_sha256": "9242996b80ecdc0e2b7259feee20199d3021263f3ca4c4bf7cca189a07268ede",
+      "output_sha256": "56a8954ee1aa3f19ffde93b1ffec119e0d6e21c2002e1f9974ef0432f70ee1f6",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1776,7 +1776,7 @@
       "output": "internal/typecheck/syms.go",
       "source": "src/cmd/compile/internal/typecheck/syms.go",
       "source_sha256": "da209e06e437d2db3064d8ab909b7830b85dfe43b2be717ce2bf225b07720c83",
-      "output_sha256": "7b2c1d597d81ef1bd167c7c9e2f1acec30928b10b2306ba40e3fd97dfa9f62a7",
+      "output_sha256": "345cf46a72742aa2f94f4b1f5fadb35db5fb6958e61f6b7fe4c3d7a01eb74846",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1787,7 +1787,7 @@
       "output": "internal/typecheck/target.go",
       "source": "src/cmd/compile/internal/typecheck/target.go",
       "source_sha256": "022cb09efaf6fad267e87060a909314a42ea775b8379444dbe1d2a48e86a8b45",
-      "output_sha256": "e2561e88b0911199d0f060541e7ab4ccf1146af1bcfe7a86a37b1d5c596b537c",
+      "output_sha256": "cf7b7aa34bde921c098add78c5edcfb978cc00ab704d8387ea2bc24a24533697",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1799,7 +1799,7 @@
       "output": "internal/typecheck/type.go",
       "source": "src/cmd/compile/internal/typecheck/type.go",
       "source_sha256": "7f5d1054ae03e803019e6945db1765b586d6620a802155360ef56b43406b21ea",
-      "output_sha256": "fa61d254011db746a4081e9f0669e06979994dc299d204d873f3b405961804b2",
+      "output_sha256": "bcf87a0f915bf0d974d887b7d15afdaa42fa27f1e4972fa38cd2118b2a84de75",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -1810,7 +1810,7 @@
       "output": "internal/typecheck/typecheck.go",
       "source": "src/cmd/compile/internal/typecheck/typecheck.go",
       "source_sha256": "58b51e747cb5d6dbe9b35ec1c248eacb1f14515e93d5ff359a744c857100f1fd",
-      "output_sha256": "d5b6958cb390b675b52f1fc135bab37420eac19a3c4c10f6432dd1c0292f2e67",
+      "output_sha256": "1a4eb579d0a608505066995be4a5d3e98ca49e7316bc6c19056877c05d5ea21f",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1823,7 +1823,7 @@
       "output": "internal/typecheck/universe.go",
       "source": "src/cmd/compile/internal/typecheck/universe.go",
       "source_sha256": "ac264a2cae3c42318d1797f85acf3e2e8640ba49ae0cbfda7f3f3f526a5474f8",
-      "output_sha256": "2d867588c7d77902fb4f3fd1a8878fcbf30e78366b954abc11c79841dda9ef78",
+      "output_sha256": "46150b96017600759865aef336ceda1c8f0fc9f0b0329b36aad46564f421c3f6",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1867,7 +1867,7 @@
       "output": "internal/cmd/pgo/deserialize.go",
       "source": "src/cmd/internal/pgo/deserialize.go",
       "source_sha256": "7790a957f151aff09b77510847babee9e860ad4729bb8dc6f1920fda9b92cdb3",
-      "output_sha256": "e763562b6e23894d3466d3b8d79f23c7e079844aea19e13cbd0c8a0521a7098a",
+      "output_sha256": "e4db9949bab0d90b46d11822da4a3053b96478901f5be3431b6e4b80af69957c",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -1877,7 +1877,7 @@
       "output": "internal/cmd/pgo/pgo.go",
       "source": "src/cmd/internal/pgo/pgo.go",
       "source_sha256": "5cd49ad164e44238e05c1690025834db23b396c232267a2fa7cdb443e57efe3f",
-      "output_sha256": "a677cc98663289246308f6d634a398d4607209a2563f563630449f782ec85ea0",
+      "output_sha256": "79a68627d57dc2f58ce97d3d9c9384c31aa463b3e0e17affd67cb5de108c3e36",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -1887,7 +1887,7 @@
       "output": "internal/cmd/pgo/serialize.go",
       "source": "src/cmd/internal/pgo/serialize.go",
       "source_sha256": "87282a91d70024ccfbf2c6fdeffe65de81254a2c23dcc47a175793e8e827582d",
-      "output_sha256": "33ccf9404213fb065e6f1043009bb3513f500ef55940310cd99c8a0a181792f9",
+      "output_sha256": "76224d0b48777002393567eb61dda782cf88400568934f8353397ae5191e7389",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -1897,7 +1897,7 @@
       "output": "internal/pgoir/irgraph.go",
       "source": "src/cmd/compile/internal/pgoir/irgraph.go",
       "source_sha256": "60a8228fe7bfedc0ce1dc1e4017bb1a0878bf79448612967c10ec5fc4ac4fb5a",
-      "output_sha256": "4f3731f5131f0f2e82a9fee17ab82397552ecec848948285b1dc6a8f8632f500",
+      "output_sha256": "8bf486fbd9761cf1bf9d38240972223a23a204ad8357a1fb88110e7339a6554d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "createIRGraph",
@@ -1932,7 +1932,7 @@
       "output": "internal/logopt/log_opts.go",
       "source": "src/cmd/compile/internal/logopt/log_opts.go",
       "source_sha256": "7ece6484332d1c00a2c984629baee5b04c04b877e346952657dafbc1ab9ab5c6",
-      "output_sha256": "a7208a8f607953248d842226dc468ae00084b76b1224959f513da841b4e6b214",
+      "output_sha256": "5e8668a5db168f0dd38c470cc997ef98bd88322b5326c74de5330ef19d60f9b1",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "NewLoggedOpt",
@@ -1952,7 +1952,7 @@
       "output": "internal/inline/inlheur/actualexprpropbits_string.go",
       "source": "src/cmd/compile/internal/inline/inlheur/actualexprpropbits_string.go",
       "source_sha256": "127654630999bf4af94fa833cd3c8c07a22a540b925ee807f898fc50ca767e37",
-      "output_sha256": "7c2408710ea68248dd161fc86627d8ad728996aa8237d4da513764be617a7f06",
+      "output_sha256": "2270784f72953b2ea67e0ea7b782eb9153b243ae81ed88de46b430484a51c021",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -1965,7 +1965,7 @@
       "output": "internal/inline/inlheur/analyze.go",
       "source": "src/cmd/compile/internal/inline/inlheur/analyze.go",
       "source_sha256": "bc0ac6dffdb4f919fc5b633c719890d43d3edd0b14e4dc2742ba969092eeb6da",
-      "output_sha256": "b942e3c5c66ea08a81c18cae0d4b38cab11234e2d6617d3443990bf99cf6e921",
+      "output_sha256": "7ea4a4cb8c6c6e7d7f3e2c9d32603d670becdf616c5356687308be7b636f4172",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "DumpFuncProps",
@@ -2011,7 +2011,7 @@
       "output": "internal/inline/inlheur/analyze_func_callsites.go",
       "source": "src/cmd/compile/internal/inline/inlheur/analyze_func_callsites.go",
       "source_sha256": "0b45a073c2446f2f5d93f13a1383cb776fadba3672efe63cfc6626f3b749bc8f",
-      "output_sha256": "a25bff93632c4c06fe675a681be0ce6071d7fe5ce51fc114c77f0626c85a022e",
+      "output_sha256": "c72a6b5653507253a7de155c132daa4fbb5f912bce9449638afaf1b7135d6ea1",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2022,7 +2022,7 @@
       "output": "internal/inline/inlheur/analyze_func_flags.go",
       "source": "src/cmd/compile/internal/inline/inlheur/analyze_func_flags.go",
       "source_sha256": "7a6aa7dd9bf8263a2cc342e37112d615df995e8dfd4c5437ea8adb50a38cb699",
-      "output_sha256": "f8388ee101f20bad9a8f303fe3e6f6bd0cc923c9cb0e4d4d57becacf784900e2",
+      "output_sha256": "67381f205ceb3d3f7780f2086b25c94418507213303fc80f622d3f808a5b2dfa",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2033,7 +2033,7 @@
       "output": "internal/inline/inlheur/analyze_func_params.go",
       "source": "src/cmd/compile/internal/inline/inlheur/analyze_func_params.go",
       "source_sha256": "97be1bc7f710479157d8ea2d74367d9a24a9d8c7d571a0897db0fe0b2c76c26c",
-      "output_sha256": "2654732a3ad9281c3627ed3c8fba94eb34329f3704358a4e890236605615b646",
+      "output_sha256": "5bb4fb4e30584ccb011ade16a09ef3612f2c3f8c269d8d67b5ce338f325793a0",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2044,7 +2044,7 @@
       "output": "internal/inline/inlheur/analyze_func_returns.go",
       "source": "src/cmd/compile/internal/inline/inlheur/analyze_func_returns.go",
       "source_sha256": "1c7e9daff20b7656959bd82bcdf0c6de0393c733b4bce4348725c3bd539c087f",
-      "output_sha256": "e2e24ea9aba3be9c3f666b648b2770735496b6c47882a87e762a0d9be8402573",
+      "output_sha256": "1e07905429742f4acee498e852346cd5a78c4130ece9b132f4ca9fd85f8b6571",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2055,7 +2055,7 @@
       "output": "internal/inline/inlheur/callsite.go",
       "source": "src/cmd/compile/internal/inline/inlheur/callsite.go",
       "source_sha256": "3c642f413726ccd977316e6c3b8c34a39506e62bcf00364aaa605e8631f5c161",
-      "output_sha256": "af8819f3c0fbc22a06f06f1827802963c3805c71060c1eca45289a56e6c16729",
+      "output_sha256": "c5c66a85c2dfe3c869e93accc270384763e64f5dc3ee901f8d2c135dc122b69c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2067,7 +2067,7 @@
       "output": "internal/inline/inlheur/cspropbits_string.go",
       "source": "src/cmd/compile/internal/inline/inlheur/cspropbits_string.go",
       "source_sha256": "47b07330c1cebc8b8a5af82d4e18227b736f28366f0b9f81eeaa362154d84b45",
-      "output_sha256": "abca944c05b842c991b4412d3f554ad6c13726fa5402ff2f1393b05abe91f7e3",
+      "output_sha256": "1604bbbb6a80fc03a08be4e06e6517791d1dcdec49e3844be779c7643d8c1d95",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2080,7 +2080,7 @@
       "output": "internal/inline/inlheur/eclassify.go",
       "source": "src/cmd/compile/internal/inline/inlheur/eclassify.go",
       "source_sha256": "f760842716e3679624b271a949134952a71e2cb6bcf27f154d8b79b1e79d6b05",
-      "output_sha256": "248d10c0f6b2c3befdf9415ef4789d3e5027f324b1bdc97abf77c9125509775a",
+      "output_sha256": "e9ae022f0fa13a44011fe7f65f65fde1402df7c32f48436617069962895037e8",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2091,7 +2091,7 @@
       "output": "internal/inline/inlheur/funcprop_string.go",
       "source": "src/cmd/compile/internal/inline/inlheur/funcprop_string.go",
       "source_sha256": "e7d8f48e861b7f4883ce8b27d27c68710142c240be7f81a3c89b9629229c3a41",
-      "output_sha256": "fbbf601c822366034de27e1f5b8e6247b858e4390c71b9a1fe227a5abf37a7b3",
+      "output_sha256": "f522801c008899c3a69d4c5b8ed26e9fd461e924e493519fa8688f9549ef6936",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2102,7 +2102,7 @@
       "output": "internal/inline/inlheur/funcpropbits_string.go",
       "source": "src/cmd/compile/internal/inline/inlheur/funcpropbits_string.go",
       "source_sha256": "3232afbcac682a1d7587f131b71be731deefcf0046111908076c24c2ccac3675",
-      "output_sha256": "5a9935abb68e134b1ba1fe8ba94b03918d48318eb88bc16ef388dea92005c0c6",
+      "output_sha256": "2260aa5fe4d173bb524614f13ca8f8f15a63e165d763e4d5c709e133a15d7c93",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2115,7 +2115,7 @@
       "output": "internal/inline/inlheur/function_properties.go",
       "source": "src/cmd/compile/internal/inline/inlheur/function_properties.go",
       "source_sha256": "a41c5d42b9be52a5f44fe0dd0c159c7fa3fef4c7cf196570f3fdeecfa984693f",
-      "output_sha256": "e3b6a03f389553722c2504080f24c8f5cd42365b1aa058e570a01db74bd44bd7",
+      "output_sha256": "5ad16e773f4e92b70e01c2f4e6bfaa9773037ff297b27ace4618757cef920ea8",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2126,7 +2126,7 @@
       "output": "internal/inline/inlheur/names.go",
       "source": "src/cmd/compile/internal/inline/inlheur/names.go",
       "source_sha256": "d643eca21ae583925a90d7685441e0c50ef1d9e901064cf39e2a510505f5448c",
-      "output_sha256": "1556d39d289397bcf70405c54e066f68f6843e25f2aad5813b9196b75d0d628d",
+      "output_sha256": "4fbd65d0385915a8a513ea746b148eb1414327a190af876e6aadd6b7daf7ed0c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2137,7 +2137,7 @@
       "output": "internal/inline/inlheur/parampropbits_string.go",
       "source": "src/cmd/compile/internal/inline/inlheur/parampropbits_string.go",
       "source_sha256": "57baa143a1f13c1ded64da086ab6c5bea0732dc9f0c2f3cf8584db5a58b82c47",
-      "output_sha256": "37bc6a9a1a98fca3501de719d233a52058a1478a7b07a0ffe48092aa519b54c1",
+      "output_sha256": "3a2c57383f50e3a4b52675b84694b523ed550fc61976538a68415c2fb9635d7a",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2150,7 +2150,7 @@
       "output": "internal/inline/inlheur/pstate_string.go",
       "source": "src/cmd/compile/internal/inline/inlheur/pstate_string.go",
       "source_sha256": "de923097a4128f1b033afef463806d4a7467cece6ffdaa5680bf8f7f22c74683",
-      "output_sha256": "4fb5c9211e0130ddde18be602bb981b30eb58a9748f9c8516d7511fd98783a9a",
+      "output_sha256": "6f8c378ca9835c391510504733d49a9d04d335a530039a5abece2132b736eace",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2162,7 +2162,7 @@
       "output": "internal/inline/inlheur/resultpropbits_string.go",
       "source": "src/cmd/compile/internal/inline/inlheur/resultpropbits_string.go",
       "source_sha256": "1e29d748d14b6abc885a18b5a82484e6c00dd3363dfb8f31c4c421a0aa6061ca",
-      "output_sha256": "0bb208d9880daac1c3a720a96e759ed60791f0b215e539b961e83eb20b660797",
+      "output_sha256": "d2a500112f9ae5f1a86426ada4cdfe4fd1f851881c01fa8463ae4e4a2d4df684",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2175,7 +2175,7 @@
       "output": "internal/inline/inlheur/score_callresult_uses.go",
       "source": "src/cmd/compile/internal/inline/inlheur/score_callresult_uses.go",
       "source_sha256": "45ee8151687836e336cc9d842edb74161708855cf1b2986e0b5ee5fc1034f0ab",
-      "output_sha256": "81441625e6769dc7a8a662693bea09db232c48e915e32ba5d1ddcd4d6d8822f7",
+      "output_sha256": "99fad3da67dc143bb497b52b7f2faae3adbf041c3d1422cb514ae3fe399f96b8",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2186,7 +2186,7 @@
       "output": "internal/inline/inlheur/scoreadjusttyp_string.go",
       "source": "src/cmd/compile/internal/inline/inlheur/scoreadjusttyp_string.go",
       "source_sha256": "88dfac58eb0a1a011797a90e67cb0dfe58f7460034edb1ffd492c9a24ec89549",
-      "output_sha256": "df80592975e18ccbf71375822729d8701ca7e5ca0abc817e89f64d13c9b07eef",
+      "output_sha256": "09a3fd0bef590c7b0e1d9931fa443ccd7600582a7a24ad121fd14763629d8eaa",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2199,7 +2199,7 @@
       "output": "internal/inline/inlheur/scoring.go",
       "source": "src/cmd/compile/internal/inline/inlheur/scoring.go",
       "source_sha256": "5795709f111ba8b2b21525d3485a4aad63a963a5cfa2d59e02352a9a6815fd34",
-      "output_sha256": "16d968ba37f3353bc22f811b17b2710278b9aae2574af4f139392a4d541b4118",
+      "output_sha256": "73c644006fa24a9f7b4cedcacd3a116bc2ba39a35c54ad2486408cdd3f9110ca",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2217,7 +2217,7 @@
       "output": "internal/inline/inlheur/serialize.go",
       "source": "src/cmd/compile/internal/inline/inlheur/serialize.go",
       "source_sha256": "03655eb2928af398836d4373abc55382e7bb9e51f53cc50abd2c90bff8864321",
-      "output_sha256": "d86ece5e9f240415951d665c1a8e335a1a58ebffe2fd29f17b12d2ac7e462735",
+      "output_sha256": "b9e2cc74029a78a2f9a306e1401514863c816010dd787d9507ca94f5874378e4",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2228,7 +2228,7 @@
       "output": "internal/inline/inlheur/trace_off.go",
       "source": "src/cmd/compile/internal/inline/inlheur/trace_off.go",
       "source_sha256": "4282ef77e5c7f9d9f6f2b6831789041db8312f3e1d4a911bba63c5e044609a92",
-      "output_sha256": "dbe320f57f8b49a902cd8c0c17d0638a322e396a81a25a6468c75d79f1d4d504",
+      "output_sha256": "75ea3624becf29e954c0bc8a0a80479ae4d711ad963fed91ca8f51dfa355e49d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2239,7 +2239,7 @@
       "output": "internal/inline/inl.go",
       "source": "src/cmd/compile/internal/inline/inl.go",
       "source_sha256": "0b3ddc7a5934b270f90bca4d533828e5b704cb0a281297d2ae1ba83d839fe7b3",
-      "output_sha256": "2dffe3ccff2adfeaac72a8189d71383bceb504f0239ede06c316766b7f3fb7a7",
+      "output_sha256": "fa35a57632836637fbf3c5d3be529e020a998f1e0f7f17509ae9d755afa464c8",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "IsPgoHotFunc",
@@ -2311,7 +2311,7 @@
       "output": "internal/devirtualize/devirtualize.go",
       "source": "src/cmd/compile/internal/devirtualize/devirtualize.go",
       "source_sha256": "05f695b9cc88795495542aca035c2b3d2eb0fc25efb850b03dbe7d06cbeb8fbe",
-      "output_sha256": "aa180f0feefc88f12b600afd053fe6a60ef944f40801400c5e6a9ee0b9ceabc4",
+      "output_sha256": "84079a0612150e32639ff645d2ccf6d86ef475f8326b933fed672e11e38a3822",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2345,7 +2345,7 @@
       "output": "internal/devirtualize/pgo.go",
       "source": "src/cmd/compile/internal/devirtualize/pgo.go",
       "source_sha256": "75835d1cc141424f6e0b572381cff24358d43b95871a8e46b9f8dcd9625cf690",
-      "output_sha256": "b3c2b8e54d93bfd61bff24107422d451d5542734cdb920c8081c75df3f468f77",
+      "output_sha256": "85eb4aa97f0177be612747fe326d25b2ff12099e724f65b895e7b81d144bb084",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2356,7 +2356,7 @@
       "output": "internal/inline/interleaved/interleaved.go",
       "source": "src/cmd/compile/internal/inline/interleaved/interleaved.go",
       "source_sha256": "4eb8d4491bcddaca927fb07be5317e7b34110f56b82a1bda85374d828e61c33f",
-      "output_sha256": "cc6884ac2ed93c33c4f195d340266b785a221e4fad97bcdae795a3922db022d5",
+      "output_sha256": "f6a51d65285febb6e24e89dc5dbe11b0122bc6032adc5da1f7727aabef87b4bf",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2382,7 +2382,7 @@
       "output": "internal/loopvar/loopvar.go",
       "source": "src/cmd/compile/internal/loopvar/loopvar.go",
       "source_sha256": "e80aa9c212c54b002c3169d893d49ce7cc71fec59051fb1863f3ff1a2c55fb4e",
-      "output_sha256": "260904eb84fdad6062a423831a3624bfb7abede9f4c87764af2fd26f323b4ee6",
+      "output_sha256": "343cfc9f9e3f716d04d4d9d5822f70174c4f2f06a78aa4802c665dfba14a79d2",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2410,7 +2410,7 @@
       "output": "internal/go/goversion/goversion.go",
       "source": "src/internal/goversion/goversion.go",
       "source_sha256": "953cd85d45c359d53b93d8ae2b87d43e6bbd62781a93a6af79cc32069efd547e",
-      "output_sha256": "9a6db1eb626310929dd96c78b64871f9c4dceceb404294a0659e12b7a208651e",
+      "output_sha256": "0902170e2c541845698c2efd69601077848b03c05f5f79127a6ff1f5e5293a36",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -2420,7 +2420,7 @@
       "output": "internal/types2/alias.go",
       "source": "src/cmd/compile/internal/types2/alias.go",
       "source_sha256": "11dc900cb480cb1e25fc0872421c355031238796b61393c515d3a8926809c65b",
-      "output_sha256": "bb37c5c51fa3fd712991a5d768b86e03240ff7f7c63bca9e3074a2fc44c9fc87",
+      "output_sha256": "5bf9f422f2edd8fdab9b15973ee7157ff5b77738be54404ceb293aa416d8927c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2432,7 +2432,7 @@
       "output": "internal/types2/api.go",
       "source": "src/cmd/compile/internal/types2/api.go",
       "source_sha256": "a689500ebe97785527180a1a4720038a6672183931e3c8161d073a7cae139329",
-      "output_sha256": "37de02049b35883cdeb327af3096676b23a519eb0fc3bc56ea8e003efea6126f",
+      "output_sha256": "0ea6bd942e20154cbf56e945a8276c02acb5c5b3bfea14f45099e72de8bcdfab",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2444,7 +2444,7 @@
       "output": "internal/types2/api_predicates.go",
       "source": "src/cmd/compile/internal/types2/api_predicates.go",
       "source_sha256": "49826ff78274dc6ef34bd6c4302bcf340ef642cde9732f7f2aa4078af13f6679",
-      "output_sha256": "fe854dc3cfc0ae7c1c26f63f0d601fd75c116b0daaa2311deaf8643f1809a57f",
+      "output_sha256": "0226c34903916381747b5657da9c70cc28cbe0cacafb6aa7dc2e2ad1b3adbc31",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2455,7 +2455,7 @@
       "output": "internal/types2/array.go",
       "source": "src/cmd/compile/internal/types2/array.go",
       "source_sha256": "ed5f8b6fd50976609416477e8e55f39611bae63d66a30dc9e4bd084332b61387",
-      "output_sha256": "8e4331e38934d4cdd04e24dd477d083e401f885454c5cd2243d95476070d15f3",
+      "output_sha256": "4f1a93c3de10cd66f2490541a615f1adc0e88c56ed6eac2681b48dd522836be3",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2466,7 +2466,7 @@
       "output": "internal/types2/assignments.go",
       "source": "src/cmd/compile/internal/types2/assignments.go",
       "source_sha256": "e256d585ca3016e9bb342e057b8ee927260f6dbfcaeaa894dd0892cd3799a586",
-      "output_sha256": "26a7d85686d19aec08ff4e39b9d3a9348c36f2f31dd66204f73ae7f8b105e471",
+      "output_sha256": "1dd3395c11ac701073bb6fd37dbbab76a51a9838251ca8851c718835fed64c08",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2478,7 +2478,7 @@
       "output": "internal/types2/basic.go",
       "source": "src/cmd/compile/internal/types2/basic.go",
       "source_sha256": "82854eb433227dc9c6510bbbe989af1d8d6b6a4a46b131e41dbcc0d57d80fea5",
-      "output_sha256": "94e154164b27ffd62290a16d6afbe23289d90db0ef7d903aa403a6503c261e85",
+      "output_sha256": "14481656f94eddd4064e33f55b75ddd6d98588166a712d6f891683c4fe2a835a",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2489,7 +2489,7 @@
       "output": "internal/types2/builtins.go",
       "source": "src/cmd/compile/internal/types2/builtins.go",
       "source_sha256": "c9ce0e810fc25a54ddc1ee9662ca024047fd41f4dd69749bedac0141d97cc191",
-      "output_sha256": "93bb776f0497eca6ec990bcf9adefd21fd8d31c953018967c858f3a6e5c46fc6",
+      "output_sha256": "de9ccedfe0d22d638bdda5b8882729316c84f1e6c58e95d3f2a0360261992294",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2501,7 +2501,7 @@
       "output": "internal/types2/call.go",
       "source": "src/cmd/compile/internal/types2/call.go",
       "source_sha256": "1e98fa29119681b6561130d2bf40c9c5aa6c5af1ae212ba3155f9f4e149553a9",
-      "output_sha256": "4cf81ba0d37382be90eca3c6a98cbfe6877d661801fb52df824bcfd072a12e53",
+      "output_sha256": "7adad570f3ef1381929f2e0c59eada59fc1f2eef06229252012ed15ca49a6bb7",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2514,7 +2514,7 @@
       "output": "internal/types2/chan.go",
       "source": "src/cmd/compile/internal/types2/chan.go",
       "source_sha256": "15114d17cde9feb44251d68fda926b9193d475dced53f9b59d338db21490ad50",
-      "output_sha256": "8ba1114b3ab96728914f671655fbc04c4b522f6a30bbab61ac91a80451633831",
+      "output_sha256": "712cfa60bff8f647065648a880518d4d5af27c72de5ed6f598bce46983fb5bf1",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2525,7 +2525,7 @@
       "output": "internal/types2/check.go",
       "source": "src/cmd/compile/internal/types2/check.go",
       "source_sha256": "779cdb8fc532b3ca4eb603db2198f942562427a9508f1eba7930f4b4f87fe5bb",
-      "output_sha256": "669d40191d1cd4d5a9ee1bc340d55b75fc04670e41bbd2aeae4a99f2bc6fcecb",
+      "output_sha256": "466f0f9074e44b38d47d321cd8222c397cf4fd5ca2295b810b043f3259c80741",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2540,7 +2540,7 @@
       "output": "internal/types2/compiler_internal.go",
       "source": "src/cmd/compile/internal/types2/compiler_internal.go",
       "source_sha256": "32ccb1ac8f84c0205c843e1f573e9e14b1c89b55f517cdd80dccf83b9c590111",
-      "output_sha256": "11f647ec8f2dbd1edb96da501c44ed359b2df964a01656d44967a623ea24c273",
+      "output_sha256": "a3017cfb4fd863878f13060f61287046562cc3eed2983a45821ee743f87fa93b",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2551,7 +2551,7 @@
       "output": "internal/types2/compilersupport.go",
       "source": "src/cmd/compile/internal/types2/compilersupport.go",
       "source_sha256": "8cb519a97b12471e28913a314d36d921a695dcd0d4df78ba194b2635b7fc845f",
-      "output_sha256": "01fb9873b43d4ddb8d5eca0785b0e5be49a528eb75b430f406bcb4d1860cde4a",
+      "output_sha256": "2a7ec80e6309c69579acfcd3b795f1a9464c0616c5c0c21f19108d4c937e17aa",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2562,7 +2562,7 @@
       "output": "internal/types2/const.go",
       "source": "src/cmd/compile/internal/types2/const.go",
       "source_sha256": "ce85624497b9f414b3a02897b0149ebb58b97406c1307620550c1612f46df69e",
-      "output_sha256": "b8d6856922e4b47cc8034ceaa1110faf38a5509e536e5aa8838658ff6a5b1e5a",
+      "output_sha256": "01c3bf2f2972a805a0fd39a0bba8ab9c39c8d73f542e3b96e0d0f41aa70f5a13",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2574,7 +2574,7 @@
       "output": "internal/types2/context.go",
       "source": "src/cmd/compile/internal/types2/context.go",
       "source_sha256": "1629c59cf823bea7a55de42e0c1f02321441f1314466dffc26a3f86225c6f76e",
-      "output_sha256": "7ea0961c1564990b6a11f4940d626f7eac7036bc862cff9ccf01352cd619d4bf",
+      "output_sha256": "6713659a8d751467a4f515a6be75440a1062969a75745f492b6d04385a1c799f",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2585,7 +2585,7 @@
       "output": "internal/types2/conversions.go",
       "source": "src/cmd/compile/internal/types2/conversions.go",
       "source_sha256": "c30a1a354503cc7ba627f40425e39f97355caf719ad5283ce258e81d149425c3",
-      "output_sha256": "470d1ab60afe4ac463f49989be5dcf6089364df11cc45b60949f54a604ce36f9",
+      "output_sha256": "aae157375d8eddf4a9aa6f6d1ac2087a5472626300266cfc1ba3c633f0cb1a98",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2597,7 +2597,7 @@
       "output": "internal/types2/cycles.go",
       "source": "src/cmd/compile/internal/types2/cycles.go",
       "source_sha256": "764fb19fd1f04f9adca5ed66191f6debeb309f60ac5a4a76f840c57bcfb08a73",
-      "output_sha256": "c9b0d8ad7b0ef63e170fc6b82ff2f249ca42c7271182ac891937158303d61803",
+      "output_sha256": "f88247c389480c5e3efe3d60febf005bc8c86f5380fb73a3d6886cbcd7817344",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2609,7 +2609,7 @@
       "output": "internal/types2/decl.go",
       "source": "src/cmd/compile/internal/types2/decl.go",
       "source_sha256": "5ff3273147876c3fba40d7e902341f968f32320271765434acabc7fd2315305d",
-      "output_sha256": "60aa49e8970b220ef59b1b9eb675a36105c055f90d6e6fb4f892b56f7a5b058b",
+      "output_sha256": "45f92d676949b2ac74222bd6661e947c163ff64813da3492f9f22cf557a97aed",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2621,7 +2621,7 @@
       "output": "internal/types2/errors.go",
       "source": "src/cmd/compile/internal/types2/errors.go",
       "source_sha256": "1ed76d7a7683838191b6ddbbb08b205a78968cda2e26268c5ece3d8df66bba81",
-      "output_sha256": "cc6d7eb2fd00d25b837d4645665e67f744f94b38b6ec2cb3335151109c206538",
+      "output_sha256": "674a0b9f946c734027560718313eac1e1b289fa3f13446c75312f2fbf4c55ca6",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2634,7 +2634,7 @@
       "output": "internal/types2/errsupport.go",
       "source": "src/cmd/compile/internal/types2/errsupport.go",
       "source_sha256": "ce69eab659cb280f38447e202693b61ef9ca90e2af141d6f413c0b32037b2e70",
-      "output_sha256": "8680e7504d0615adf6e1627d905255c40a369c066a0b80a7ff6edb5aa0fe66c2",
+      "output_sha256": "05b6e101ea897d383aa5e69420c4c8e3e089cb022aa2d08c9082d06202322d37",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2646,7 +2646,7 @@
       "output": "internal/types2/expr.go",
       "source": "src/cmd/compile/internal/types2/expr.go",
       "source_sha256": "9ab585d8cd4500b84cb298899036624477df4574003170e9ecadeda9c479a800",
-      "output_sha256": "df7ae5fcc717f3772f7722f0cb28acbb60059910e5caf1b144d97ef26c7728c2",
+      "output_sha256": "00a0852bf4c2249bd29ebae3d55ed17d8b4c8e894c972e8a0743f4c73aadd9b8",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2663,7 +2663,7 @@
       "output": "internal/types2/format.go",
       "source": "src/cmd/compile/internal/types2/format.go",
       "source_sha256": "997120f161e41f5c3c77ec2e8f52ec04d5f40714eee958e20c548bf6f6c44541",
-      "output_sha256": "8524bf556b450deb5ee3d576d2d4caeb9c0fe54231220cd5524eaddc232f3396",
+      "output_sha256": "ee06f182ba91b5fbc0095b8b23f77cbcac86683a0cb553eac1154fca99b0b5d9",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2675,7 +2675,7 @@
       "output": "internal/types2/gccgosizes.go",
       "source": "src/cmd/compile/internal/types2/gccgosizes.go",
       "source_sha256": "f71147718339de965392c1d175c81fd8f02e7ea2df8a506d914ec03e635dc9ad",
-      "output_sha256": "5f654c5402c95927e50c40a9005284f9da3e336484b40efde70787556c21b860",
+      "output_sha256": "ced83089870170ae3a6b02ef2c3cb24446333c997df1f998695b022700b6caad",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2687,7 +2687,7 @@
       "output": "internal/types2/gcsizes.go",
       "source": "src/cmd/compile/internal/types2/gcsizes.go",
       "source_sha256": "8d4f8726327ce3069571cf606d31e5360a8b7f55e847ab3b95931d319a2f11c0",
-      "output_sha256": "c5d656155d864f08d7bb2de6b8afa97cb147e413a0f4db54135e479cc4d11552",
+      "output_sha256": "053ebb6872c88939278c1406cae1e3fd2b79d94f6d47d70451c43e8aa3a1c9f5",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2698,7 +2698,7 @@
       "output": "internal/types2/index.go",
       "source": "src/cmd/compile/internal/types2/index.go",
       "source_sha256": "26d108bbfb1206a0b24a5e52b5ba2396f15b1a8d4bd4712ae5a4dcd9e6ec3abd",
-      "output_sha256": "33691fadbef98a315241bdeff558509706ddfa51eb2de234113cb48cde1d6ce7",
+      "output_sha256": "b361494b11e60a38470139c06270c9ccfe9662a339681b072ec4e0527db326fe",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2710,7 +2710,7 @@
       "output": "internal/types2/infer.go",
       "source": "src/cmd/compile/internal/types2/infer.go",
       "source_sha256": "18d24ddaba2e6df7468da9bb8b4a54e79418a318c18e8b956538b22f233ed776",
-      "output_sha256": "fe79e5243270e407664bd02443bb5276c145d86828cf465637adbc9dcda5a701",
+      "output_sha256": "530b4a8dacfb7c3d053c77d8742e9140d7cb3c15c8df4da460fd13e208dedf58",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2724,7 +2724,7 @@
       "output": "internal/types2/initorder.go",
       "source": "src/cmd/compile/internal/types2/initorder.go",
       "source_sha256": "93b3ae3f4ae13bba4317ac598e44ece2beb34ea6931c332e80895d5043e348d2",
-      "output_sha256": "dce134de93500046b5b3011bf6bfade092fa40c7de941bab02645687aafe3124",
+      "output_sha256": "6d1439d56038fbe8dcf23ef1567dc17a69f3a1d9b6b63b26730cb870e9e4a39c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2738,7 +2738,7 @@
       "output": "internal/types2/instantiate.go",
       "source": "src/cmd/compile/internal/types2/instantiate.go",
       "source_sha256": "079574c6f161a7a438972ea73d096c8107a182f7841197649c2eb24e8bf1d64a",
-      "output_sha256": "38607574d10a9fb7e44d86a2637acbb5a3bf782de52dc2e5444f248759416f65",
+      "output_sha256": "1f73c2d4d8a57c74f6aa15e2a0c5fee56a3988aaad66dda71ea1159cb0d50ff1",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2750,7 +2750,7 @@
       "output": "internal/types2/interface.go",
       "source": "src/cmd/compile/internal/types2/interface.go",
       "source_sha256": "24863ffbad58f2b875ae14dd6bbf191a7c53d324174b5e0a7f7f6ba1ce1307b8",
-      "output_sha256": "45098e247c9ab564de194dcaf7015fc56d79abcd7d9bed19bb30fa8eb4244ca4",
+      "output_sha256": "cb9150c31b710c9b6650eaea487128fc15c4a639dd7872caf4d11b13c018f1ba",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2763,7 +2763,7 @@
       "output": "internal/types2/labels.go",
       "source": "src/cmd/compile/internal/types2/labels.go",
       "source_sha256": "e5e3f029384c9ad82c147d44f29a68280921d28bdb5cf547872ddb82af12761a",
-      "output_sha256": "4b2ea82ca4f835d8bcdbcab84e069ebd72e3f549402a1cdae384f49f40dbe828",
+      "output_sha256": "111a2d45a372305e81502306ef34ddb0b8ec0e16c10faec71ed7b2b7f7904bc8",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2776,7 +2776,7 @@
       "output": "internal/types2/literals.go",
       "source": "src/cmd/compile/internal/types2/literals.go",
       "source_sha256": "79c9477688a0c6481b635776cc2b710d270e5d39d5155a0512a79ba76b89105d",
-      "output_sha256": "80c64fdd5971573a1b482856fe599e7ea88407e55cb4d2dfbb152b5dfb1bb839",
+      "output_sha256": "22e67d5ca51b96c276f75fdbbe219e01fa6be6f77b160c1cae5c80bc6fcaae8a",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2788,7 +2788,7 @@
       "output": "internal/types2/lookup.go",
       "source": "src/cmd/compile/internal/types2/lookup.go",
       "source_sha256": "220829d7533585648a336eb53d6672b56927650c446649b8658cae97a9235d5d",
-      "output_sha256": "9daa3e7be41ba984fd923368d53adbb01ec0c7f2672b8c39bc8e9e1a384eff17",
+      "output_sha256": "0e9095166b2bc3dc54bc34d969aed66cdb347097159d784d7c1db2a564a3e819",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2801,7 +2801,7 @@
       "output": "internal/types2/map.go",
       "source": "src/cmd/compile/internal/types2/map.go",
       "source_sha256": "c10e0c5411b1fa3ef73e15350797c40f7d03a75244dd4b3fb039394993cfffe7",
-      "output_sha256": "0005dc6a06d46666ab238319692039a41861989048c448415c10a7af73aedc0a",
+      "output_sha256": "2e06e0b39d6caf9d066d86e6cc1c5d13e26e7d3955459405e100905f1172fc51",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2812,7 +2812,7 @@
       "output": "internal/types2/mono.go",
       "source": "src/cmd/compile/internal/types2/mono.go",
       "source_sha256": "3cfdebfe42e52015970a48d043da3530f326edb7d57f130564e64543e875c933",
-      "output_sha256": "6f0d5ef02cc99d8d6699334eac52e29a78f27eb44e7db6b742f79d73af526126",
+      "output_sha256": "b14fcf47c02c9f89efcf53024b67a17086fe730c55100e4ffbc0a292269d50bd",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2825,7 +2825,7 @@
       "output": "internal/types2/named.go",
       "source": "src/cmd/compile/internal/types2/named.go",
       "source_sha256": "80ef3b68d9f7d8fdfbea21193daa07a40009b784b390952d2d088115c6e39f90",
-      "output_sha256": "850fb19ebc51ef7d1d6e153a82c0f064b0bd1aca3bd2dc141614bfd96929dd6b",
+      "output_sha256": "7998dcede6137931155d986cc0ffa8d68863721b64b6f53cd946a59e26dbd729",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2837,7 +2837,7 @@
       "output": "internal/types2/object.go",
       "source": "src/cmd/compile/internal/types2/object.go",
       "source_sha256": "56021b0174f822d03738ed5f109f9e3c2826529890b4cb70d834c35124d06191",
-      "output_sha256": "7834f964d46cf158e778400126575774716e98ca39d6f3875aa2f01a0ac86629",
+      "output_sha256": "008628368b8f9c125f8bb830f8776b44c984f4238811aa98fbcc23e1ac43e88c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2850,7 +2850,7 @@
       "output": "internal/types2/objset.go",
       "source": "src/cmd/compile/internal/types2/objset.go",
       "source_sha256": "2b732d24b84fed49dd7da88ea8e4602c0903554b68d40d68dfc38ef5d7c4ce9e",
-      "output_sha256": "4d656507b59c74aa2ee7ca225803b12580e3b70a114105360d19eba039c3e739",
+      "output_sha256": "faa677f5f4cb14893abc4a567490bc4cf76665d44ee2d93c012d342e0ab1d40c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2862,7 +2862,7 @@
       "output": "internal/types2/operand.go",
       "source": "src/cmd/compile/internal/types2/operand.go",
       "source_sha256": "c36818801676a8a76a3fcf13cc8b330457d883dc6eab290dc77da74b24ea23c2",
-      "output_sha256": "0c52b7b85d0e7dcdfc12a70094756eab61c5481713d150082de490a028f2fed5",
+      "output_sha256": "58bc89b2c04db3ec1c2d9eccf23eaf7674f8b7c5938cae7fa5299bd0383faa2f",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2874,7 +2874,7 @@
       "output": "internal/types2/package.go",
       "source": "src/cmd/compile/internal/types2/package.go",
       "source_sha256": "8a1501bb34b859bbb47b6434b6766d2f1802aac2ac4f6ab1b96d2cf8846bfdd1",
-      "output_sha256": "3dd97004e18a68f75f43cb790da24b4a29cdd6149239904b00fba60a050964e6",
+      "output_sha256": "b0c6c360f098483e7cf1e5d9bfbd6a9b2994f3221e8cd5376fa489bfaa8b53e5",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2885,7 +2885,7 @@
       "output": "internal/types2/pointer.go",
       "source": "src/cmd/compile/internal/types2/pointer.go",
       "source_sha256": "df1867ee62e6b741781116654aa49bd2ac59ba2ba0f6a579ab22842e57dc3459",
-      "output_sha256": "2a00f0df4d4d9465170e9a8cd8d8204fc5c47572c1f42d0b317e4faf1733eb83",
+      "output_sha256": "b9dc251587707a609227a3d2db43ebf3905a5bbdbcaabf5d0834b9a02d166f3f",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2896,7 +2896,7 @@
       "output": "internal/types2/predicates.go",
       "source": "src/cmd/compile/internal/types2/predicates.go",
       "source_sha256": "96f765e210eceb0e1b6231cbe99002eb1b181f0ff5094cbe677e90eb6b70083a",
-      "output_sha256": "dc89bb6659928097fe412782ec4eb0567cbbd56dd850d38291139ac94be4e4e3",
+      "output_sha256": "16734afb9d5f8b400717dae52261392324f071440379a7569d1bbd9635a3fbdc",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2909,7 +2909,7 @@
       "output": "internal/types2/range.go",
       "source": "src/cmd/compile/internal/types2/range.go",
       "source_sha256": "5a3f5295a6a3a77c8d9f6cdd2013671c8341a841227070328a5e8626c5b4b12a",
-      "output_sha256": "27b93257705d9e57214047087896ad93907be6a19b77200c3bd7a1391580f06e",
+      "output_sha256": "ff96b2e2f19c56246d7562dd66f0f8892230e13bdda6a3b63a1a6e2d539dde97",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2921,7 +2921,7 @@
       "output": "internal/types2/recording.go",
       "source": "src/cmd/compile/internal/types2/recording.go",
       "source_sha256": "5b60b4eda039eaeb788284d07c7f1dfdb0c7cb83a8582e68ef3d5d4fcd7c053b",
-      "output_sha256": "1f771040dfeab8e694fd3d449289e22f069de8fc1ae234e241ee77b4647c5052",
+      "output_sha256": "d772186210a2d1dad88fcbb9d380b3c6ad4b21b4b63458d7171fde3beebc09d7",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2933,7 +2933,7 @@
       "output": "internal/types2/resolver.go",
       "source": "src/cmd/compile/internal/types2/resolver.go",
       "source_sha256": "b8abdee6638a885919ee984a34d38e0a0db9d25dfe55f0e0217a43ec90378be4",
-      "output_sha256": "95e0e137dff99097da17361f0dccdc7ebe70e386c4baa26c46aa2c9505944acd",
+      "output_sha256": "05d16461c12d532b76a473033eff47ec4f6a7e2f72322035b28e569a36f962b3",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2946,7 +2946,7 @@
       "output": "internal/types2/return.go",
       "source": "src/cmd/compile/internal/types2/return.go",
       "source_sha256": "49b82304c04c8037cabe91423ffd2312dca91aa5a89698d81b69b518035bb7e2",
-      "output_sha256": "40e50e49e21ebd9791393a4b9dd6b6c10194ded124764d8cebfc16cc22b2a05b",
+      "output_sha256": "c929ee3cbb093802483dea03d71327ace7e8b29beaeff6a6afd8722289e76309",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2958,7 +2958,7 @@
       "output": "internal/types2/scope.go",
       "source": "src/cmd/compile/internal/types2/scope.go",
       "source_sha256": "034b4b1cad3e039ed8669613c039744db6954a0fd968433fb4d9234ca1c3efd2",
-      "output_sha256": "bdd70bd773a9a84bd51c3603d37038211485986546dbb4e70f9ac7b52e9806e6",
+      "output_sha256": "a67e102deffbe0def847ad607e24212351008130eee72218fd3ff24c0ac787fb",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2970,7 +2970,7 @@
       "output": "internal/types2/selection.go",
       "source": "src/cmd/compile/internal/types2/selection.go",
       "source_sha256": "91a80b7d9ba7cae4eb50ebd80f69b0621fd9c71fe45e3b4afdfc5abc7e81bbf9",
-      "output_sha256": "69872e7a08da18c3e41b2261e39802a2d8e98e09b64c3defa64e94278cc82859",
+      "output_sha256": "eb5c709de0916da00dc2bb794e96c0d059e3c9f5c877b7a17ba6deec45c0d13e",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -2981,7 +2981,7 @@
       "output": "internal/types2/signature.go",
       "source": "src/cmd/compile/internal/types2/signature.go",
       "source_sha256": "edc3a1cfe512dfdb6a845b27ba4c7dbdbd53e7a878c4a3f2908b57e56660e874",
-      "output_sha256": "b71d78d5d28f2e8b6fd2446559d1065570ee2848c09f4e4a47e541ccbbc26a25",
+      "output_sha256": "a6cf8afd409b437573876404263ea6bbb9716a7745ab47795711cbce6461a9d5",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -2994,7 +2994,7 @@
       "output": "internal/types2/sizes.go",
       "source": "src/cmd/compile/internal/types2/sizes.go",
       "source_sha256": "9f04fb7b0b760d7dd90777b80661667accc60163c3cfb992cdcbbc9a1a2dc782",
-      "output_sha256": "ba2ff2150e6b5d98734a0bf7ddb9be425ed9c97b32dd9553f333480953c2fb10",
+      "output_sha256": "d75cfec953b21e5ba1abb810afd664acf88dd0f790411da21172e0ec6d4e4a97",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3008,7 +3008,7 @@
       "output": "internal/types2/slice.go",
       "source": "src/cmd/compile/internal/types2/slice.go",
       "source_sha256": "7e3f7418ce78a12a0ef40554a64403f15bd3451321cf4d3b85a26617d3e4e15f",
-      "output_sha256": "4a721a6cb8e60286016cb766747b0a7c31b8c39d1e5ec3ff8a97f038803f01ea",
+      "output_sha256": "17e71559abf418fffac0fd21618b60b1233ed49ce9084d3e06faba480b1a7220",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3019,7 +3019,7 @@
       "output": "internal/types2/stmt.go",
       "source": "src/cmd/compile/internal/types2/stmt.go",
       "source_sha256": "7a0f715bd7743ac11119dd108d4cfdac3f78e2236407da0adb082862c311a322",
-      "output_sha256": "b01fda0e73087729b0c8280e8dceedb0847d5bb4751fa7d7903b3c77dcadfac1",
+      "output_sha256": "f0130f947e1cb04637e1e2db30913735c5e02c6f676b61512c1774a6be7bc671",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3031,7 +3031,7 @@
       "output": "internal/types2/struct.go",
       "source": "src/cmd/compile/internal/types2/struct.go",
       "source_sha256": "570c7f8b9ca4a01f97fec13e5c8db8f60badbe1d26d7ab640fda2af77814e34d",
-      "output_sha256": "6cef24511b6c8aed7dfb6d3ad59a4c2417603a37a19187ac543d53c2a9e7d42d",
+      "output_sha256": "ae28b54ba1963c6baebb60c848127ddd8ccccd9803d5e2cb8d08e516e22f50d4",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3043,7 +3043,7 @@
       "output": "internal/types2/subst.go",
       "source": "src/cmd/compile/internal/types2/subst.go",
       "source_sha256": "58a1e887a9fea1e762d0a392d26cb480ac091a840fb7483294a98b2ff0b5645a",
-      "output_sha256": "6575ff4a68643682701e6bfc95cf90d9dfcda132a5034f9c1575f98dc7812776",
+      "output_sha256": "2e6af3efb2ca4992b7dd372bb29e504ef9a151820c72df79d8630393d0d30f3b",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3057,7 +3057,7 @@
       "output": "internal/types2/termlist.go",
       "source": "src/cmd/compile/internal/types2/termlist.go",
       "source_sha256": "06330b908f1e805d2a9041e9cefcc92079db64f290a7c2f0f176d75220e07d6e",
-      "output_sha256": "32e61cc01383333cc0a49de0a7a07693b5f34df8e39aaee3cedea4278f09b19b",
+      "output_sha256": "bc7530d54282e92afe3996cfc4daaeb2da5843c05ff30f1ef73e5eb21be6c05b",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3070,7 +3070,7 @@
       "output": "internal/types2/trie.go",
       "source": "src/cmd/compile/internal/types2/trie.go",
       "source_sha256": "415c45d270be588b0e9347472a202758e7a04a7bd7128319475e82490a3448f7",
-      "output_sha256": "87adf7ccbd445ae0019d87cdbee58a1f51451e71b0e75adfc62a587acc7771b7",
+      "output_sha256": "a93cc6102e32dd4c542e4694c0b33d09680d2ac9d69acb0aa9ee2d9a4b01c513",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3081,7 +3081,7 @@
       "output": "internal/types2/tuple.go",
       "source": "src/cmd/compile/internal/types2/tuple.go",
       "source_sha256": "1f450b80dc738a4dfa973788009d410ed3c816a575eeae093263aab5a318e5be",
-      "output_sha256": "942ae0d881ac5f83904924b8c06d1ad1d059337512567867e17051dc88dd3a82",
+      "output_sha256": "d4d496146c3d368d757b4f9f582542854e087069c826eb92c1b18ea452160270",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3092,7 +3092,7 @@
       "output": "internal/types2/type.go",
       "source": "src/cmd/compile/internal/types2/type.go",
       "source_sha256": "bfcdcbc7855dfe252dc39d3a58bea8f8748d07da11aa24521189e64de6773493",
-      "output_sha256": "98ec367b856f2dd2d20e346ec53376e620d53cbb5e529f7a52c64d933898795b",
+      "output_sha256": "25eb20614429d09622d99e16bd5390278d200fe34605e34fe433e3e115cbc832",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3103,7 +3103,7 @@
       "output": "internal/types2/typelists.go",
       "source": "src/cmd/compile/internal/types2/typelists.go",
       "source_sha256": "bcdfdd76abd31da83256bc8fe906ab0c935c71b42f72f4d2a24d45f40ca17770",
-      "output_sha256": "9d690ff021409a0b8d6fb76916620280597566d3201fcb5258ab60f30d2dc173",
+      "output_sha256": "9ee23d4d33f6d7b834881549fd3d49264002979a02528225565ededdedbac1d6",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3114,7 +3114,7 @@
       "output": "internal/types2/typeparam.go",
       "source": "src/cmd/compile/internal/types2/typeparam.go",
       "source_sha256": "7d2ae156dc512af9eef3612d8f06cb0d24bd4a7f507ff9395187b9d86756ef30",
-      "output_sha256": "dcd1c44ddd8d4f05ea146935a183c8658c8e75bfc1f7915dcc44abce1b3c9b24",
+      "output_sha256": "9faa1f115c951d169bdeada94523d2ab6c6d2bb8b26b27303c694105109405d3",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3127,7 +3127,7 @@
       "output": "internal/types2/typeset.go",
       "source": "src/cmd/compile/internal/types2/typeset.go",
       "source_sha256": "625e471f48e64e1f060105d609749e0a24567cdd1c37fc9a106a2ee8c21f38a3",
-      "output_sha256": "9ee795e5a7ead40bedab005d91a5f7125bf3ced5d340860390466851fc9c7c1f",
+      "output_sha256": "5dbe7fbe78f373e3fc3fe0151876a6a700eb059fbd15470666f352bfb31e10e9",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3140,7 +3140,7 @@
       "output": "internal/types2/typestring.go",
       "source": "src/cmd/compile/internal/types2/typestring.go",
       "source_sha256": "e09b747126baae10d293637d80e9be18b0d40ce456aaaef63f00240211110561",
-      "output_sha256": "8c664719262f073af90a81c3e623a65ea3fdaf8046f260e2ac692d0ac2e6e77b",
+      "output_sha256": "85af8dfe4c105f2f020d29d2f63ce51f094506af61283c8ef4df8c2b73862bae",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3151,7 +3151,7 @@
       "output": "internal/types2/typeterm.go",
       "source": "src/cmd/compile/internal/types2/typeterm.go",
       "source_sha256": "13b78029235917b5958a49b4c5a8a07f1829309b54141ad825482b2622664787",
-      "output_sha256": "0a889e89e92891fcd2f69acd8a225c13e9915da2c454bc44d43e2e7d1fae7f95",
+      "output_sha256": "345534c0abfdeac494920c9e07a7b559693bc64c01b13bd6b5d007ffe2426a29",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3163,7 +3163,7 @@
       "output": "internal/types2/typexpr.go",
       "source": "src/cmd/compile/internal/types2/typexpr.go",
       "source_sha256": "2526e87515b12b294b3b39bd20ddb31a573f6d5f0d5f6c818e4d302845ff930e",
-      "output_sha256": "0b2cbb542a683fc1c1eef6b081f4de4a99d50f812092fea66ba5c1739d8d773c",
+      "output_sha256": "371dad89743216343b7db34c553aa72b6b947e904899e581cb7aa850df6a9b78",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3175,7 +3175,7 @@
       "output": "internal/types2/under.go",
       "source": "src/cmd/compile/internal/types2/under.go",
       "source_sha256": "28232c074537b2fa6aa0cb6db33f96f50c80e821a872492952e9e380d51d04da",
-      "output_sha256": "4b716d65fdae4626260121cc07882d37f0feef47e2d6ccd6b21d119c6d89792f",
+      "output_sha256": "2e002c8edc52025f8e16ff4079d8e3f544df7cb415130661f2f4a7e08d59f615",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3188,7 +3188,7 @@
       "output": "internal/types2/unify.go",
       "source": "src/cmd/compile/internal/types2/unify.go",
       "source_sha256": "0b508c285ae247ee132d95bebef40029e0fbc73226eb31ab9cf2068b9b0e26cf",
-      "output_sha256": "bd56bbf885d3fd08ee25fe2006f1b37ad56d26f37cb19a82bd2e93e171dbc5ed",
+      "output_sha256": "e7bb18669aaa764b28ad08f1ed7b4d1b8c5a4dcd4b0913eea12aa638ff63660e",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3199,7 +3199,7 @@
       "output": "internal/types2/union.go",
       "source": "src/cmd/compile/internal/types2/union.go",
       "source_sha256": "39c0f4327157eae058ff83959f92a60fb947f0f933596bc507d92e07f8a383b6",
-      "output_sha256": "21481243ea245de33739656e2ffd5639377b836120186f10719d545a5eea3b77",
+      "output_sha256": "50724ef68892c6b1fd4193bb54ffbfc6d919edf92f022c6ad47a076a57a0fba3",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3210,7 +3210,7 @@
       "output": "internal/types2/universe.go",
       "source": "src/cmd/compile/internal/types2/universe.go",
       "source_sha256": "7b73858399f8317853be3b347e884d95e7eca84699203958ca354e4ff4ce81ac",
-      "output_sha256": "d8950302913e039030c9d2fae67415c4527215f954b7a63fb253dabc39b5d7e3",
+      "output_sha256": "3af373695fac446a8534f85c03ac8afa000be133496335f9e6fdfc79993ff3f9",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3234,7 +3234,7 @@
       "output": "internal/types2/util.go",
       "source": "src/cmd/compile/internal/types2/util.go",
       "source_sha256": "db3c64466c410e248ac2cb2ea65787cc3705f7d18ef532a1e486e83aa4335477",
-      "output_sha256": "7d57e39f350c465d2c430a16cc2c81fd2e95d47452d098c99aa3fdb148dda338",
+      "output_sha256": "33498e33b77b9b95d14a199bb30b5ffca1adc5d5a45b95d3667fe1f6ed4d84ea",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3246,7 +3246,7 @@
       "output": "internal/types2/validtype.go",
       "source": "src/cmd/compile/internal/types2/validtype.go",
       "source_sha256": "0999b4a36c5eae64b53db60d88ae74cfd4aafc3c2b074e86a5870c2c6107b27c",
-      "output_sha256": "306b0efc7f241429ca307dacae7657b3f2a6c3936ff6722e8a6f467588b59135",
+      "output_sha256": "d17ea79a48a25316b0a3d36cfeaef3332423a3e7783b701cf8c0ff420d524aba",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3258,7 +3258,7 @@
       "output": "internal/types2/version.go",
       "source": "src/cmd/compile/internal/types2/version.go",
       "source_sha256": "8278ccb0e1d885ebba0c10bb9723d6375164ad620c306ca481e64d0ba4e484b8",
-      "output_sha256": "748cd8bf17041741b1896af0aa5cf401c95b871ac9661864e190bc6c3906aa3a",
+      "output_sha256": "536cd37b36a7e51d52c05308ea768822dfc79811eac1db6ee2aae2e84e73ba60",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3283,7 +3283,7 @@
       "output": "internal/go/pkgbits/codes.go",
       "source": "src/internal/pkgbits/codes.go",
       "source_sha256": "5c461c53bbb51051b771cdf19529769d1f2ebfc477a55d79c577cec8d9fb36b8",
-      "output_sha256": "0f275fcc43f334800b650083b17f1185eac5affcbe0618a0bd47a88590b7dc41",
+      "output_sha256": "54db35d5dbe735dbd0966ac2a6aa0b030a4e77aec6be63f6cdbe535c477c9cac",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3294,7 +3294,7 @@
       "output": "internal/go/pkgbits/decoder.go",
       "source": "src/internal/pkgbits/decoder.go",
       "source_sha256": "7b404c9b4c1262bfd357879aa77f5a9f24068c8eb9326e7c2d0e0b9f6d662f0c",
-      "output_sha256": "e9dbe7e325abc0a259b5450c82380ae649ca64ed14cde90682d8e6c19c90a4d7",
+      "output_sha256": "f3acf5e0ed6f48c48786595fc241758883e12dc631c99e8729155afed7a9fc62",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3306,7 +3306,7 @@
       "output": "internal/go/pkgbits/doc.go",
       "source": "src/internal/pkgbits/doc.go",
       "source_sha256": "3ac8d5c8dceed683fe0178cd0b54bdfc61ae56ef80d49523b2c1f0d8b051e70d",
-      "output_sha256": "c055be8313d587a6760b41236bfd06148affb9396afed716e279742ea7ad3633",
+      "output_sha256": "21ab9bfbc7c954946a6c1a68e48d93b7560cd3ef4850ecd308523f1363d47800",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3317,7 +3317,7 @@
       "output": "internal/go/pkgbits/encoder.go",
       "source": "src/internal/pkgbits/encoder.go",
       "source_sha256": "bed71a63557444c2b53c8b0d5fb476b2e597bc915fdca2e0b486de475c3de9ac",
-      "output_sha256": "fc50a88148a32bd206e0bfaf5e3e0e995b479fa09c8c1d8857cb7fbf58f74fa0",
+      "output_sha256": "197e3b560823e24d299c5b3725e520276fa7d1af57380c0d9316af414f38016a",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3328,7 +3328,7 @@
       "output": "internal/go/pkgbits/flags.go",
       "source": "src/internal/pkgbits/flags.go",
       "source_sha256": "4f999d54f9614c9c2aa162e048fdec78158bbcafebeef188a2fef9a347a8e488",
-      "output_sha256": "9cb28a779eb30f720671b1b4c91bda2a2ab096b6cb7b0d9e8cef5d578b5d6f3f",
+      "output_sha256": "59dea09a40a918eb3bcee2583cb84dea41a14964d86fce94a0b46db4e4f45565",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3339,7 +3339,7 @@
       "output": "internal/go/pkgbits/reloc.go",
       "source": "src/internal/pkgbits/reloc.go",
       "source_sha256": "b66a4b6084c1d6e115f5938e22d79e191eb6c8310450effd11687c76550e4226",
-      "output_sha256": "57a698abd4c0519c66c88ef740eca67e66c8a4f3c8c5cf15bcf2c22ff199ebb3",
+      "output_sha256": "6b319045a97964216580fe1b81c412fb67d415d441ab13827c4e311b4ff6013d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3350,7 +3350,7 @@
       "output": "internal/go/pkgbits/support.go",
       "source": "src/internal/pkgbits/support.go",
       "source_sha256": "b21d95c059b9f6c697d2e5a4fe6907650402d26bd6d0207f2297906cd7753543",
-      "output_sha256": "f2783956963a7938e9685bfd42176418b04d0f5ad910e245210d86a1ec160d29",
+      "output_sha256": "0ada98e7e1054bee18b76fb2daf2c2735d4542853411548fd5d70281a347b2a4",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3361,7 +3361,7 @@
       "output": "internal/go/pkgbits/sync.go",
       "source": "src/internal/pkgbits/sync.go",
       "source_sha256": "4f6b2ae8d2bef0eced46e8baf60c4b0f096615fbd8e1c10ca351e2c1e181de7d",
-      "output_sha256": "844f41dded1ced786a9c12b4795263c94272bb6a84bc2d3fe97d9e76182c89e5",
+      "output_sha256": "e7a0c1973255dbdad9615acb53faba469ae6c9ead0647332bf8fcb6312174a8f",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3372,7 +3372,7 @@
       "output": "internal/go/pkgbits/syncmarker_string.go",
       "source": "src/internal/pkgbits/syncmarker_string.go",
       "source_sha256": "058fd8e5788a86c8381abd2c81a7ab81b0d6e3f58b4a93d8897534081f9e9c05",
-      "output_sha256": "cf5c7d6eb1ae248f418b9d83cbdae260166207d578239878732efc85cde86a4c",
+      "output_sha256": "b828b506ac5a522b640bccba01125d6208b2cf6e0951ae2cc24cb2ba674017c2",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3384,7 +3384,7 @@
       "output": "internal/go/pkgbits/version.go",
       "source": "src/internal/pkgbits/version.go",
       "source_sha256": "690c4421a76b95b9377a65f43cdca5bd336fe62a28143478a31cf74f37e7b40c",
-      "output_sha256": "f80bf464c1d02f0a7c512b7ef0c5095a940f8cff6cfef9a7f048acf9a3ed4317",
+      "output_sha256": "a94622db8450cdca12bd0adb626709d8a1946c946995dd42d0c7f1f0f7baa9a9",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3397,7 +3397,7 @@
       "output": "internal/rangefunc/rewrite.go",
       "source": "src/cmd/compile/internal/rangefunc/rewrite.go",
       "source_sha256": "48510288a07c5c534f42949af47a6eb21096ffeaa88a6149be875b668efee042",
-      "output_sha256": "4952753f1b92af73f8fa9db659b3023d58a2a196b2a793b55d21cc3d9fdc98dc",
+      "output_sha256": "5ed88e1d2ed082b4cb69482c4a9129e5a5b1a397045cd803661d57a1fb05ee03",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3421,7 +3421,7 @@
       "output": "internal/bitvec/bv.go",
       "source": "src/cmd/compile/internal/bitvec/bv.go",
       "source_sha256": "33825651bee9e56d2e2c17357ba1541014f744870055e4e23cfd9826951247a3",
-      "output_sha256": "5d8cd1ed958ce3a9d5142f07f9b167bcf60d94e899734eb8403159259fedcdc7",
+      "output_sha256": "25c5cae6aceda3d0a29fdeaf8ab3695d25f0625abca144063a761990224437cd",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3435,7 +3435,7 @@
       "output": "internal/objw/objw.go",
       "source": "src/cmd/compile/internal/objw/objw.go",
       "source_sha256": "a588072a2d04d34b784fcb4d35763b118b4fd179b582a707b33bc40b1aa21a8f",
-      "output_sha256": "dabdbf0178cac29b986221ef59c0b67e6b498c49b60ad21809917f1715e59629",
+      "output_sha256": "c5b7f12abf028c2df756ee1eadf169e0c97d649fe94aaac54c130e0719c8d22d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3451,7 +3451,7 @@
       "output": "internal/staticdata/data.go",
       "source": "src/cmd/compile/internal/staticdata/data.go",
       "source_sha256": "17cb5913195654d48612a110e0725fc04b4e47ea5dcd32c3bf14e9fb2e21c044",
-      "output_sha256": "e276d05f3df9d398f393e59be1c91edd45576cd26f27df6bc2a6edb12d26be1a",
+      "output_sha256": "8f09c7b58a8907e7bd7be0c043fa7c862db72ccf3367508351a1254b14e84225",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "InitAddrOffset",
@@ -3488,7 +3488,7 @@
       "output": "internal/rttype/rttype.go",
       "source": "src/cmd/compile/internal/rttype/rttype.go",
       "source_sha256": "425f0d2f168ca065760b486b47d3ddd84c510557289a21758fe0e2dba364778e",
-      "output_sha256": "4ca6657d9765abcfcc93cb4b5fa4e9c5032b6794446d3cde1563fc92cb8ebe86",
+      "output_sha256": "6f50ea0ac618bf6b69bbab75aea13e546abb41d4a74532c792bc81986fe7fe14",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3522,7 +3522,7 @@
       "output": "internal/typebits/typebits.go",
       "source": "src/cmd/compile/internal/typebits/typebits.go",
       "source_sha256": "926b93c136d94c251ea8381991812264246b13b2cc24d60de96cdeefd2ff0629",
-      "output_sha256": "72b1cd3df30259be56d12a8b2ce176754bb2f0bff9d33cc4372e67775e6ccb19",
+      "output_sha256": "b7149bdd495e98dd72dc9dea47accac135a2b71effe2ae0f6b9d5e9f799194b2",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3537,7 +3537,7 @@
       "output": "internal/compare/compare.go",
       "source": "src/cmd/compile/internal/compare/compare.go",
       "source_sha256": "88d2f8d0b1c5da2913f950c04add18ecefb63167f4de84816c717d2985d07022",
-      "output_sha256": "a39e728adfe19f9d64871417f938d4410b8fc0629bd55148e65f467ecef2ad20",
+      "output_sha256": "f6a10a509cc5a5d530bd5dc5c9df6bf000eec1b0d73dec8771e7050b4de1a82d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3562,7 +3562,7 @@
       "output": "internal/reflectdata/alg.go",
       "source": "src/cmd/compile/internal/reflectdata/alg.go",
       "source_sha256": "0609daf743ecba93da7a25d75ebc45dcda925843c05d613d8f81a5405f639d6c",
-      "output_sha256": "d0b45deef8b00c3f14b8bfd86fb261bfae48ae7c0491d528eaf7d9499ecfb788",
+      "output_sha256": "9fbc12e4a3d9a91d99f21f23d55a2cc6dcc2ae1d44681a3759b3b48022544195",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3589,7 +3589,7 @@
       "output": "internal/reflectdata/helpers.go",
       "source": "src/cmd/compile/internal/reflectdata/helpers.go",
       "source_sha256": "c7309f4fa25c579bcba0194d9b9f3ddfe12a2c9a01db02f3afb89e4d9d148d7a",
-      "output_sha256": "ce47160d0f5f81fd3e471ac7cba526e21e5ca73e1129d6f525074156b9c6938c",
+      "output_sha256": "32834f31dbcd3de882b7ef944726d2e676e2e56dfa6570a638229adb55be81cc",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3600,7 +3600,7 @@
       "output": "internal/reflectdata/map.go",
       "source": "src/cmd/compile/internal/reflectdata/map.go",
       "source_sha256": "52d041b43fb7d0747685bd568bbaea7c3b32594b80e96d59adfe7fb39a465eb3",
-      "output_sha256": "d70b5e5f15b6fff897fa6eea52225891d1cf96be1793f5c89a503f944d676fbc",
+      "output_sha256": "b4ee123fdfc75ea19cae2f96e35b2a1141b9a9060634388b2fd8286266f99872",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3623,7 +3623,7 @@
       "output": "internal/reflectdata/reflect.go",
       "source": "src/cmd/compile/internal/reflectdata/reflect.go",
       "source_sha256": "2cd6932b9965b200029ce0559cb201d96398be546adbf866f30cd3bc8897fb41",
-      "output_sha256": "63bc8dae3c02ad735625fcbccdf852036a6ea22303463260abfd6bd01a2a73dc",
+      "output_sha256": "74994e7dd704f3d41ab8e697f1197990578e442e4c13ad9e50cd7804b93b905c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "commonSize",
@@ -3712,7 +3712,7 @@
       "output": "internal/staticinit/sched.go",
       "source": "src/cmd/compile/internal/staticinit/sched.go",
       "source_sha256": "eebe07f0ed644b6dbb55ac16def05f067e8f2000d53f19719066ff0013458058",
-      "output_sha256": "6b891f5fffeb2b43ce19f0a42f870e38be7882b8722c60ca6b6b33497572c997",
+      "output_sha256": "0ee0b06d4e19cd2ba01cbd6ed4c437a2e10f78beacdcb8e46218c0c6364c8760",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -3752,7 +3752,7 @@
       "output": "internal/dwarfgen/marker.go",
       "source": "src/cmd/compile/internal/dwarfgen/marker.go",
       "source_sha256": "1723a3082160c3b769e89edd2bf6fbb562dddd4732a48d0bef2b50afc3822bc3",
-      "output_sha256": "1e05cffcd82871e041f8c7fe5969f9a3a0f5c9e39949d5c01e44b006bdeb46db",
+      "output_sha256": "46c021556c78f50d850cb27eba8d26ea42c738968eb354b78d5795a80587d5a9",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3766,7 +3766,7 @@
       "output": "internal/dwarfgen/scope.go",
       "source": "src/cmd/compile/internal/dwarfgen/scope.go",
       "source_sha256": "0634b140696242913e868e266e4f81827510af44780670d1d0f8e1afedbf66b3",
-      "output_sha256": "cb9557cec17008556d98dbedf67781be131f571a87b13d00f909595deefec48b",
+      "output_sha256": "71e0b119c071b2e192f1c6d94b59e8b5ce5511bb70bee7fe359af151fe12d0d2",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "xposBefore"
@@ -3780,7 +3780,7 @@
       "output": "internal/noder/codes.go",
       "source": "src/cmd/compile/internal/noder/codes.go",
       "source_sha256": "35b609ec8edf694840f8dbd6960e99bba6e7235c100837928f015b926a07bc43",
-      "output_sha256": "7a05bb924a559e20fddfdb47c33d080d37fe77f1915a7739bb096f13746f1934",
+      "output_sha256": "ad386d60a81b43f7c4ce7d9d806a4e0fcad96aea003d007688fa7d8fe0cdf9dc",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -3790,7 +3790,7 @@
       "output": "internal/noder/helpers.go",
       "source": "src/cmd/compile/internal/noder/helpers.go",
       "source_sha256": "05afcf568b75e953a0e4ed8687c81f7f775ca891a220d10f119f2431721cedbc",
-      "output_sha256": "2b2df8f8c3516064b2b6b768172fce4b7e70392e89a397aad505be6dc5cd2cbc",
+      "output_sha256": "946e4ebadd5430a709b314e95e143343bbdaf6c7ab7bd1aadae4cc2f44cf7567",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3801,7 +3801,7 @@
       "output": "internal/noder/lex.go",
       "source": "src/cmd/compile/internal/noder/lex.go",
       "source_sha256": "6c7ddb7db0c27b7cc4851ed80092fcd5d557305dfa7aaec5ad01c8af83836077",
-      "output_sha256": "cf837d39e0f34e6fb51f5bee7a4b64433ae910cbb045c081462ce938bec3705d",
+      "output_sha256": "c3933caf3b160773693a8d58a050eeb51fe00734401bd9eafd6360f8d32d387b",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "funcPragmas"
@@ -3811,7 +3811,7 @@
       "output": "internal/noder/noder.go",
       "source": "src/cmd/compile/internal/noder/noder.go",
       "source_sha256": "2aa3493281bfced8419994a553606fe074f3dbde6a46cf7a66cff0519cb68e83",
-      "output_sha256": "284c8dc719dfe2fca1dbe0056be8e3b4bb33de582ca9daeb405494cacc72b89d",
+      "output_sha256": "c52094c9d38225d3a9d02595befdfbcd464c2d518fc902293246c8d0c744f793",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "trimFilename",
@@ -3840,7 +3840,7 @@
       "output": "internal/noder/posmap.go",
       "source": "src/cmd/compile/internal/noder/posmap.go",
       "source_sha256": "7cebe76e054c20e633a6bcbdc7ae4cd91003168e96a969d37a379818b99abfbd",
-      "output_sha256": "1fdc093a2e887701a529576fd4eca6f233d72afe11b0c2c6b896789b60dab000",
+      "output_sha256": "6c383faf01c27909298ee2aedd56053a33e87d23e1d1025294071360e82b3761",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -3851,7 +3851,7 @@
       "output": "internal/noder/quirks.go",
       "source": "src/cmd/compile/internal/noder/quirks.go",
       "source_sha256": "8a5eaf4b3f6cd337329f4b21569264b60c476cfc3b6bf9e370607ce11fa787a3",
-      "output_sha256": "560bfbfb71ff605ebf29a71697dcb1f2c07ebbbabb18a5012a113b05c6def2a4",
+      "output_sha256": "c339b5d09dbc2a0ab20dd34055d50ec0f09cafcafba248e604b1f033d1c51668",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "typeExprEndPos",
@@ -3863,7 +3863,7 @@
       "output": "internal/noder/reader.go",
       "source": "src/cmd/compile/internal/noder/reader.go",
       "source_sha256": "d141b8f59f973af2a3c3cd22f9d3d8857c802d684074e0d15131cf8f778bb7d9",
-      "output_sha256": "0d22697a5901208021faa4fb45e99447700d106aa4f8ba81e9b10cc27e887822",
+      "output_sha256": "29bfee6da064c5ad34b3314d88417ca990eac68275592a405f60f997499ff3b3",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "newPkgReader",
@@ -4058,7 +4058,7 @@
       "output": "internal/noder/types.go",
       "source": "src/cmd/compile/internal/noder/types.go",
       "source_sha256": "b9058865ac18444b228105be3afa463aefe73dffaecf388f2120234b0846d548",
-      "output_sha256": "d4fed938e5a28f207f72147ede2be030242199094c8d22b4a7e60c1b76c8f008",
+      "output_sha256": "1dfeb76a2c543eb35168d5329f2e826e6bb439db7db3cc9c577e4f8c815e56fe",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4071,7 +4071,7 @@
       "output": "internal/noder/unified.go",
       "source": "src/cmd/compile/internal/noder/unified.go",
       "source_sha256": "77b07f382e7ec896f312b77eae0b4f2d6517f90a7fd98f3f3a0ee2b3337c1f84",
-      "output_sha256": "9a3200a7e29594ee8f1492507055ccf560d54094acfa93b16b32a94769acb770",
+      "output_sha256": "e60a7067106d3fdf91bf80280409f7014888094ebc6ec887c4db49c09d83243c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "writePkgStub",
@@ -4097,7 +4097,7 @@
       "output": "internal/noder/writer.go",
       "source": "src/cmd/compile/internal/noder/writer.go",
       "source_sha256": "7ed9f0326c5794128110aaa796bb870ce5155a3e34fd47d5546cbeaa6269e52c",
-      "output_sha256": "d06b7fd88ecd81e665003cf6739ff6d116ceed8b276547dcf18eebd87754dcbd",
+      "output_sha256": "51e75ccf09a85258495b57e64759ec791385d08622d01ca64136e0e27e2fb114",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4126,7 +4126,7 @@
       "output": "internal/pkginit/init.go",
       "source": "src/cmd/compile/internal/pkginit/init.go",
       "source_sha256": "fe4ca81decad5b2b7c20719db41a867915d4c0e0ee8af8600daad06e5ffa34e9",
-      "output_sha256": "669adf21508a3fbfb11e0df0b305df71092fb976238603a6430321f3378ce845",
+      "output_sha256": "c4446a7434251f3fcc5f3f63847b51880010c261148be577f89c547c11ecbd29",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -4159,7 +4159,7 @@
       "output": "internal/pkginit/initAsanGlobals.go",
       "source": "src/cmd/compile/internal/pkginit/initAsanGlobals.go",
       "source_sha256": "cd1b2d163f3f50665e1a9a5c908394fd31f7ef787a7967f487d8ff757d89132f",
-      "output_sha256": "856d504d97e8f4a3150a1845fc833c14b12eae5703f822da41eb422fd853ef78",
+      "output_sha256": "9bc8e93da101472d586af5d9e0a385c69ba9e4e1c5718b3af7aac9cdd7598a6d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4193,7 +4193,7 @@
       "output": "internal/ssagen/abi.go",
       "source": "src/cmd/compile/internal/ssagen/abi.go",
       "source_sha256": "35b5cea74c417723ff4778cea5175d3a7bdd9c58584af163229e9624a1ee709c",
-      "output_sha256": "dacdd9c9933f521c5acefff868f6c11c7b26efefd23a9b8a2cd7f10b1d34f69d",
+      "output_sha256": "b3204559b55452bb60da28375c9dd4c498bb4ad258c1a876a2ef10ca64b39556",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "NewSymABIs",
@@ -4225,7 +4225,7 @@
       "output": "internal/deadlocals/deadlocals.go",
       "source": "src/cmd/compile/internal/deadlocals/deadlocals.go",
       "source_sha256": "ddf1045a93db003fa7cfeca8dee6be3ae188b35d10f0cc08432b245c68379a88",
-      "output_sha256": "1b1e1e3fc0df47ad84e40175b496c10674d15921630197c00263c9d2ecd2884e",
+      "output_sha256": "9a78ec32ebc1ef0fdc7a69f4c91002787c6500c86b01e6d7530f1cff63ec5e56",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -4246,7 +4246,7 @@
       "output": "internal/escape/alias.go",
       "source": "src/cmd/compile/internal/escape/alias.go",
       "source_sha256": "b7528d595af46dcfc16d520b81cc220cf640db9d2026a60d690e9d7128b5b6c5",
-      "output_sha256": "73994422ee5ef60d7ad0b0c48447964a7e495da0ae2f2740371e62a76c2eb5cc",
+      "output_sha256": "c26a7914beb9079bcfa28124e23af4f2c4dbb74099cde18b49fa427e68b2785d",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4280,7 +4280,7 @@
       "output": "internal/escape/assign.go",
       "source": "src/cmd/compile/internal/escape/assign.go",
       "source_sha256": "6ae817340d4a7552328ec47eb0407bd371af9720f0d813df8b875efa33ae8d65",
-      "output_sha256": "31159aded1ec8bacaf821b62d7714f48e0877d5b3203fe4ebdbbed01200698d0",
+      "output_sha256": "0bb56f0ac79b4da0b0184da28d081dfa671ea79274de02d21ca676ad788f774b",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4292,7 +4292,7 @@
       "output": "internal/escape/call.go",
       "source": "src/cmd/compile/internal/escape/call.go",
       "source_sha256": "be49c90365fb9d53b4cc7951a6f5244255d9c91e9fae0e048d5bf10005fb7e4f",
-      "output_sha256": "34516cb839736e7f5b768da822160835d5fca8a5b7ae7e81cdf9935249dca93f",
+      "output_sha256": "2e07482eb1f3471063139a612472e24b1817da19e92607098b171b198d117222",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4304,7 +4304,7 @@
       "output": "internal/escape/escape.go",
       "source": "src/cmd/compile/internal/escape/escape.go",
       "source_sha256": "8ec65196a970499eebb14f849912791887788dff82d2f70512cc92f589a951ee",
-      "output_sha256": "89e3be26898e5d141a6d383b5e59c3373aa687c5ab4ef5f5bd59f1cc0bb1802f",
+      "output_sha256": "c24df016232dbf162bb3591b69a7c4f7e1263ebaf249859b154f749136600370",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4316,7 +4316,7 @@
       "output": "internal/escape/expr.go",
       "source": "src/cmd/compile/internal/escape/expr.go",
       "source_sha256": "3ee9d7f131ea22810c5d5e8eb8effca01ab1f0d9f192a2e66673592855421d0b",
-      "output_sha256": "73bc0bdd92390d2306ceba3f0fbff4bdcbafc7e1d78b54b3b5aad908e8f5878a",
+      "output_sha256": "a21ba29878e760790467a6d0168d345cdd77ae58c8bae6a41ca0b3d42b2379d8",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4328,7 +4328,7 @@
       "output": "internal/escape/graph.go",
       "source": "src/cmd/compile/internal/escape/graph.go",
       "source_sha256": "8d7c82a0c71deaefd0b88c5abadffd86d6a39d67d383d730007132af2fbe45a1",
-      "output_sha256": "f35787e6248ef93f3320e35273933569320779585f7db47d7eaf9118eb23fab9",
+      "output_sha256": "1beafbee4763667647c6958b21b08d2a254394b64f6020cc82b84ff893a5f890",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4343,7 +4343,7 @@
       "output": "internal/escape/leaks.go",
       "source": "src/cmd/compile/internal/escape/leaks.go",
       "source_sha256": "3715346b299f29d5bef06ecd74caaef272a498bd75393a48682b92803d298db7",
-      "output_sha256": "e36536e6cc90f5724743503f2b083d31eaa2562e76d7f0df12054f8cba499ae7",
+      "output_sha256": "4f3294d9ca473a1d57999fd3c742fbdf1b8fbd96d1d9c90c42984d67a1462fa3",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4362,7 +4362,7 @@
       "output": "internal/escape/solve.go",
       "source": "src/cmd/compile/internal/escape/solve.go",
       "source_sha256": "1084b6269380098d170b46ee94c0b0e8b103a050cef347333bb807a7b41bff34",
-      "output_sha256": "546a58f6287ccb166ed4445618fdb49c20cf8cc94d7e4b44ffc4e04308dfdfcf",
+      "output_sha256": "df5e3a15a37c4744e0e267018673ff06102f1c0a7c441f3b2774c55049df7e7e",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4375,7 +4375,7 @@
       "output": "internal/escape/stmt.go",
       "source": "src/cmd/compile/internal/escape/stmt.go",
       "source_sha256": "620ff886cd05d086f5ca328e1dfd01d1f2a1ccadf71f433407a79e57d0ed33a1",
-      "output_sha256": "ccebb71e4d4e0e1595f541f0cdcf63ebfff050024d002efabb36a9117e75af4b",
+      "output_sha256": "ad90f4d57484cc5162f0c4ba5866f01b9e85781226750d0a121bf82a2c1be30e",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4387,7 +4387,7 @@
       "output": "internal/escape/utils.go",
       "source": "src/cmd/compile/internal/escape/utils.go",
       "source_sha256": "c6d64116ceef2e0cd21da9e724bc0106fcf32351a96873e975a4feac354cce2c",
-      "output_sha256": "9a7b00ca64c8fd895df979d21c61572e4f77e2dfa8585fa86c0027fdae913fad",
+      "output_sha256": "588632d6c4485741b7c337b688f3e40ccdd71d75145d67320ce9a8d8fcab9a0c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -4398,7 +4398,7 @@
       "output": "internal/slice/slice.go",
       "source": "src/cmd/compile/internal/slice/slice.go",
       "source_sha256": "672e943199d24d0fa5503d8382520cd09dffa80c040a5a6cf78900250819925c",
-      "output_sha256": "7d460263ab7506715efff795dd5c3863b388452f1499f248f9d25a2e2925c052",
+      "output_sha256": "1769f897b6f17b0fd86a1d6f2e85b2421161374e0b198f783c5b3e890a393dd8",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -4419,7 +4419,7 @@
       "output": "internal/abi/abiutils.go",
       "source": "src/cmd/compile/internal/abi/abiutils.go",
       "source_sha256": "35b17262580c3c9e180a5f7c03e26813678fad8b50bac090c68b8f3ade57d030",
-      "output_sha256": "c9b919a3a69691412833877f3a1d447c5e5d97f1113e54a2e3903f15f58ed314",
+      "output_sha256": "434b38b716cf942e1981c358fecff0c844c7313330d904dd1de359b4712994b4",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4441,7 +4441,7 @@
       "output": "internal/cmd/obj/arm/a.out.go",
       "source": "src/cmd/internal/obj/arm/a.out.go",
       "source_sha256": "c11d15eefe151729ac66e96a1e2672892d4e556ac6ceea61b0016487f5fe8b30",
-      "output_sha256": "3dab65836f825df287f86800045e766565c5f28e07287c1b7cf4386c71e03ab8",
+      "output_sha256": "a29c046804f2e1230dd3bde832741600e475d819fe7a21e475d947b586197f1a",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "REG_R0",
@@ -4452,7 +4452,7 @@
       "output": "internal/cmd/obj/arm64/a.out.go",
       "source": "src/cmd/internal/obj/arm64/a.out.go",
       "source_sha256": "1960025ddfdaa5b33dc79f5435e30d15066f709b28ee7cbeca50607b41e2cdc3",
-      "output_sha256": "169eada3517c827e0604b102c97721c2f94364623c9f7859cb91c80b422dd796",
+      "output_sha256": "dd5555df2f9b90ffad6ed9457101a219cf1e8c5ac9a72275b752520e371c0628",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "REG_R0",
@@ -4464,7 +4464,7 @@
       "output": "internal/cmd/obj/loong64/cpu.go",
       "source": "src/cmd/internal/obj/loong64/cpu.go",
       "source_sha256": "18ffd50b42694a30db28ccd4c6fa32752cbfdc733fa93af36157f47ec2c83c12",
-      "output_sha256": "c8dc7ae89d82e2773079d879d97dfa370ae8e5f45506693ec29a5b2bcea902de",
+      "output_sha256": "72f32e767b69059337e8ba3b257a85047bd4f2a518e123487dd59d9097c2d07e",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "REG_R0"
@@ -4474,7 +4474,7 @@
       "output": "internal/cmd/obj/loong64/inst.go",
       "source": "src/cmd/internal/obj/loong64/inst.go",
       "source_sha256": "56ff5e92abc51c9dbd4f0064326c3fcc66044f03685d9df0aadf31030eea8715",
-      "output_sha256": "cf01a38a2594f4145be63ba50733981e37d92214ace1d28294f3447efff9683e",
+      "output_sha256": "df71e05062a9ed64e6672884c1492e3596b919bea883509eb32bcf9083f0933b",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "AABSD"
@@ -4484,7 +4484,7 @@
       "output": "internal/cmd/obj/mips/a.out.go",
       "source": "src/cmd/internal/obj/mips/a.out.go",
       "source_sha256": "3f3ee1b78af644d14fe87859db925b872b6148f2475d0b9a1daa9b45b5b50865",
-      "output_sha256": "ec240a0a25812b7f31869cce69cabb40e22854f0970991be9399afe84e288fe4",
+      "output_sha256": "f9080a72a14dbc347e942b55994872c7c94fb99e2f0bb658729a340c26bec3e4",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "REG_R0",
@@ -4495,7 +4495,7 @@
       "output": "internal/cmd/obj/ppc64/a.out.go",
       "source": "src/cmd/internal/obj/ppc64/a.out.go",
       "source_sha256": "c0bc8b7179a88a4d4e7e4dc879c0f9c6c0e4daeb2473d7e8cba702da5c0d34e6",
-      "output_sha256": "e3598d50548ae4bb7893508f9c06dee17ff5aa5f033fb97acac69570598dc703",
+      "output_sha256": "f55912f8d8981787d0686e83e8193c30376fd911f22826bd4bfeddbff54ae167",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "REG_R0",
@@ -4506,7 +4506,7 @@
       "output": "internal/cmd/obj/ppc64/asm9_gtables.go",
       "source": "src/cmd/internal/obj/ppc64/asm9_gtables.go",
       "source_sha256": "ae8611a1717ff0168dcff074e77f42ef10b986eaf7b61f05c56f96e46a9f6b79",
-      "output_sha256": "e86a40cbae0563af5396f5a6034e9b6ade548ef4e01920133506ba4bc9e72131",
+      "output_sha256": "caaa25dccdb67b2c447743151238689ef9f4bab2cc1175607e502612d6eac95b",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "AXXSETACCZ"
@@ -4516,7 +4516,7 @@
       "output": "internal/cmd/obj/riscv/cpu.go",
       "source": "src/cmd/internal/obj/riscv/cpu.go",
       "source_sha256": "01245d8981488b847af506a114bc9f6dd2e821ed304ab99d2bf2ed66d89b3947",
-      "output_sha256": "dbc08733450cec50381221ce2277ff956cba8c4d5070d1f17d6d5fc7d4c84b4f",
+      "output_sha256": "7c5d7d3e583632b2dd2f0c5336238f59cc3726288b04778ade1700030f8cdedf",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "REG_X0",
@@ -4527,7 +4527,7 @@
       "output": "internal/cmd/obj/s390x/a.out.go",
       "source": "src/cmd/internal/obj/s390x/a.out.go",
       "source_sha256": "23912036f7d183b671e106442721433c607c5e14f42e0187f1acf629eaa59648",
-      "output_sha256": "2045797ed99ed41994cbc18ec90d783404bd7f75a2933d9f875c00c0a0fc8d93",
+      "output_sha256": "2425a8c1dc65b23ddd351850fe46ad2191a88c8fb8b9df6ed66a8ef95ca34ad9",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "REG_R0",
@@ -4538,7 +4538,7 @@
       "output": "internal/cmd/obj/wasm/a.out.go",
       "source": "src/cmd/internal/obj/wasm/a.out.go",
       "source_sha256": "daea5b8940f75c4615a2a22bddf55c72a8d1d228ee4df6e8d6ea0d64ede47904",
-      "output_sha256": "45c15ac1cafe498a0969d3fba38b8b3b3b5f64814fa7e0fe72c70757877e2cf5",
+      "output_sha256": "c3cd565f8d25125d1485912cc9ecd566c394de77134806f383fe95c45b57227a",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "AGet",
@@ -4549,7 +4549,7 @@
       "output": "internal/cmd/obj/x86/a.out.go",
       "source": "src/cmd/internal/obj/x86/a.out.go",
       "source_sha256": "45df17af1f9ae35cd526d476c0a2cf57f7fe819336c4f164b62e4950a546471a",
-      "output_sha256": "7c923a885602c6d2eb96a237ac67465683719c7fd7761654f10b735246d4967d",
+      "output_sha256": "7232b4d76ae5dc72413a6e323efbeb5ed1248f7bbd006742c9654fa75e92611e",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "REG_AL"
@@ -4559,7 +4559,7 @@
       "output": "internal/cmd/obj/x86/aenum.go",
       "source": "src/cmd/internal/obj/x86/aenum.go",
       "source_sha256": "a2f3d2d7a477404822941625738915f856d34c1e3821fea2f00602c14f89b741",
-      "output_sha256": "9c733818d474526d1e41a442d8440557a01844ca69cac9546c55dd155dd60437",
+      "output_sha256": "35d3f95443d34d98f30e70790cf35b5d3af0a37c07927aac02edeb74c8227c97",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "AAAA"
@@ -4569,7 +4569,7 @@
       "output": "internal/ssa/block.go",
       "source": "src/cmd/compile/internal/ssa/block.go",
       "source_sha256": "ca98abe9473d7a4138a954b971afcc975f0a16caa71230e44ff15c2dd0979a0a",
-      "output_sha256": "bd8c91808fda3537880982e29bef997958f036474c9846ff09692c0c5288cd2d",
+      "output_sha256": "51167cdd831267ffe4ab6f5d8a27d0ed0491ce7841313c58ddf1c0ddc062a788",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "BlockKind"
@@ -4579,7 +4579,7 @@
       "output": "internal/ssa/config.go",
       "source": "src/cmd/compile/internal/ssa/config.go",
       "source_sha256": "064c69f9217f704adf726980edb6cb7fd1fda99a9204f573db54a620ba891746",
-      "output_sha256": "43d9f5fd7e75706a9a2087936e960bcbe0fae507fdc7a62f32dd360eaf55171d",
+      "output_sha256": "745ff04897fc3f6c5f1abd75ee49993aba95d59d6fd1ba970846e6882cb924f9",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "NewTypes",
@@ -4597,7 +4597,7 @@
       "output": "internal/ssa/decompose.go",
       "source": "src/cmd/compile/internal/ssa/decompose.go",
       "source_sha256": "4272b2a2aaf8024db68a4b09e4c3ce5cdb29cbafdab517a745462e5852f1a416",
-      "output_sha256": "4796fe46529f216cac23fb80382127fff0304a1435fc867c3d7876d6d1f7ad2c",
+      "output_sha256": "d0aa0a8e0ce8ffb289179253999485f8c618d1c8b91d9240e88b69a912a68966",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "MaxStruct"
@@ -4607,7 +4607,7 @@
       "output": "internal/ssa/id.go",
       "source": "src/cmd/compile/internal/ssa/id.go",
       "source_sha256": "0d95d9b17b31e4677f25dca65491345963fc6b8ab2c23c356c2cee0f75ddefed",
-      "output_sha256": "d570ace94a8654172d043ca9099a629bb73810fb293ddb551785f6a9b64a2b4e",
+      "output_sha256": "fff252aa9e28e22bac1118838bc424ab16f62a798cacb268e718bae51084fcd5",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -4617,7 +4617,7 @@
       "output": "internal/ssa/location.go",
       "source": "src/cmd/compile/internal/ssa/location.go",
       "source_sha256": "50639a724d64710e9aacf379e1553ff516afdecb08f682c66d80bf62e0a56542",
-      "output_sha256": "9c7c4cfc1fd20abe77ea8685ad9e70459e087a4d7bde34d21e630804404c280a",
+      "output_sha256": "b83b97fdb67cce98c8aed1844aedb02d5e8bf71d02d8695d79a962b471d07e60",
       "rule": "whole-file-and-zero-values-v1",
       "declarations": [
         "*"
@@ -4627,7 +4627,7 @@
       "output": "internal/ssa/op.go",
       "source": "src/cmd/compile/internal/ssa/op.go",
       "source_sha256": "6a35a15f29ab87974989c0f4bdad3dc50eee6a0423097ca7e48b4326d9c3afab",
-      "output_sha256": "cbdcaa99512afbac74a9fdb29e4c4b3f7f3d2ccd4128a705b4cbd31960c70b78",
+      "output_sha256": "bb6d30533d7aaf37ed453655ef83d67235e04e98588de3b2a15ae20ae9e6fdd4",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "Op",
@@ -4646,7 +4646,7 @@
       "output": "internal/ssa/opGen.go",
       "source": "src/cmd/compile/internal/ssa/opGen.go",
       "source_sha256": "7db41ea6a51e7b28e61edd5ad18ab23212759ab33c192be81c776e0951a73730",
-      "output_sha256": "963ce99abbeec9b2466b4ef805a23ca55e95ec523cb13412e1731fa4b9048535",
+      "output_sha256": "3a8f9c04188f5d9e699e71effc76e7cb02e92c134793e46be9899b26ca824c9c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4752,7 +4752,7 @@
       "output": "internal/ssa/regalloc.go",
       "source": "src/cmd/compile/internal/ssa/regalloc.go",
       "source_sha256": "53ca32d074cfc9262170ebf5bdafec33dfaefd796b6264887363f55ffbf75fc7",
-      "output_sha256": "713b4b2db559007ac3feb08278c22a5e4085d0bc49a1ba78e32e39a3713a1fc6",
+      "output_sha256": "62a7af90d001cc8f146a1d2d47c2649e3fc2c9b6e11a14b6de3cedae48a5e8fe",
       "rule": "select-and-relocate-v1",
       "declarations": [
         "regMaskAt",
@@ -4775,7 +4775,7 @@
       "output": "internal/ssa/value.go",
       "source": "src/cmd/compile/internal/ssa/value.go",
       "source_sha256": "c54cdad1c1959073fff068e6031ae9edf865a7ad36355dcb90bf5a7bcdb8648a",
-      "output_sha256": "9e99639b67234cd12e9e35d57af96312f89e00765ecbc61cfa75748a1688c6bb",
+      "output_sha256": "5b603a5b4d8ec10f3ed71bbc93b4605c511755f4504d9dbfd715b96c068e4fd7",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "CanSSA"
@@ -4791,7 +4791,7 @@
       "output": "internal/walk/assign.go",
       "source": "src/cmd/compile/internal/walk/assign.go",
       "source_sha256": "53628e0b347c25dfabcecd665851d635bf070dfad59f2eae763a54de1db296e2",
-      "output_sha256": "ec20b7e4f76b6e70736e2b8bda41883cd8c89a3fe61ce6fe4e9ef7cbb0107319",
+      "output_sha256": "ce7bae446362b43ee938c260155aa4b7fe500f6d23ea77d7fea8bcf5fd577099",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -4846,7 +4846,7 @@
       "output": "internal/walk/builtin.go",
       "source": "src/cmd/compile/internal/walk/builtin.go",
       "source_sha256": "afac0353cfbf083033a32038dc682caabe8190015a01e3eb9047ec01d78cce08",
-      "output_sha256": "b66b20f33ed5901ba1322ce6607a611eeb740c877acee7bffd805983caf1c26b",
+      "output_sha256": "2880c0400c29d4d1635d4c955e926747910309dcd478f4e306a199eba899f67c",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4858,7 +4858,7 @@
       "output": "internal/walk/closure.go",
       "source": "src/cmd/compile/internal/walk/closure.go",
       "source_sha256": "6e6e9631b21081fe778ba7037eac21fbe8baeec207cbe4716933001510979365",
-      "output_sha256": "75bb49ce072b35702f5b735c4718df68ecdd0d2fb73f8f633f58d337d8230590",
+      "output_sha256": "993cb0872dc0373271b8c9c8443730ed8775a6b5badcc40e5127f97173da8811",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -4869,7 +4869,7 @@
       "output": "internal/walk/compare.go",
       "source": "src/cmd/compile/internal/walk/compare.go",
       "source_sha256": "8a2013176ccf274d5bea76121c8103d9c0c11677c8469093c2d4c8205f4a0994",
-      "output_sha256": "a239eeee34393e6c9b109c733ed08deb3d805daae86f6640edeeec510ad5673e",
+      "output_sha256": "f2d160921258416c3c18748a363728c1916fd22523adbf60d49de25aefe39571",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -4880,7 +4880,7 @@
       "output": "internal/walk/complit.go",
       "source": "src/cmd/compile/internal/walk/complit.go",
       "source_sha256": "5816bd45acd218792bf7c8680ef2f377c1105e2732974f3f14ca5fc140f570cb",
-      "output_sha256": "a30cc45ee1ec4789c8afed9aa8680a87b5485628529ba060ffa73d2b6ddc593e",
+      "output_sha256": "cc80258569ff0e6b098a1e6b8f23f0901403b23e825f43966e4c4747e7b13916",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -4891,7 +4891,7 @@
       "output": "internal/walk/convert.go",
       "source": "src/cmd/compile/internal/walk/convert.go",
       "source_sha256": "dff79da5df66cd29cb7352291d09a457b4a81e4575028fc4537a227f565156b5",
-      "output_sha256": "255f1436c98f5663ffccbd7f23154f9b3b9dd944986dfde31ebd18bdeaa42de4",
+      "output_sha256": "41201d706ab5204f094586370d5f6c112cc6095ecc144cd8a55dd48ae2ea22fe",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -4902,7 +4902,7 @@
       "output": "internal/walk/expr.go",
       "source": "src/cmd/compile/internal/walk/expr.go",
       "source_sha256": "d26d9d99e74215716e69c59d80bf27036cb1889fa070b67ca38153afd847999d",
-      "output_sha256": "354f6744b1ac0cbbfc67270656698d33d03e72750da04609bcedf8ec256da94a",
+      "output_sha256": "27edf99361963769eeb22e828cd97b6cb656c267fd85b1e62a3249294410b944",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4915,7 +4915,7 @@
       "output": "internal/walk/order.go",
       "source": "src/cmd/compile/internal/walk/order.go",
       "source_sha256": "ad2827a6f82358b2bae7cbaec6c470107561c98d4186e271ae6eb8d61f7001fb",
-      "output_sha256": "a2ef2bc442c1c63d56d4008c61b8ba4a8ea2b64cc48bd471c713bea927f07e3d",
+      "output_sha256": "7f1f8ea0c23c7a69a79602d1144b5bd56a1dad048be5f1a80e8df48565f2eb45",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4930,7 +4930,7 @@
       "output": "internal/walk/range.go",
       "source": "src/cmd/compile/internal/walk/range.go",
       "source_sha256": "649b74943839fb01de24e1a8de35e8112d71ffac444f06ce21729b4d4bf7916f",
-      "output_sha256": "0541ac6ea1b2823ded02c77e6879f93983ecbefa6cb77a7e81abf0e36fb62bf6",
+      "output_sha256": "464e9cd9f97666ab9334bd3f00e04ff50a7a33d3e800ae415c38025d2d70c756",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -4941,7 +4941,7 @@
       "output": "internal/walk/select.go",
       "source": "src/cmd/compile/internal/walk/select.go",
       "source_sha256": "c16c5ead0b3d48f8e70df5dddd98cc381450234bc6734f435a5ea70ae69404dc",
-      "output_sha256": "630f4a01f8b0ed240c1ef886b991ee97c3c2886fd8bc2ba88a5e059111347c13",
+      "output_sha256": "bc3b35150efde1eacf1850ee36b87ee403c7b9d08b15a3b75418ebc196fff998",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4953,7 +4953,7 @@
       "output": "internal/walk/stmt.go",
       "source": "src/cmd/compile/internal/walk/stmt.go",
       "source_sha256": "27415ee0dc46a3ecc045a3ffed8a7400fe2c59b1f65245096ee7faa4e7ee5688",
-      "output_sha256": "38f6e286152e78ca197f202c3d0323f65802cf6bcd67e055ee25ecf03197ec0a",
+      "output_sha256": "459f383e2bb547e88fd387f49beb67da1c5067003f5bd4be1f77adb61f7bc7a1",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -4964,7 +4964,7 @@
       "output": "internal/walk/switch.go",
       "source": "src/cmd/compile/internal/walk/switch.go",
       "source_sha256": "590c8427daa18c219bf719d3364fa05de25138bcfe014636d87f21e8188c0d48",
-      "output_sha256": "72ab15a11b8bb04b6a7dbafe2a6f47f4e351b9a9a3c70ffd524cb1280fee8403",
+      "output_sha256": "9231c898435599e3bb6892607598b8dbecfd17d31055584847131950e5c198f1",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -4986,7 +4986,7 @@
       "output": "internal/walk/temp.go",
       "source": "src/cmd/compile/internal/walk/temp.go",
       "source_sha256": "cc6e0f209bef39e13c6d63221a695b27bc90c730bd8897739cea18399b028da7",
-      "output_sha256": "49033fbc22086766421337bb7ee5eb12fdf291173ee12aae3ee9ac2d17d28ac8",
+      "output_sha256": "ec50dc18ac20fc5816aa9f5b5cb9f5a35a6c4e10fda292211f1efc6e5ca2f362",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*"
@@ -4997,7 +4997,7 @@
       "output": "internal/walk/walk.go",
       "source": "src/cmd/compile/internal/walk/walk.go",
       "source_sha256": "1d1c7eb44ccfd8ff6fc28dff77910fa68df1aa828cf54f2dc264c3350ee8fdc7",
-      "output_sha256": "125ab277fa2d03df6cdfc4374e7e071f2888a7609abc090f4acc4a99d3491df7",
+      "output_sha256": "1f61fa5aebc370d7491ab64b250d62d67ed1d08b07f7483aeb77a0e86256665f",
       "rule": "package-state-to-context-methods-v2",
       "declarations": [
         "*",
@@ -5010,6 +5010,16 @@
         "staticValues"
       ],
       "adapter_sha256": "249fbdc73ec3b8c53c77f09097dca13153db5110cc620c39f04a93c37388063b"
+    },
+    {
+      "output": "ssa/opGen_constants.go",
+      "source": "src/cmd/compile/internal/ssa/opGen.go",
+      "source_sha256": "7db41ea6a51e7b28e61edd5ad18ab23212759ab33c192be81c776e0951a73730",
+      "output_sha256": "4df54dd2dd452e248783a6a3ca93e18e2b8bbfc7c994c188f848cdebd780ceb5",
+      "rule": "public-constant-aliases-v1",
+      "declarations": [
+        "exported constants"
+      ]
     },
     {
       "output": "third_party/go/LICENSE",

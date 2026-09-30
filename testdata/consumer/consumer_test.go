@@ -838,6 +838,16 @@ func TestNativeCanSSAFromPublicModule(t *testing.T) {
 		t.Fatal("public native SSA locations")
 	}
 
+	var op ssa.Op = ssa.OpAdd64
+	var block ssa.BlockKind = ssa.BlockIf
+	var assembly gcbridge.As = ssa.OpAMD64ADDQ.Asm()
+	if op.String() != "Add64" || op.IsCall() || block.String() != "If" || assembly == 0 || !ssa.OpStaticCall.IsCall() {
+		t.Fatal("public native SSA opcode identities and queries")
+	}
+	if ssa.SymRdWr != ssa.SymRead|ssa.SymWrite || op.SymEffect() != ssa.SymNone {
+		t.Fatal("public native SSA symbol effects")
+	}
+
 	i := u.Types[types.Int]
 	if !ssa.CanSSA(u.NewSlice(i)) || ssa.CanSSA(u.NewArray(i, 2)) || ssa.MaxStruct != 4 {
 		t.Fatal("public native SSA representation predicate")

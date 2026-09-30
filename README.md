@@ -72,6 +72,7 @@
 55. [M3 SSA 类型和位置](docs/m3-ssa-types.md)：原生 Types 的实例绑定及 Frontend、LocalSlot 等公开声明。
 56. [M3 SSA 汇编编号](docs/m3-ssa-objects.md)：opcode/register 元数据依赖的各架构原生指令与寄存器常量。
 57. [M3 SSA opcode 元数据](docs/m3-ssa-opcodes.md)：完整原生 opcode/register 表的实例隔离及无状态查询。
+58. [M3 公开 SSA opcode](docs/m3-ssa-public-opcodes.md)：自动导出全部原生 opcode/BlockKind 常量和类型。
 
 ## 当前可运行的工具
 

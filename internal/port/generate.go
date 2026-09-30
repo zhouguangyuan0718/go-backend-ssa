@@ -110,6 +110,9 @@ func Render(s *Source, p Plan, root string) (*Rendered, error) {
 			return nil, fmt.Errorf("support package %s: %w", pkg, err)
 		}
 	}
+	if err := renderConstantFacades(r, p, imports, after); err != nil {
+		return nil, err
+	}
 	for _, name := range []string{"LICENSE", "PATENTS"} {
 		b, err := s.Read(name)
 		if err != nil {
@@ -257,7 +260,8 @@ func checkPath(root, rel string) error {
 }
 
 func ownedPath(p string) bool {
-	return safePath(p) && ((strings.HasPrefix(p, "internal/") && strings.HasSuffix(p, ".go") && !strings.HasPrefix(path.Base(p), "adapter_")) || p == "third_party/go/LICENSE" || p == "third_party/go/PATENTS")
+	constantFacade := strings.Count(p, "/") == 1 && token.IsIdentifier(path.Dir(p)) && strings.HasSuffix(path.Base(p), "_constants.go")
+	return safePath(p) && ((strings.HasPrefix(p, "internal/") && strings.HasSuffix(p, ".go") && !strings.HasPrefix(path.Base(p), "adapter_")) || constantFacade || p == "third_party/go/LICENSE" || p == "third_party/go/PATENTS")
 }
 
 func readLedger(root string) (*Generated, error) {

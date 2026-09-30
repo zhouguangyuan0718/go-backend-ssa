@@ -2,7 +2,7 @@ package port
 
 func ssaOpcodeMigration() []Unit {
 	const root = "src/cmd/compile/internal/ssa/"
-	u := Unit{Source: root + "opGen.go", WholeFile: true, ReadTables: []string{"blockString"}, Context: &ContextRule{Type: "Context", Constructor: "initialize", Initialize: true, Selective: true, Adapter: "adapter_context.go", Fields: map[string]string{}}}
+	u := Unit{Source: root + "opGen.go", WholeFile: true, ExportConstants: true, ReadTables: []string{"blockString"}, Context: &ContextRule{Type: "Context", Constructor: "initialize", Initialize: true, Selective: true, Adapter: "adapter_context.go", Fields: map[string]string{}}}
 	for _, name := range []string{"opcodeTable",
 		"registers386",
 		"paramIntReg386",
