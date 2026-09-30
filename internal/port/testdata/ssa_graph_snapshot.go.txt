@@ -11,7 +11,7 @@ func TestSyncgoNativeSnapshot(t *testing.T){
   normalize:=func(s string)string{return strings.NewReplacer("cmd/compile/internal/","compiler/","go-backend-ssa/internal/cmd/","cmd/internal/","go-backend-ssa/internal/","compiler/").Replace(s)}
   out=append(out,"layout:"+normalize(typ.String()))
   if typ.Kind()!=reflect.Struct{continue}
-  for i:=0;i<typ.NumField();i++{field:=typ.Field(i);out=append(out,fmt.Sprintf("field:%s:%s:%t:%q",field.Name,normalize(field.Type.String()),field.Anonymous,field.Tag))}
+  for i:=0;i<typ.NumField();i++{field:=typ.Field(i);if typ==reflect.TypeOf(Cache{}){switch field.Name{case "poolFreeValueSlice","poolFreeLimitSlice","poolFreeSparseSet","poolFreeSparseMap","poolFreeSparseMapPos":continue}};out=append(out,fmt.Sprintf("field:%s:%s:%t:%q",field.Name,normalize(field.Type.String()),field.Anonymous,field.Tag))}
  }
  cfg:=&Config{PtrSize:int64(target.size),RegSize:int64(target.size),Types:*UP.NewTypes()}
  cache:=new(Cache);cache.Reset();f:=cfg.NewFunc(nil,cache);f.Name="nativeGraph"

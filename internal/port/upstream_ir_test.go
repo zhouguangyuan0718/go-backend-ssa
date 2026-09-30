@@ -33,6 +33,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_objects")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_opcodes")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_graph")
+	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_containers")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -371,8 +372,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if pkgName == "rttype" || pkgName == "reflectdata" || pkgName == "staticdata" || pkgName == "abi" || snapshotName == "staticinit_zero" || pkgName == "ssa" || snapshotName == "walk_target" || snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || snapshotName == "walk" {
 		targets = []string{"386", "amd64", "mips", "ppc64"}
 	}
-	if snapshotName == "ssa_objects" || snapshotName == "ssa_opcodes" {
-		targets = []string{""} // Every architecture is checked in one constant snapshot.
+	if snapshotName == "ssa_objects" || snapshotName == "ssa_opcodes" || snapshotName == "ssa_containers" {
+		// Metadata covers all architectures in one run; containers use host-sized indexes.
+		targets = []string{""}
 	}
 	if snapshotName == "reflectdata_descriptors" {
 		targets = append(targets, "amd64-split", "amd64-runtime", "amd64-dynlink")

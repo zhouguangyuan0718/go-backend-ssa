@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"go/types"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -23,6 +24,21 @@ func moveReceiverState(fs *token.FileSet, files []*ast.File, info *types.Info, u
 		specs := map[string]*ast.ValueSpec{}
 		var target *ast.StructType
 		var targetType types.Type
+		var targetFile *ast.File
+		for _, file := range files {
+			for _, d := range file.Decls {
+				if g, ok := d.(*ast.GenDecl); ok && g.Tok == token.TYPE {
+					for _, spec := range g.Specs {
+						ts := spec.(*ast.TypeSpec)
+						if ts.Name.Name == rule.Type {
+							target, _ = ts.Type.(*ast.StructType)
+							targetType = info.Defs[ts.Name].Type()
+							targetFile = file
+						}
+					}
+				}
+			}
+		}
 		for _, d := range files[index].Decls {
 			g, ok := d.(*ast.GenDecl)
 			if !ok {
@@ -69,6 +85,9 @@ func moveReceiverState(fs *token.FileSet, files []*ast.File, info *types.Info, u
 			if spec == nil {
 				return fmt.Errorf("receiver state declaration not found: %s", name)
 			}
+			if targetFile != files[index] && len(spec.Values) != 0 {
+				return fmt.Errorf("cross-file receiver state requires zero initialization: %s", name)
+			}
 			field := rule.Fields[name]
 			for _, f := range target.Fields.List {
 				for _, id := range f.Names {
@@ -107,6 +126,9 @@ func moveReceiverState(fs *token.FileSet, files []*ast.File, info *types.Info, u
 			}
 			fieldTypes[name] = typ
 			copy, err := clone(typ, target.Fields.Closing)
+			if targetFile != files[index] {
+				copy, err = receiverFieldType(files, targetFile, info, targetType.(*types.Named).Obj().Pkg(), info.Defs[spec.Names[0]].Type(), target.Fields.Closing)
+			}
 			if err != nil {
 				return err
 			}
@@ -209,8 +231,12 @@ func moveReceiverState(fs *token.FileSet, files []*ast.File, info *types.Info, u
 			}
 			start.Body.List = append(statements, start.Body.List...)
 		} else {
-			// All valid construction sites must use a keyed literal or builtin new;
-			// a bare zero declaration would silently lose the relocated initializer.
+			// A nonzero initializer requires keyed construction or builtin new.
+			// Zero-initialized state must preserve the native zero-value contract.
+			needsInitialization := false
+			for _, spec := range specs {
+				needsInitialization = needsInitialization || len(spec.Values) != 0
+			}
 			for _, f := range files {
 				replacements := map[ast.Node]ast.Expr{}
 				var failure error
@@ -243,7 +269,7 @@ func moveReceiverState(fs *token.FileSet, files []*ast.File, info *types.Info, u
 							n.Elts = append(n.Elts, fields(n.Lbrace)...)
 						}
 					case *ast.ValueSpec:
-						if n.Type != nil && len(n.Values) == 0 && info.TypeOf(n.Type) == targetType {
+						if needsInitialization && n.Type != nil && len(n.Values) == 0 && info.TypeOf(n.Type) == targetType {
 							failure = fmt.Errorf("zero receiver state declaration: %s", rule.Type)
 						}
 					case *ast.CallExpr:
@@ -290,4 +316,70 @@ func moveReceiverState(fs *token.FileSet, files []*ast.File, info *types.Info, u
 		info.InitOrder = pending
 	}
 	return nil
+}
+
+// Render cross-file zero-state field types from checked type identity. File-local
+// aliases in the variable declaration do not necessarily exist at the receiver.
+func receiverFieldType(files []*ast.File, file *ast.File, info *types.Info, pkg *types.Package, typ types.Type, pos token.Pos) (ast.Expr, error) {
+	names := map[string]string{}
+	used := map[string]bool{}
+	for _, f := range files {
+		ast.Inspect(f, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok {
+				used[id.Name] = true
+			}
+			return true
+		})
+	}
+	for _, im := range file.Imports {
+		path, _ := strconv.Unquote(im.Path.Value)
+		name := ""
+		if im.Name != nil {
+			name = im.Name.Name
+		} else if pn, ok := info.Implicits[im].(*types.PkgName); ok {
+			name = pn.Name()
+		}
+		if name != "" && name != "_" {
+			if name == "." {
+				name = ""
+			}
+			names[path] = name
+		}
+	}
+	var added []*ast.ImportSpec
+	qualifier := func(p *types.Package) string {
+		if p == pkg {
+			return ""
+		}
+		if name, ok := names[p.Path()]; ok {
+			return name
+		}
+		i := 0
+		name := ""
+		for {
+			name = fmt.Sprintf("receiverStateImport%d", i)
+			i++
+			if !used[name] {
+				break
+			}
+		}
+		used[name] = true
+		names[p.Path()] = name
+		added = append(added, &ast.ImportSpec{Name: &ast.Ident{Name: name, NamePos: file.Name.End()}, Path: &ast.BasicLit{Kind: token.STRING, Value: strconv.Quote(p.Path()), ValuePos: file.Name.End()}})
+		return name
+	}
+	expr, err := parser.ParseExpr(types.TypeString(typ, qualifier))
+	if err != nil {
+		return nil, err
+	}
+	setTokenPositions(reflect.ValueOf(expr), pos)
+	if len(added) > 0 {
+		specs := make([]ast.Spec, len(added))
+		for i, im := range added {
+			specs[i] = im
+		}
+		file.Decls = append([]ast.Decl{&ast.GenDecl{Tok: token.IMPORT, TokPos: file.Name.End(), Specs: specs}}, file.Decls...)
+		file.Imports = append(file.Imports, added...)
+	}
+	return expr, nil
 }

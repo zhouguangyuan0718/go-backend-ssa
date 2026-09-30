@@ -1,0 +1,44 @@
+package ssa
+import("fmt";"encoding/json";"sort";"testing";"IMPORT_SRC")
+func TestSyncgoNativeSnapshot(t *testing.T){
+ var out []string
+ sm:=newSparseMap(64);ss:=newSparseSet(64);mp:=newSparseMapPos(64)
+ for _,k:=range []ID{0,63,2,7,2,32,0}{sm.set(k,int32(k)*3-5);ss.add(k);mp.set(k,int32(k)*2,src.XPos{}.WithIsStmt())}
+ sm.remove(2);ss.remove(2);mp.remove(2);sm.remove(30);ss.remove(30);mp.remove(30)
+ sm.set(63,99);mp.set(63,88,src.XPos{}.WithNotStmt());ss.addAll([]ID{1,7});ss.addAllValues([]*Value{{ID:4},{ID:1}})
+ for _,k:=range []ID{0,1,2,4,7,30,32,63}{v,ok:=sm.get(k);out=append(out,fmt.Sprintf("query:%d:%d:%t:%t:%t:%d:%t",k,v,ok,sm.contains(k),ss.contains(k),mp.get(k),mp.contains(k)))}
+ out=append(out,fmt.Sprintf("dense:%v:%v:%v",sm.contents(),ss.contents(),mp.contents()))
+ for ss.size()>0{out=append(out,fmt.Sprintf("pop:%d",ss.pop()))}
+ sm.clear();ss.clear();mp.clear();sm.set(3,-1);ss.add(3);mp.set(3,-1,src.XPos{})
+ out=append(out,fmt.Sprintf("clear:%d:%d:%d:%d:%d:%d",sm.size(),ss.size(),mp.size(),sm.cap(),ss.cap(),mp.cap()))
+ // Preserve generic key/value identities in addition to the ID/int32 alias.
+ gm:=newGenericSparseMap[int,string](8);gm.set(0,"zero");gm.set(7,"last");gm.set(0,"replaced");gm.remove(7);s,ok:=gm.get(0);out=append(out,fmt.Sprintf("generic:%s:%t:%v:%d",s,ok,gm.contents(),gm.size()))
+ for _,bm:=range []*biasedSparseMap{nil,newBiasedSparseMap(20,19),newBiasedSparseMap(20,24)}{
+  if bm!=nil{bm.set(20,7);bm.set(24,9);bm.set(19,2);bm.set(25,2);bm.remove(20)}
+  for _,k:=range []uint{0,19,20,24,25}{v,ok:=bm.get(k);out=append(out,fmt.Sprintf("biased:%d:%d:%d:%d:%t:%t",bm.cap(),bm.size(),k,v,ok,bm.contains(k)))}
+  if bm!=nil&&bm.size()>0{k,v:=bm.getEntry(0);out=append(out,fmt.Sprintf("biased-entry:%d:%d",k,v));bm.clear();out=append(out,fmt.Sprintf("biased-clear:%d",bm.size()))}
+ }
+ var table src.PosTable
+ p:=table.XPos(src.MakePos(src.NewFileBase("a.go","a.go"),30,2));p2:=table.XPos(src.MakePos(src.NewFileBase("b.go","b.go"),40,2));pcol:=table.XPos(src.MakePos(table.Pos(p).Base(),30,8))
+ xm:=newXposmap(map[int]lineRange{int(p.FileIndex()):{30,32},int(p2.FileIndex()):{40,42}})
+ xm.set(p,7);xm.add(p2);xm.set(pcol,11);v,ok:=xm.get(p);out=append(out,fmt.Sprintf("xpos:%d:%t:%t:%t",v,ok,xm.contains(pcol),xm.contains(src.XPos{})))
+ var rows []string;xm.foreachEntry(func(file int32,line uint,v int32){rows=append(rows,fmt.Sprintf("%d:%d:%d",file,line,v))});sort.Strings(rows);out=append(out,rows...)
+ xm.remove(p);out=append(out,fmt.Sprintf("xpos-remove:%t:%t",xm.contains(p),xm.contains(p2)));xm.clear();out=append(out,fmt.Sprintf("xpos-clear:%t:%t",xm.contains(p),xm.contains(p2)))
+ var cache Cache
+ for _,n:=range []int{0,1,7,8,9,31,32,33,63,64,65,257}{
+  vs:=cache.allocValueSlice(n);ls:=cache.allocLimitSlice(n);set:=cache.allocSparseSet(n);m:=cache.allocSparseMap(n);pm:=cache.allocSparseMapPos(n)
+  out=append(out,fmt.Sprintf("allocate:%d:%d:%d:%d:%d:%d:%d:%d",n,len(vs),cap(vs),len(ls),cap(ls),set.cap(),m.cap(),pm.cap()))
+  if n>0{vs[n-1]=&Value{ID:9};ls[n-1]=limit{min:-1,max:9};set.add(ID(n-1));m.set(ID(n-1),3);pm.set(ID(n-1),4,p)}
+  cache.freeValueSlice(vs);cache.freeLimitSlice(ls);cache.freeSparseSet(set);cache.freeSparseMap(m);cache.freeSparseMapPos(pm)
+  vs=cache.allocValueSlice(n);ls=cache.allocLimitSlice(n);set=cache.allocSparseSet(n);m=cache.allocSparseMap(n);pm=cache.allocSparseMapPos(n)
+  clean:=true;for _,v:=range vs{clean=clean&&v==nil};for _,l:=range ls{clean=clean&&l==(limit{})}
+  out=append(out,fmt.Sprintf("reallocate:%d:%t:%d:%d:%d",n,clean,set.size(),m.size(),pm.size()))
+  cache.freeValueSlice(vs);cache.freeLimitSlice(ls);cache.freeSparseSet(set);cache.freeSparseMap(m);cache.freeSparseMapPos(pm)
+ }
+ for _,check:=range []struct{name string;run func()}{{"map-negative",func(){sm.set(snapshotContainerIndex(-1),0)}},{"map-upper",func(){sm.get(snapshotContainerIndex(64))}},{"set-upper",func(){ss.add(snapshotContainerIndex(64))}},{"position-upper",func(){mp.get(snapshotContainerIndex(64))}},{"xpos-file",func(){xm.set(src.XPos{},1)}}}{func(){defer func(){out=append(out,fmt.Sprintf("panic:%s:%v",check.name,recover()))}();check.run()}()}
+ data,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(data))
+}
+
+// Keep runtime bounds input identical under ordinary and race builds.
+//go:noinline
+func snapshotContainerIndex(n ID) ID { return n }

@@ -151,6 +151,14 @@ func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.Fil
 			want[state] = "var"
 		}
 	}
+	if u.ReceiverState != nil {
+		for state := range u.ReceiverState.Fields {
+			if want[state] != "" {
+				return nil, fmt.Errorf("duplicate receiver state %s", state)
+			}
+			want[state] = "var"
+		}
+	}
 	found := map[string]bool{}
 	var decls []ast.Decl
 	for _, d := range f.Decls {

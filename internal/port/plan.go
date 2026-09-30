@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v29"
+const ToolVersion = "syncgo-m3-v30"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -192,7 +192,7 @@ func (p Plan) Validate() error {
 			}
 		}
 		if r := u.ReceiverState; r != nil {
-			if !u.WholeFile || u.Context != nil || u.Owner != nil || !token.IsIdentifier(r.Type) || len(r.Fields) == 0 || r.InitMethod != "" && !token.IsIdentifier(r.InitMethod) || r.RunInit && r.InitMethod == "" {
+			if !u.WholeFile && (r.RunInit || r.InitMethod != "") || u.Context != nil || u.Owner != nil || !token.IsIdentifier(r.Type) || len(r.Fields) == 0 || r.InitMethod != "" && !token.IsIdentifier(r.InitMethod) || r.RunInit && r.InitMethod == "" {
 				return fmt.Errorf("invalid receiver state rule")
 			}
 			seen := map[string]bool{}

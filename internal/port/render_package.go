@@ -185,6 +185,25 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		return nil, nil, err
 	}
 	for _, u := range units {
+		if rule := u.ReceiverState; rule != nil {
+			owner := outpkg.Scope().Lookup(rule.Type)
+			if owner == nil {
+				return nil, nil, fmt.Errorf("missing receiver state target %s", rule.Type)
+			}
+			for name, field := range rule.Fields {
+				member, _, _ := types.LookupFieldOrMethod(types.NewPointer(owner.Type()), true, outpkg, field)
+				actual, ok := member.(*types.Var)
+				expected := pkg.Scope().Lookup(name)
+				if !ok || !actual.IsField() || expected == nil || types.TypeString(actual.Type(), nil) != types.TypeString(expected.Type(), func(p *types.Package) string {
+					if dst := imports[p.Path()]; dst != "" {
+						return dst
+					}
+					return p.Path()
+				}) {
+					return nil, nil, fmt.Errorf("receiver field %s does not preserve state type of %s", field, name)
+				}
+			}
+		}
 		if c := u.Context; c != nil {
 			obj := outpkg.Scope().Lookup(c.Type)
 			if obj == nil {

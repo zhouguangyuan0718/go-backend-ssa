@@ -79,3 +79,73 @@ func TestStateMovesIntoExistingReceivers(t *testing.T) {
 		})
 	}
 }
+
+func TestZeroReceiverStateAcrossFiles(t *testing.T) {
+	const cache = `package p
+ import receiverStateImport0 "fmt"
+ type Cache struct{N int}
+ func New()*Cache { return new(Cache) }
+ func Zero()*Cache { var c Cache; return &c }
+ func Literal()*Cache{return &Cache{N:4}}
+ func(c *Cache)String()string{return receiverStateImport0.Sprint(c.N)}
+ `
+	const state = `package p
+ import original "sync"
+ var pools [2]original.Pool
+ func(c *Cache)Put(i int,v any){pools[i].Put(v)}
+ func(c *Cache)Get(i int)any{return pools[i].Get()}
+ `
+	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", "src/cmd/compile/internal/p/cache.go": cache, "src/cmd/compile/internal/p/state.go": state})
+	source, err := OpenSource(context.Background(), repo, pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{
+		{Source: "src/cmd/compile/internal/p/cache.go", WholeFile: true},
+		{Source: "src/cmd/compile/internal/p/state.go", WholeFile: true, ReceiverState: &ReceiverStateRule{Type: "Cache", Fields: map[string]string{"pools": "pools"}}},
+	}}
+	dir := t.TempDir()
+	r, err := Render(source, plan, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(dir, r); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
+	writeTestFile(t, dir, "internal/p/adapter_test.go", `package p
+ import("testing";"sync")
+ func TestCache(t *testing.T){a,b:=New(),Zero();a.Put(0,1);if b.Get(0)!=nil||a.String()!="0"||Literal().N!=4{t.Fatal("state shared or constructor changed")};if v:=a.Get(0);v!=nil&&v!=1{t.Fatal(v)};var wg sync.WaitGroup;for i:=0;i<8;i++{wg.Go(func(){c:=New();for j:=0;j<100;j++{c.Put(1,j);if v:=c.Get(1);v!=nil&&v!=j{t.Error("foreign pool value")}}})};wg.Wait()}
+ `)
+	cmd := exec.Command("go", "test", "-race", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.27.1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	t.Run("selected methods", func(t *testing.T) {
+		subset := plan
+		subset.Units = append([]Unit(nil), plan.Units...)
+		subset.Units[1].WholeFile = false
+		subset.Units[1].Declarations = []string{"Cache.Get"}
+		result, err := Render(source, subset, dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(result.Files["internal/p/state.go"]), "func (c *Cache) Put") {
+			t.Fatal("unselected receiver method leaked")
+		}
+	})
+	for _, tc := range []struct{ name, src, want string }{
+		{"outside receiver", state + "\nfunc bad()any{return pools[0].Get()}", "outside Cache methods"},
+		{"initializer", strings.Replace(state, "[2]original.Pool", "[2]original.Pool = [2]original.Pool{}", 1), "cross-file receiver state requires zero initialization"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source.cache[plan.Units[1].Source] = []byte(tc.src)
+			defer func() { source.cache[plan.Units[1].Source] = []byte(state) }()
+			if _, err := Render(source, plan, dir); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want %s, got %v", tc.want, err)
+			}
+		})
+	}
+}
