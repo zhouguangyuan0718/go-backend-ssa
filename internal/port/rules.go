@@ -196,6 +196,7 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, types2Migration()...)
 	plan.Units = append(plan.Units, pkgbitsMigration()...)
 	plan.Units = append(plan.Units, rangefuncMigration()...)
+	plan.Units = append(plan.Units, midwayMigration()...)
 	plan.Units = append(plan.Units, objwMigration()...)
 	plan.Units = append(plan.Units, staticdataMigration()...)
 	plan.Units = append(plan.Units, runtimeABIMigration()...)

@@ -1,0 +1,36 @@
+package midway
+import("bytes";"encoding/json";"fmt";"sort";"strings";"testing";"MW_SYNTAX";"IMPORT_TYPES2";MW_INPUTS)
+type mwImports map[string]*types2.Package
+func (m mwImports)Import(path string)(*types2.Package,error){p:=m[path];if p==nil{return nil,fmt.Errorf("missing %s",path)};return p,nil}
+func mwParse(t *testing.T,name,source string)*syntax.File{t.Helper();f,e:=syntax.Parse(syntax.NewFileBase(name),strings.NewReader(source),nil,nil,syntax.CheckBranches);if e!=nil{t.Fatal(e)};return f}
+func mwInfo()*types2.Info{return &types2.Info{StoreTypesInSyntax:true,Defs:map[*syntax.Name]types2.Object{},Uses:map[*syntax.Name]types2.Object{},Selections:map[*syntax.SelectorExpr]*types2.Selection{},Implicits:map[syntax.Node]types2.Object{},Scopes:map[syntax.Node]*types2.Scope{},Instances:map[*syntax.Name]types2.Instance{}}}
+func TestSyncgoNativeSnapshot(t *testing.T){
+ const simdSource=`package simd;type Int8s [16]int8;func(x Int8s)Add(y Int8s)Int8s{return x};func LoadInt8s(x []int8)Int8s{return Int8s{}};func BroadcastInt8s(x int8)Int8s{return Int8s{}};func VectorBitSize()int{return 128};func Emulated()bool{return false}`
+ sources:=[]string{
+ `package p;func Plain(x int)int{return x+1}`,
+ `package p;import "simd";func Id(v simd.Int8s)simd.Int8s{return v.Add(v)}`,
+ `package p;import "simd";func Count()int{var v simd.Int8s;return len(v)};func Void(){var v simd.Int8s;_=v}`,
+ `package p;import "simd";type Alias=simd.Int8s;type Node struct{Next *Node;V Alias};func(n *Node)Value()Alias{return n.V};func Pair(x Alias)(Alias,int){return x,1};var Global Alias`,
+ `package p;import "simd";type Box[T any]struct{V T};func Generic[T ~int](x T)T{var v simd.Int8s;return x+T(len(v))};var _=Generic(1);var V Box[simd.Int8s]`,
+ `package p;import "simd";func Body(ch chan int,x any)(n int){v:=simd.LoadInt8s([]int8{1});f:=func(a int)int{return a+len(v)};defer func(){n++}();for i:=0;i<3;i++{if i==1{continue};n+=f(i)};switch y:=x.(type){case int:n+=y;default:n++};select{case z:=<-ch:n+=z;default:};switch n{case 1,2:n++;default:n--};return}`,
+ `package p;import "simd";func Broadcast()int{v:=simd.BroadcastInt8s(2);return len(v)}`,
+ }
+ var out []string
+ for _,arch:=range []string{"amd64","arm64","wasm","386"}{for _,enabled:=range []bool{false,true}{for idx,source:=range sources{
+ SETUP
+ deps:=mwImports{};conf.Importer=deps
+ p,e:=conf.Check("simd",[]*syntax.File{mwParse(t,"/src/simd/vector.go",simdSource)},mwInfo());if e!=nil{t.Fatal(e)};deps["simd"]=p
+ var bridge strings.Builder;bridge.WriteString("package bridge;")
+ for _,name:=range []string{"Int8s","Int8x16","Int8x32","Int8x64"}{fmt.Fprintf(&bridge,"type %s [16]int8;func(x %s)Add(y %s)%s{return x};func Load%s(x []int8)%s{return %s{}};func Broadcast%s(x int8)%s{return %s{}};",name,name,name,name,name,name,name,name,name,name)}
+ p,e=conf.Check("simd/internal/bridge",[]*syntax.File{mwParse(t,"/src/bridge/vector.go",bridge.String())},mwInfo());if e!=nil{t.Fatal(e)};deps["simd/internal/bridge"]=p
+ f:=mwParse(t,"/src/p/input.go",source);files:=[]*syntax.File{f};info:=mwInfo();pkg,e:=conf.Check("example/p",files,info);if e!=nil{t.Fatal(e)}
+ changed:=MW_RUN(pkg,info,files)
+ if changed!=(enabled&&arch!="386"&&idx!=0){t.Fatalf("unexpected rewrite %s/%t/%d=%t",arch,enabled,idx,changed)}
+ var body bytes.Buffer;if _,e:=syntax.Fprint(&body,f,0);e!=nil{t.Fatal(e)}
+ out=append(out,fmt.Sprintf("%s/%t/%d/%t:%s",arch,enabled,idx,changed,body.String()))
+ var positions []string;syntax.Inspect(f,func(n syntax.Node)bool{if n!=nil{positions=append(positions,fmt.Sprintf("%T:%s",n,n.Pos()))};return true});out=append(out,strings.Join(positions,"|"))
+ var defs []string;for n,o:=range info.Defs{if o!=nil{defs=append(defs,fmt.Sprintf("%s:%s:%T:%s",n.Value,n.Pos(),o,o.Type()))}};sort.Strings(defs);out=append(out,strings.Join(defs,"|"))
+ rechecked,e:=conf.Check("example/p",files,mwInfo());if e!=nil{t.Fatalf("recheck %s/%t/%d: %v",arch,enabled,idx,e)};out=append(out,strings.Join(rechecked.Scope().Names(),","))
+ }}}
+ b,e:=json.Marshal(out);if e!=nil{t.Fatal(e)};fmt.Println("SYNCGO_IR="+string(b))
+}

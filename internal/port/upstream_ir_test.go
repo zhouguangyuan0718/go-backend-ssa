@@ -18,6 +18,7 @@ import (
 // compiler. The reference uses immutable Git blobs through a temporary Go build
 // overlay; neither GOROOT nor the user's upstream checkout is modified.
 func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
+	testUpstreamNativeGraph(t, s, r, root, "midway")
 	testUpstreamNativeGraph(t, s, r, root, "ir")
 	testUpstreamNativeGraph(t, s, r, root, "ir", "ir_symbols")
 	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_inline")
@@ -237,6 +238,11 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		position = "u.Pos"
 		setup = `archs:=sys.NewContext();var a *sys.Arch;for _,v:=range archs.Archs{if v.Name==target.arch{a=v}};link:=&obj.Link{Pathname:"/src",Pkgpath:"example/p",Arch:&obj.LinkArch{Arch:a}};u:=types.NewUniverseWithPositions(target.size,target.size,1<<50,&link.PosTable);u.LocalPkg=u.NewPkg("example/p","p");graph:=ir.NewContext(u,link);tc:=typecheck.NewContext(graph);tc.InitUniverse();tc.InitRuntime();c,err:=noder.NewContext(types2.NewContext(),tc);if err!=nil{t.Fatal(err)};c.Flag.Dwarf=true;rt:=rttype.NewContext(objw.NewContext(u,link,"linux"));rt.Init();c.ReflectData=reflectdata.NewContext(tc,rt,staticdata.NewContext(graph,rt.Writer));c.StaticInit=staticinit.NewContext(tc,c.ReflectData)`
 	}
+	originalTemplate := string(template)
+	if pkgName == "midway" {
+		setup = `checker:=types2.NewContext();c:=NewContext(checker,arch,buildcfg.ExperimentFlags{},base.DebugFlags{});c.Experiment.SIMD=enabled;conf:=types2.Config{Context:checker,GoVersion:"go1.27",Sizes:checker.SizesFor("gc",arch)}`
+		template = []byte(strings.NewReplacer("MW_SYNTAX", "go-backend-ssa/internal/syntax", "MW_INPUTS", `"go-backend-ssa/internal/base";"go-backend-ssa/internal/go/buildcfg";`, "MW_RUN", "c.RewriteWrapper").Replace(string(template)))
+	}
 	ported := strings.NewReplacer(
 		"BUILD_INTRINSICS", "ssagen.SyncgoIntrinsicSnapshot(backend)", "BUILD_INIT", `backend.SSA=ssa.NewContext(abi.NewContext(graph),c.ReflectData,c.Inline.Log);backend.SSA.GOAMD64=1;backend.SSA.GOARM.Version=7;backend.SSA.GOPPC64=8;backend.SSA.GORISCV64=20;backend.SSA.FramePointerEnabled=target.arch=="amd64"||target.arch=="arm64";backend.SSA.Now=func()time.Time{return time.Time{}};backend.GO386="sse2";backend.GOMIPS="hardfloat";backend.GOMIPS64="hardfloat";backend.GOARM64.Version="v8.0";backend.Arch.LinkArch=link.Arch;backend.Arch.SoftFloat=strings.Contains(mode,"soft");backend.SSA.GOARM.SoftFloat=backend.Arch.SoftFloat;backend.Liveness=liveness.NewContext(backend.SSA);backend.InitConfig();backend.InitTables();if e:=backend.SSA.PhaseOption("check","on",1,"");e!=""{t.Fatal(e)}`, "BUILD_RUN", `ssagen.SyncgoBuildSnapshot(backend,f,ir.FuncName(f)=="Phi")`, "BUILD_IMPORT", `"time";"go-backend-ssa/internal/ssa";"go-backend-ssa/internal/abi";"go-backend-ssa/internal/liveness";`,
 		"SOURCE_INPUTS", `c.DumpFunction=input;c.DumpDirectory="reports"`, "SOURCE_HOST", `c.OpenSource=func(p string)(io.ReadCloser,error){return os.Open(p)};c.ExpandSourcePath=os.ExpandEnv;c.SSA.OpenHTML=func(p string,f int,m fs.FileMode)(io.WriteCloser,error){return os.OpenFile(p,f,m)};c.SSA.WorkingDirectory=os.Getwd`,
@@ -337,6 +343,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	goroot := strings.TrimSpace(string(run("env", "GOROOT")))
 	overlay := map[string]string{}
+	if pkgName == "midway" {
+		template = []byte(originalTemplate)
+	}
 	packages := []string{"cmd/compile/internal/ir", "cmd/compile/internal/types", "cmd/compile/internal/base", "cmd/internal/obj", "cmd/compile/internal/typecheck", "cmd/compile/internal/noder", "cmd/compile/internal/dwarfgen", "cmd/compile/internal/objw", "cmd/compile/internal/bitvec", "cmd/internal/objabi", "internal/bisect", "internal/abi", "cmd/compile/internal/rttype", "cmd/compile/internal/reflectdata", "cmd/compile/internal/typebits", "cmd/compile/internal/staticdata", "cmd/internal/hash", "cmd/compile/internal/compare", "cmd/compile/internal/staticinit", "cmd/compile/internal/pgoir", "cmd/internal/pgo", "cmd/compile/internal/inline/inlheur", "cmd/compile/internal/inline", "cmd/compile/internal/logopt", "cmd/compile/internal/devirtualize", "cmd/compile/internal/inline/interleaved", "cmd/compile/internal/loopvar", "cmd/compile/internal/pkginit", "cmd/compile/internal/ssagen", "cmd/compile/internal/deadlocals", "cmd/compile/internal/escape", "cmd/compile/internal/slice"}
 	if pkgName == "ssa" || snapshotName == "ssagen_frontend" || snapshotName == "ssagen_frames" || snapshotName == "ssagen_sources" || isBuildSSA {
 		packages = append(packages, "cmd/compile/internal/ssa", "cmd/compile/internal/abt")
@@ -369,6 +378,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	if snapshotName == "noder_dependencies" {
 		packages = append(packages, "cmd/compile/internal/importer", "cmd/compile/internal/types2", "cmd/compile/internal/syntax", "internal/pkgbits", "internal/types/errors", "internal/exportdata", "internal/saferio", "cmd/internal/bio")
+	}
+	if pkgName == "midway" {
+		packages = append(packages, "cmd/compile/internal/midway", "cmd/compile/internal/types2", "cmd/compile/internal/syntax")
 	}
 	for _, pkg := range packages {
 		for _, name := range s.PackageFiles(pkg) {
@@ -449,6 +461,10 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	}
 	if isBuildSSA {
 		nativeSetup += `;base.Ctxt.Pathname="/src";base.Flag.Dwarf=true`
+	}
+	if pkgName == "midway" {
+		nativeSetup = `buildcfg.GOARCH=arch;buildcfg.Experiment.SIMD=enabled;conf:=types2.Config{Context:types2.NewContext(),GoVersion:"go1.27",Sizes:types2.SizesFor("gc",arch)}`
+		template = []byte(strings.NewReplacer("MW_SYNTAX", "cmd/compile/internal/syntax", "MW_INPUTS", `"internal/buildcfg";`, "MW_RUN", "RewriteWrapper").Replace(string(template)))
 	}
 	native := strings.NewReplacer(
 		"BUILD_INTRINSICS", "ssagen.SyncgoIntrinsicSnapshot()", "BUILD_INIT", `buildcfg.GO386="sse2";buildcfg.GOAMD64=1;buildcfg.GOARM.Version=7;buildcfg.GOPPC64=8;buildcfg.GORISCV64=20;buildcfg.GOMIPS="hardfloat";buildcfg.GOMIPS64="hardfloat";buildcfg.GOARM64=buildcfg.Goarm64Features{Version:"v8.0"};buildcfg.FramePointerEnabled=target.arch=="amd64"||target.arch=="arm64";Arch.LinkArch=base.Ctxt.Arch;Arch.SoftFloat=strings.Contains(mode,"soft");buildcfg.GOARM.SoftFloat=Arch.SoftFloat;InitConfig();InitTables();ir.IsIntrinsicCall=IsIntrinsicCall;ir.IsIntrinsicSym=IsIntrinsicSym;if e:=ssa.PhaseOption("check","on",1,"");e!=""{t.Fatal(e)}`, "BUILD_RUN", `ssagen.SyncgoBuildSnapshot(f,ir.FuncName(f)=="Phi")`, "BUILD_IMPORT", `"cmd/compile/internal/ssa";`,
