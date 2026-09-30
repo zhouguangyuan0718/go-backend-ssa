@@ -23,12 +23,13 @@ func nodeText(fset *token.FileSet, n ast.Node) string {
 }
 
 type packageImporter struct {
-	packages map[string]*types.Package
-	sources  map[types.Object]string
-	standard types.Importer
-	zeros    map[types.Object]string
-	support  map[string]map[string][]byte
-	loading  map[string]bool
+	projections map[string]map[string]map[string]bool
+	packages    map[string]*types.Package
+	sources     map[types.Object]string
+	standard    types.Importer
+	zeros       map[types.Object]string
+	support     map[string]map[string][]byte
+	loading     map[string]bool
 }
 
 func newImporter() *packageImporter {

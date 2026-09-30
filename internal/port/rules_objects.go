@@ -6,8 +6,8 @@ package port
 func objectDeclarations() []Unit {
 	return []Unit{
 		{Source: "src/cmd/internal/hash/hash.go", WholeFile: true},
-		{Source: "src/internal/goarch/goarch.go", Declarations: []string{"ArchFamilyType"}},
-		{Source: "src/cmd/internal/sys/arch.go", Declarations: []string{"Arch", "ArchFamily"}},
+		{Source: "src/internal/goarch/goarch.go", Declarations: []string{"ArchFamilyType", "AMD64"}},
+		{Source: "src/cmd/internal/sys/arch.go", Declarations: []string{"Arch", "ArchFamily", "AMD64"}},
 		{Source: "src/cmd/internal/dwarf/dwarf.go", Declarations: []string{"InlCall", "InlCalls", "Range", "Scope", "Sym", "Var", "InfoPrefix", "AbstractFuncSuffix"}},
 		{Source: "src/cmd/internal/goobj/funcinfo.go", Declarations: []string{"CUFileIndex"}},
 		{Source: "src/cmd/internal/goobj/objfile.go", Declarations: []string{"FingerprintType", "ImportedPkg"}},

@@ -35,3 +35,5 @@ GO_SSA_SOURCE_REPO=/path/to/go GOTOOLCHAIN=go1.27.1 \
 双版本对照通过（57.35s，`_work/m3-compare-source.log`）；完整普通 race 回归通过，internal/port 用时 55.840s（`_work/m3-compare-unit.log`），补充嵌套结构/接口数组后定向 race 回归再次通过（`_work/m3-compare-focused.log`）。generate/check 均验证 271 个文件；269 个既有生成 Go 文件中，仅 compare 的算法主体扩展，另外 268 个仅工具版本头变化。本批执行普通全量 race 回归和新增比较切片的双版本对照，未重复完整前端双版本矩阵。
 
 下一步绑定 walk 的原生架构字段和零值静态调度器，再接入完整 walk 排序、表达式与语句改写，随后推进 SSA 构造和原生编译器回接。
+
+后续进展：walk 架构字段绑定及首批目标判定已迁入，见 [walk 架构输入](m3-walk-target.md)。

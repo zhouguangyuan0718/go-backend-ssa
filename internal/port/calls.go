@@ -26,7 +26,7 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 			if selected[state.Source] == nil {
 				selected[state.Source] = map[string]bool{}
 			}
-			variables[state.Source][state.Variable] = true
+			variables[state.Source][stateRoot(state.Variable)] = true
 		}
 		for _, call := range u.Calls {
 			if selected[call.Source] == nil {
@@ -52,6 +52,9 @@ func loadCallSignatures(s *Source, units []Unit, importer *packageImporter) (map
 		}
 		f, err := parser.ParseFile(fs, source, data, parser.ParseComments|parser.SkipObjectResolution)
 		if err != nil {
+			return nil, err
+		}
+		if err := projectSignatureStructs(f, importer.projections[source]); err != nil {
 			return nil, err
 		}
 		// A fully migrated dependency has already been checked from these exact
@@ -254,7 +257,10 @@ func checkStateAdapters(units []Unit, before *packageImporter, out *types.Packag
 	for _, u := range units {
 		for _, state := range u.State {
 			sourcePkg := strings.TrimPrefix(path.Dir(state.Source), "src/")
-			original := before.packages[sourcePkg].Scope().Lookup(state.Variable)
+			original := externalStateMember(before.packages[sourcePkg], state.Variable)
+			if original == nil {
+				return fmt.Errorf("missing original state %s", state.Variable)
+			}
 			ctx := out.Scope().Lookup(u.Context.Type)
 			if ctx == nil {
 				return fmt.Errorf("missing state context")

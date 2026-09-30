@@ -1,0 +1,16 @@
+package walk
+import("fmt";"encoding/json";"encoding/binary";"os";"testing";"IMPORT_TYPES";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_TYPECHECK";"IMPORT_IR";WALK_IMPORT IMPORT_BASE)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian};switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
+ SETUP
+ WALK_BIND
+ var out []string
+ for _,family:=range []sys.ArchFamily{sys.AMD64,sys.ARM,sys.ARM64,sys.I386,sys.Loong64,sys.MIPS,sys.MIPS64,sys.PPC64,sys.RISCV64,sys.S390X,sys.Wasm}{LINK.Arch.Family=family;for _,width:=range []int64{0,1,2,3,4,8,16}{out=append(out,fmt.Sprintf("index:%d:%d:%t",family,width,UP.cheapComputableIndex(width)))}}
+ name:=func(s string,t *types.Type)*ir.Name{n:=GRAPH.NewNameAt(POS,TY.LocalPkg.Lookup(s),t);n.Class=ir.PPARAM;n.SetTypecheck(1);return n}
+ i:=name("i",TY.Types[types.TINT]);f:=name("f",TY.Types[types.TFLOAT64]);z:=name("z",TY.Types[types.TCOMPLEX128]);b:=name("b",TY.Types[types.TBOOL])
+ bin:=func(op ir.Op,x ir.Node,t *types.Type)*ir.BinaryExpr{n:=GRAPH.NewBinaryExpr(POS,op,x,x);n.SetType(t);return n}
+ right:=name("right",b.Type());right.PtrInit().Append(GRAPH.NewAssignStmt(POS,i,i))
+ nodes:=[]ir.Node{i,GRAPH.NewInt(POS,1),bin(ir.OADD,i,i.Type()),bin(ir.OADD,f,f.Type()),bin(ir.OADD,z,z.Type()),bin(ir.OEQ,f,b.Type()),GRAPH.NewConvExpr(POS,ir.OCONV,i.Type(),f),GRAPH.NewConvExpr(POS,ir.OCONV,TY.Types[types.TINT64],i),bin(ir.ODIV,i,i.Type()),GRAPH.NewLogicalExpr(POS,ir.OANDAND,b,b),GRAPH.NewLogicalExpr(POS,ir.OOROR,b,right)}
+ for _,soft:=range []bool{false,true}{WALK_SOFT=soft;for _,instrument:=range []bool{false,true}{LOOP_BASE.Flag.Cfg.Instrumenting=instrument;for j,n:=range nodes{out=append(out,fmt.Sprintf("call:%t:%t:%d:%v:%t",soft,instrument,j,n.Op(),UP.mayCall(n)))}}}
+ bdata,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(bdata))
+}

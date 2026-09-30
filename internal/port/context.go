@@ -98,6 +98,10 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 	if context == nil {
 		return nil
 	}
+	projections, projectedDependencies, err := projectedStateBindings(files, info, units)
+	if err != nil {
+		return err
+	}
 	literals, err := literalBindings(files, info, units)
 	if err != nil {
 		return err
@@ -132,6 +136,13 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		}
 		return result
 	}
+	contextExternal := map[types.Object]string{}
+	for obj, field := range external {
+		contextExternal[obj] = field
+	}
+	for obj, field := range projectedDependencies {
+		contextExternal[obj] = field
+	}
 	parameterMethods, err := contextParameterMethods(files, info, units)
 	if err != nil {
 		return err
@@ -144,7 +155,7 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		for obj := range parameterMethods {
 			candidates[obj] = obj.Name()
 		}
-		needed := statefulFunctions(files, info, candidates, states, external, owners, units, literals)
+		needed := statefulFunctions(files, info, candidates, states, contextExternal, owners, units, literals)
 		for obj := range functions {
 			if selective[obj] && needed[obj] == "" {
 				if functions[obj] != obj.Name() {
@@ -198,6 +209,10 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		// resolved member object, so local values with the same spelling survive.
 		selectors := map[ast.Node]ast.Expr{}
 		ast.Inspect(node, func(n ast.Node) bool {
+			if field := projections[n]; field != "" {
+				selectors[n] = binding(ctx, nil, field, n.Pos())
+				return false
+			}
 			if sel, ok := n.(*ast.SelectorExpr); ok {
 				if name := external[info.Uses[sel.Sel]]; name != "" {
 					selectors[sel] = binding(ctx, info.Uses[sel.Sel], name, sel.Pos())
@@ -236,14 +251,14 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 			}
 		}
 	}
-	constructorDeps := statefulFunctions(files, info, allFunctions, states, external, owners, units, literals)
+	constructorDeps := statefulFunctions(files, info, allFunctions, states, contextExternal, owners, units, literals)
 	unsafeValueInit := false
 	for _, entry := range info.InitOrder {
 		dependent := hasOwnedAllocation(entry.Rhs, info, owners) || hasBoundLiteral(entry.Rhs, literals)
 		ast.Inspect(entry.Rhs, func(n ast.Node) bool {
 			if id, ok := n.(*ast.Ident); ok {
 				obj := info.Uses[id]
-				dependent = dependent || states[obj] != "" || external[obj] != "" || constructorDeps[obj] != ""
+				dependent = dependent || states[obj] != "" || contextExternal[obj] != "" || constructorDeps[obj] != ""
 			}
 			return true
 		})

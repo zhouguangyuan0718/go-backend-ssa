@@ -56,6 +56,10 @@ func Render(s *Source, p Plan, root string) (*Rendered, error) {
 	}
 	r := &Rendered{Files: map[string][]byte{}, Ledger: Generated{SchemaVersion: 1, Tool: ToolVersion, Commit: s.Pin.Commit, PlanSHA256: hash(planJSON)}}
 	before, after := newImporter(), newImporter()
+	before.projections, err = collectStateProjections(p.Units)
+	if err != nil {
+		return nil, err
+	}
 	imports := p.importMap(s.Pin.TargetModule)
 	after.support = map[string]map[string][]byte{}
 	if len(p.SupportFiles) > 0 {

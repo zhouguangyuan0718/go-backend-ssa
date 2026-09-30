@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v20"
+const ToolVersion = "syncgo-m3-v21"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -69,7 +69,8 @@ type CallRule struct{ Source, Function, Method string }
 // LiteralRule wraps a native struct value with a func(T) T instance method.
 type LiteralRule struct{ Source, Type, Method string }
 
-// StateRule redirects a typed host variable or literal boolean feature constant to instance state.
+// StateRule redirects typed host state to an instance. Variable may name a
+// whole variable, a literal bool feature, or a reviewed direct struct field.
 type StateRule struct{ Source, Variable, Field string }
 
 // ReceiverStateRule keeps state in an existing private upstream receiver.
@@ -213,7 +214,7 @@ func (p Plan) Validate() error {
 			parameterMethods[name] = true
 		}
 		for _, state := range u.State {
-			if u.Context == nil || !safePath(state.Source) || portPath(state.Source) == "" || !token.IsIdentifier(state.Variable) || !memberPath(state.Field) {
+			if u.Context == nil || !safePath(state.Source) || portPath(state.Source) == "" || !memberPath(state.Variable) || !memberPath(state.Field) {
 				return fmt.Errorf("invalid external state binding")
 			}
 		}
