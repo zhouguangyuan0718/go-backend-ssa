@@ -224,6 +224,7 @@ func Migration() Plan {
 	plan.Units = ssaGenericMigration(plan.Units)
 	plan.Units = ssaDiagnosticMigration(plan.Units)
 	plan.Units = ssaOptimizerMigration(plan.Units)
+	plan.Units = ssaCallMigration(plan.Units)
 	for i := range plan.Units {
 		if plan.Units[i].Source == "src/cmd/internal/obj/link.go" {
 			plan.Units[i].Declarations = append(plan.Units[i].Declarations, "AXXX", "ABase386", "LSym.CanBeAnSSASym", "LSym.CanBeAnSSAAux")

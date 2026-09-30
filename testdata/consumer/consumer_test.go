@@ -918,7 +918,9 @@ func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
 	cfg := c.NewConfig("amd64", *c.NewTypes(), link, true, false)
 	var cache ssa.Cache
 	cache.Reset()
-	fe := &publicSplitFrontend{}
+	fn := graph.NewFunc(position.XPos{}, position.XPos{}, u.LocalPkg.Lookup("public"), u.NewSignature(nil, nil, nil))
+	fn.DeclareParams(true)
+	fe := &publicSplitFrontend{fn: fn}
 	f := cfg.NewFunc(fe, &cache)
 	f.Name = "public"
 	f.Type = u.NewSignature(nil, nil, nil)
@@ -942,6 +944,11 @@ func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
 		t.Fatal("public native local-slot decomposition")
 	}
 
+	tmp := f.NewLocal(position.XPos{}, cfg.Types.Int64)
+	if tmp.Curfn != fn || len(fn.Dcl) != 1 || fn.Dcl[0] != tmp || !tmp.NonMergeable() || !tmp.AutoTemp() {
+		t.Fatal("public native temporary construction")
+	}
+
 	var _ *ssa.Value = v
 	var _ *ssa.Block = b
 	var _ *ssa.Func = f
@@ -951,9 +958,12 @@ func TestNativeSSAConfigAndGraphFromPublicModule(t *testing.T) {
 type publicSplitFrontend struct {
 	ssa.Frontend
 	calls int
+	fn    *ir.Func
 }
 
 func (fe *publicSplitFrontend) SplitSlot(parent *ssa.LocalSlot, suffix string, offset int64, typ *types.Type) ssa.LocalSlot {
 	fe.calls++
 	return ssa.LocalSlot{N: parent.N, Type: typ, Off: parent.Off + offset}
 }
+
+func (fe *publicSplitFrontend) Func() *ir.Func { return fe.fn }

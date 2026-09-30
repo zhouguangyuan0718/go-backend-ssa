@@ -1,0 +1,294 @@
+package ssa
+
+import (
+	IMPORT_BASE
+	"IMPORT_IR"
+	"IMPORT_OBJ"
+	"IMPORT_SRC"
+	"IMPORT_SYS"
+	"IMPORT_TYPECHECK"
+	"IMPORT_TYPES"
+	LOWER_IMPORT
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"os"
+	"testing"
+)
+
+type snapshotCallsFrontend struct {
+	Frontend
+	fn   *ir.Func
+	link *obj.Link
+	wb   bool
+}
+
+func (fe *snapshotCallsFrontend) Func() *ir.Func                     { return fe.fn }
+func (fe *snapshotCallsFrontend) Syslook(n string) *obj.LSym         { return fe.link.Lookup("runtime." + n) }
+func (fe *snapshotCallsFrontend) UseWriteBarrier() bool              { return fe.wb }
+func (*snapshotCallsFrontend) Log() bool                             { return false }
+func (*snapshotCallsFrontend) Logf(string, ...any)                   {}
+func (*snapshotCallsFrontend) Warnl(src.XPos, string, ...any)        {}
+func (*snapshotCallsFrontend) Debug_checknil() bool                  { return false }
+func (*snapshotCallsFrontend) Fatalf(p src.XPos, s string, a ...any) { panic(fmt.Sprintf(s, a...)) }
+func (*snapshotCallsFrontend) SplitSlot(p *LocalSlot, s string, o int64, t *types.Type) LocalSlot {
+	return LocalSlot{N: p.N, Type: t, Off: p.Off + o}
+}
+func TestSyncgoNativeSnapshot(t *testing.T) {
+	target := struct {
+		arch  string
+		size  int
+		order binary.ByteOrder
+	}{os.Getenv("SYNCGO_TARGET"), 8, binary.LittleEndian}
+	switch target.arch {
+	case "386", "mips":
+		target.size = 4
+	}
+	switch target.arch {
+	case "mips", "ppc64":
+		target.order = binary.BigEndian
+	}
+	SETUP
+	LOWER_FEATURES.GOAMD64 = 1
+	LOWER_FEATURES.GOARM.Version = 7
+	LOWER_FEATURES.GOPPC64 = 8
+	LOWER_FEATURES.GORISCV64 = 20
+	switch target.arch {
+	case "386":
+		LINK.Arch.Family = sys.I386
+	case "amd64":
+		LINK.Arch.Family = sys.AMD64
+	case "arm64":
+		LINK.Arch.Family = sys.ARM64
+	case "mips":
+		LINK.Arch.Family = sys.MIPS
+	case "ppc64":
+		LINK.Arch.Family = sys.PPC64
+	}
+	cfg := UP.NewConfig(target.arch, *UP.NewTypes(), LINK, true, false)
+	ty := cfg.Types
+	pos := LINK.PosTable.XPos(src.MakePos(src.NewFileBase("calls.go", "calls.go"), 10, 1))
+	var out []string
+	add := func(n string, a ...any) { out = append(out, n+":"+fmt.Sprint(a...)) }
+	fresh := func(in, outs []*types.Type, stack bool) (*Func, *snapshotCallsFrontend, []*Value, *Value) {
+		fields := func(ts []*types.Type, prefix string) []*types.Field {
+			var fs []*types.Field
+			for i, tp := range ts {
+				fs = append(fs, TY.NewField(pos, TY.LocalPkg.Lookup(fmt.Sprint(prefix, i)), tp))
+			}
+			return fs
+		}
+		fn := GRAPH.NewFunc(pos, pos, TY.LocalPkg.Lookup("fixture"), TY.NewSignature(nil, fields(in, "a"), fields(outs, "r")))
+		fn.DeclareParams(true)
+		fe := &snapshotCallsFrontend{fn: fn, link: LINK, wb: true}
+		cache := new(Cache)
+		cache.Reset()
+		f := cfg.NewFunc(fe, cache)
+		f.Name = "fixture"
+		f.Type = fn.Type()
+		f.ABI0 = cfg.ABI0
+		f.ABI1 = cfg.ABI1
+		f.ABISelf = cfg.ABI1
+		if stack {
+			f.ABISelf = cfg.ABI0
+		}
+		f.ABIDefault = f.ABISelf
+		f.OwnAux = OwnAuxCall(fn.Linksym(), f.ABISelf.ABIAnalyze(fn.Type(), true))
+		f.pass = &pass{name: "calls"}
+		b := f.NewBlock(BlockRet)
+		f.Entry = b
+		b.Pos = pos
+		mem := b.NewValue0(pos, OpInitMem, TY.TypeMem)
+		f.spSb()
+		var args []*Value
+		for _, a := range f.OwnAux.abiInfo.InParams() {
+			v := b.NewValue0IA(pos, OpArg, a.Type, a.FrameOffset(f.OwnAux.abiInfo), a.Name)
+			args = append(args, v)
+		}
+		return f, fe, args, mem
+	}
+	finish := func(n string, f *Func) {
+		deadcode(f)
+		f.invalidateCFG()
+		checkFunc(f)
+		add(n, f.String())
+		opt(f)
+		deadcode(f)
+		lower(f)
+		lateLower(f)
+		deadcode(f)
+		f.invalidateCFG()
+		checkFunc(f)
+		checkLower(f)
+		add(n+"/lower", f.String())
+	}
+	structType := TY.NewStruct([]*types.Field{TY.NewField(pos, TY.LocalPkg.Lookup("X"), ty.UInt8), TY.NewField(pos, TY.LocalPkg.Lookup("Y"), ty.Int64), TY.NewField(pos, TY.LocalPkg.Lookup("P"), ty.BytePtr)})
+	aggregateTypes := []*types.Type{ty.Int64, ty.String, TY.NewSlice(ty.Int32), TY.Types[types.TINTER], TY.Types[types.TCOMPLEX128], structType, TY.NewArray(ty.Int32, 1), TY.NewArray(ty.Int32, 0)}
+	for k, tp := range aggregateTypes {
+		for _, stack := range []bool{false, true} {
+			f, _, args, mem := fresh([]*types.Type{tp}, []*types.Type{tp}, stack)
+			b := f.Entry
+			aux := StaticAuxCall(LINK.Lookup("callee"), f.ABIDefault.ABIAnalyzeTypes([]*types.Type{tp}, []*types.Type{tp}))
+			call := b.NewValue0A(pos, OpStaticLECall, aux.LateExpansionResultType(), aux)
+			call.AddArgs(args...)
+			call.AddArg(mem)
+			value := b.NewValue1I(pos, OpSelectN, tp, 0, call)
+			mem = b.NewValue1I(pos, OpSelectN, TY.TypeMem, 1, call)
+			ret := b.NewValue2(pos, OpMakeResult, TY.NewResults([]*types.Type{tp, TY.TypeMem}), value, mem)
+			b.SetControl(ret)
+			checkFunc(f)
+			numberLines(f)
+			expandCalls(f)
+			postExpandCallsDecompose(f)
+			finish(fmt.Sprintf("aggregate-%d-stack-%v", k, stack), f)
+		}
+	}
+	// Overflow integer/float register banks, plus all indirect and tail call forms.
+	for _, kind := range []Op{OpStaticLECall, OpClosureLECall, OpInterLECall, OpTailLECall, OpTailLECallInter} {
+		for _, stack := range []bool{false, true} {
+			var ins []*types.Type
+			for i := 0; i < 20; i++ {
+				ins = append(ins, ty.Int64, ty.Float64)
+			}
+			f, _, args, mem := fresh(ins, nil, stack)
+			b := f.Entry
+			info := f.ABIDefault.ABIAnalyzeTypes(ins, nil)
+			aux := StaticAuxCall(LINK.Lookup("callee"), info)
+			if kind == OpClosureLECall {
+				aux = ClosureAuxCall(info)
+			}
+			if kind == OpInterLECall || kind == OpTailLECallInter {
+				aux = InterfaceAuxCall(info)
+			}
+			call := b.NewValue0A(pos, kind, aux.LateExpansionResultType(), aux)
+			if kind == OpClosureLECall || kind == OpInterLECall || kind == OpTailLECallInter {
+				call.AddArg(b.NewValue1A(pos, OpAddr, ty.BytePtr, LINK.Lookup("code"), func() *Value { _, sb := f.spSb(); return sb }()))
+			}
+			if kind == OpClosureLECall {
+				call.AddArg(b.NewValue0(pos, OpConstNil, ty.BytePtr))
+			}
+			call.AddArgs(args...)
+			call.AddArg(mem)
+			mem = b.NewValue1I(pos, OpSelectN, TY.TypeMem, 0, call)
+			b.SetControl(mem)
+			if kind == OpTailLECall || kind == OpTailLECallInter {
+				b.Kind = BlockRetJmp
+				b.Aux = LINK.Lookup("callee")
+			}
+			checkFunc(f)
+			numberLines(f)
+			expandCalls(f)
+			postExpandCallsDecompose(f)
+			finish(fmt.Sprintf("calls-%s-stack-%v", kind, stack), f)
+		}
+	}
+	// Non-SSA-sized call results and arguments must use memory copies.
+	for _, stack := range []bool{false, true} {
+		wide := TY.NewArray(ty.Int64, 8)
+		f, _, args, mem := fresh([]*types.Type{TY.NewPtr(wide), TY.NewPtr(wide)}, nil, stack)
+		b := f.Entry
+		aux := StaticAuxCall(LINK.Lookup("widecallee"), f.ABIDefault.ABIAnalyzeTypes([]*types.Type{wide}, []*types.Type{wide}))
+		value := b.NewValue2(pos, OpDereference, wide, args[0], mem)
+		call := b.NewValue2A(pos, OpStaticLECall, aux.LateExpansionResultType(), aux, value, mem)
+		value = b.NewValue1I(pos, OpSelectN, wide, 0, call)
+		mem = b.NewValue1I(pos, OpSelectN, TY.TypeMem, 1, call)
+		mem = b.NewValue3A(pos, OpStore, TY.TypeMem, wide, args[1], value, mem)
+		b.SetControl(mem)
+		checkFunc(f)
+		numberLines(f)
+		expandCalls(f)
+		postExpandCallsDecompose(f)
+		finish(fmt.Sprint("wide-stack-", stack), f)
+	}
+	// Barrier expansion must retain the memory order and volatile move copies.
+	for _, stack := range []bool{false, true} {
+		for _, cgo := range []bool{false, true} {
+			for _, kind := range []string{"stores", "zero", "move", "volatile", "stack", "disabled"} {
+				EXPERIMENT.CgoCheck2 = cgo
+				f, fe, args, mem := fresh([]*types.Type{TY.NewPtr(ty.BytePtr), ty.BytePtr, TY.NewPtr(ty.BytePtr)}, nil, stack)
+				b := f.Entry
+				ptr, val, source := args[0], args[1], args[2]
+				sp, _ := f.spSb()
+				if kind == "stack" {
+					ptr = b.NewValue1I(pos, OpOffPtr, TY.NewPtr(ty.BytePtr), 128, sp)
+				}
+				if kind == "disabled" {
+					fe.wb = false
+				}
+				if kind == "volatile" {
+					source = b.NewValue1I(pos, OpOffPtr, TY.NewPtr(ty.BytePtr), 64, sp)
+				}
+				switch kind {
+				case "zero":
+					mem = b.NewValue1I(pos, OpZero, TY.TypeMem, ty.BytePtr.Size(), ptr)
+					mem.Aux = ty.BytePtr
+					mem.AddArg(b.Values[0])
+				case "move", "volatile":
+					mem = b.NewValue3I(pos, OpMove, TY.TypeMem, ty.BytePtr.Size(), ptr, source, mem)
+					mem.Aux = ty.BytePtr
+				default:
+					for i := 0; i < 10; i++ {
+						dst := b.NewValue1I(pos, OpOffPtr, ptr.Type, int64(i)*ty.BytePtr.Size(), ptr)
+						mem = b.NewValue3A(pos, OpStore, TY.TypeMem, ty.BytePtr, dst, val, mem)
+					}
+				}
+				b.SetControl(mem)
+				checkFunc(f)
+				numberLines(f)
+				writebarrier(f)
+				add("wbmeta", fe.fn.WBPos.IsKnown(), len(fe.fn.Dcl))
+				finish(fmt.Sprintf("wb-%s-stack-%v-cgo-%v", kind, stack, cgo), f)
+			}
+		}
+	}
+	EXPERIMENT.CgoCheck2 = false
+	// Pure loops need a memory chain introduced; effectful loops need phi repair.
+	for _, noSplit := range []bool{false, true} {
+		for _, effect := range []bool{false, true} {
+			f, _, args, mem := fresh([]*types.Type{ty.Int32, TY.NewPtr(ty.Int32)}, nil, false)
+			f.NoSplit = noSplit
+			e := f.Entry
+			h, body, exit := f.NewBlock(BlockIf), f.NewBlock(BlockPlain), f.NewBlock(BlockRet)
+			for _, b := range []*Block{h, body, exit} {
+				b.Pos = pos
+			}
+			e.Kind = BlockPlain
+			e.AddEdgeTo(h)
+			h.AddEdgeTo(body)
+			h.AddEdgeTo(exit)
+			body.AddEdgeTo(h)
+			i := h.NewValue1(pos, OpPhi, ty.Int32, f.ConstInt32(ty.Int32, 0))
+			next := body.NewValue2(pos, OpAdd32, ty.Int32, i, f.ConstInt32(ty.Int32, 1))
+			i.AddArg(next)
+			h.SetControl(h.NewValue2(pos, OpLess32, ty.Bool, i, args[0]))
+			if effect {
+				m := h.NewValue1(pos, OpPhi, TY.TypeMem, mem)
+				m.AddArg(body.NewValue3A(pos, OpStore, TY.TypeMem, ty.Int32, args[1], i, m))
+				mem = m
+			}
+			exit.SetControl(mem)
+			checkFunc(f)
+			numberLines(f)
+			insertLoopReschedChecks(f)
+			finish(fmt.Sprintf("loop-nosplit-%v-effect-%v", noSplit, effect), f)
+		}
+	}
+	{
+		f, _, _, _ := fresh(nil, nil, false)
+		e := f.Entry
+		e.Kind = BlockPlain
+		h := f.NewBlock(BlockPlain)
+		h.Pos = pos
+		e.AddEdgeTo(h)
+		h.AddEdgeTo(h)
+		numberLines(f)
+		deadcode(f)
+		insertLoopReschedChecks(f)
+		finish("loop-without-memory", f)
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("SYNCGO_IR=%s\n", data)
+}

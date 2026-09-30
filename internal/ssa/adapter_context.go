@@ -346,3 +346,15 @@ func (c *Context) checkConfig(arch string, ts Types, link *obj.Link, optimize, s
 func (c *Context) fatalfAt(pos src.XPos, format string, args ...any) {
 	panic(fmt.Errorf("%s: %s", c.IR.Base.FmtPos(pos), fmt.Sprintf(format, args...)))
 }
+
+// Preserve the native TempAt operation after validating the frontend's function
+// and type. A foreign frontend must not append temporaries to another graph.
+func (c *Context) tempAt(pos src.XPos, fn *ir.Func, typ *types.Type) *ir.Name {
+	if fn != nil && ir.ContextOf(fn) != c.IR {
+		panic("SSA temporary belongs to another compiler function")
+	}
+	if typ != nil && typ.Universe() != c.Types {
+		panic("SSA temporary type belongs to another universe")
+	}
+	return c.ReflectData.Typecheck.TempAt(pos, fn, typ)
+}
