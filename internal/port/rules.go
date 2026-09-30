@@ -213,6 +213,12 @@ func Migration() Plan {
 	plan.Units = append(plan.Units, walkMigration()...)
 	plan.Units = append(plan.Units, abiMigration()...)
 	plan.Units = append(plan.Units, ssaTypesMigration()...)
+	plan.Units = append(plan.Units, ssaObjectMigration()...)
+	for i := range plan.Units {
+		if plan.Units[i].Source == "src/cmd/internal/obj/link.go" {
+			plan.Units[i].Declarations = append(plan.Units[i].Declarations, "AXXX", "ABase386")
+		}
+	}
 	// base's symbol helpers now consume the native obj package. Keep their
 	// entire package after obj/buildcfg and before the compiler types package.
 	var baseUnits, units []Unit

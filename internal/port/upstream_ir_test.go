@@ -30,6 +30,7 @@ func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
 	testUpstreamNativeGraph(t, s, r, root, "compare")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_value")
 	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_types")
+	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_objects")
 	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
 	testUpstreamNativeGraph(t, s, r, root, "walk")
 	testUpstreamNativeGraph(t, s, r, root, "typecheck")
@@ -55,7 +56,13 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	if len(snapshots) > 0 {
 		snapshotName = snapshots[0]
 	}
-	template, err := os.ReadFile(filepath.Join(root, "internal/port/testdata/"+snapshotName+"_snapshot.go.txt"))
+	var template []byte
+	var err error
+	if snapshotName == "ssa_objects" {
+		template, err = ssaObjectsSnapshot(s)
+	} else {
+		template, err = os.ReadFile(filepath.Join(root, "internal/port/testdata/"+snapshotName+"_snapshot.go.txt"))
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,6 +162,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		setup = strings.Replace(setup, "c,err:=NewContext(types2.NewContext(),tc)", "c,err:=noder.NewContext(types2.NewContext(),tc)", 1)
 	}
 	ported := strings.NewReplacer(
+		"SSA_OBJ_ROOT", "go-backend-ssa/internal/cmd/obj",
 		"IMPORT_WALK", "go-backend-ssa/internal/walk", "WALK_SETUP", "w:=walk.NewContext(c,esc)", "WALK_SET_SOFT", `w.SoftFloat=strings.HasSuffix(mode,"-soft")`, "WALK_RUN", "w.Walk(f)",
 		"ZERO_BIND", "s=c.BindSchedule(s)", "ZERO_IMPORT", `"go-backend-ssa/internal/rttype";"go-backend-ssa/internal/objw";"go-backend-ssa/internal/reflectdata";"go-backend-ssa/internal/staticdata";`,
 		"WALK_IMPORT", "", "WALK_BIND", "", "WALK_SOFT", "c.SoftFloat",
@@ -200,6 +208,11 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	packages := []string{"cmd/compile/internal/ir", "cmd/compile/internal/types", "cmd/compile/internal/base", "cmd/internal/obj", "cmd/compile/internal/typecheck", "cmd/compile/internal/noder", "cmd/compile/internal/dwarfgen", "cmd/compile/internal/objw", "cmd/compile/internal/bitvec", "cmd/internal/objabi", "internal/bisect", "internal/abi", "cmd/compile/internal/rttype", "cmd/compile/internal/reflectdata", "cmd/compile/internal/typebits", "cmd/compile/internal/staticdata", "cmd/internal/hash", "cmd/compile/internal/compare", "cmd/compile/internal/staticinit", "cmd/compile/internal/pgoir", "cmd/internal/pgo", "cmd/compile/internal/inline/inlheur", "cmd/compile/internal/inline", "cmd/compile/internal/logopt", "cmd/compile/internal/devirtualize", "cmd/compile/internal/inline/interleaved", "cmd/compile/internal/loopvar", "cmd/compile/internal/pkginit", "cmd/compile/internal/ssagen", "cmd/compile/internal/deadlocals", "cmd/compile/internal/escape", "cmd/compile/internal/slice"}
 	if pkgName == "ssa" {
 		packages = append(packages, "cmd/compile/internal/ssa")
+		if snapshotName == "ssa_objects" {
+			for _, arch := range []string{"arm", "arm64", "loong64", "mips", "ppc64", "riscv", "s390x", "wasm", "x86"} {
+				packages = append(packages, "cmd/internal/obj/"+arch)
+			}
+		}
 	}
 	if snapshotName == "walk_target" || snapshotName == "walk" {
 		packages = append(packages, "cmd/compile/internal/walk")
@@ -258,6 +271,7 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 		nativeSetup = `Ctxt=&obj.Link{}`
 	}
 	native := strings.NewReplacer(
+		"SSA_OBJ_ROOT", "cmd/internal/obj",
 		"IMPORT_WALK", "cmd/compile/internal/walk", "WALK_SETUP", "ssagen.Arch.LinkArch=base.Ctxt.Arch", "WALK_SET_SOFT", `ssagen.Arch.SoftFloat=strings.HasSuffix(mode,"-soft")`, "WALK_RUN", "walk.Walk(f)",
 		"ZERO_BIND", "", "ZERO_IMPORT", "",
 		"WALK_IMPORT", `"cmd/compile/internal/ssagen";`, "WALK_BIND", "ssagen.Arch.LinkArch=base.Ctxt.Arch", "WALK_SOFT", "ssagen.Arch.SoftFloat",
@@ -354,6 +368,9 @@ func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName
 	targets := []string{""}
 	if pkgName == "rttype" || pkgName == "reflectdata" || pkgName == "staticdata" || pkgName == "abi" || snapshotName == "staticinit_zero" || pkgName == "ssa" || snapshotName == "walk_target" || snapshotName == "noder_dict" || snapshotName == "noder_body" || snapshotName == "noder_inline" || snapshotName == "noder_interleaved" || snapshotName == "noder_wrappers" || snapshotName == "noder_loopvar" || snapshotName == "pkginit" || snapshotName == "ssagen_abi" || snapshotName == "deadlocals" || snapshotName == "escape" || snapshotName == "slice" || snapshotName == "compare" || snapshotName == "walk" {
 		targets = []string{"386", "amd64", "mips", "ppc64"}
+	}
+	if snapshotName == "ssa_objects" {
+		targets = []string{""} // Every architecture is checked in one constant snapshot.
 	}
 	if snapshotName == "reflectdata_descriptors" {
 		targets = append(targets, "amd64-split", "amd64-runtime", "amd64-dynlink")

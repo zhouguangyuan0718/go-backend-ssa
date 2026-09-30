@@ -14,7 +14,7 @@ func objectDataMigration() []Unit {
 			{Source: "src/internal/buildcfg/cfg.go", Variable: "GOARCH", Field: "Arch.Name"},
 		}},
 		{Source: "src/cmd/internal/obj/textflag.go", WholeFile: true},
-		{Source: "src/cmd/internal/obj/util.go", Functions: []string{"Bool2int"}},
+		{Source: "src/cmd/internal/obj/util.go", Functions: []string{"Bool2int"}, Declarations: []string{"RBase386"}},
 		{Source: "src/cmd/internal/objabi/symkind_string.go", WholeFile: true, ReadTables: []string{"_SymKind_index"}},
 		{Source: "src/cmd/internal/objabi/reloctype_string.go", WholeFile: true, ReadTables: []string{"_RelocType_index"}},
 	}
