@@ -15,10 +15,23 @@ import (
 
 // This gate runs the actual pinned make.bash/dist bootstrap through all native
 // stages, including default PGO and the final standard library/tool rebuild.
-func TestPinnedDistBootstrap(t *testing.T)      { testPinnedDistBootstrap(t, "amd64") }
-func TestPinnedARM64DistBootstrap(t *testing.T) { testPinnedDistBootstrap(t, "arm64") }
+func TestPinnedDistBootstrap(t *testing.T)      { testPinnedDistBootstrap(t, "amd64", "go1.27.1") }
+func TestPinnedARM64DistBootstrap(t *testing.T) { testPinnedDistBootstrap(t, "arm64", "go1.27.1") }
+func TestPinnedMinimumDistBootstrap(t *testing.T) {
+	if os.Getenv("GO_SSA_MINIMUM_BOOTSTRAP") == "" {
+		t.Skip("set GO_SSA_MINIMUM_BOOTSTRAP for minimum SDK qualification")
+	}
+	arch := os.Getenv("GO_SSA_TEST_ARCH")
+	if arch == "" {
+		arch = "arm64"
+	}
+	if arch != "amd64" && arch != "arm64" {
+		t.Fatal("unsupported bootstrap architecture", arch)
+	}
+	testPinnedDistBootstrap(t, arch, "go1.24.6")
+}
 
-func testPinnedDistBootstrap(t *testing.T, arch string) {
+func testPinnedDistBootstrap(t *testing.T, arch, bootstrapVersion string) {
 	repo := os.Getenv("GO_SSA_SOURCE_REPO")
 	if repo == "" || os.Getenv("GO_SSA_DIST_BOOTSTRAP") == "" {
 		t.Skip("set GO_SSA_SOURCE_REPO and GO_SSA_DIST_BOOTSTRAP")
@@ -42,8 +55,19 @@ func testPinnedDistBootstrap(t *testing.T, arch string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.SplitN(string(version), "\n", 2)[0] != "go1.27.1" {
-		t.Fatal("requires explicit Go 1.27.1 bootstrap")
+	if strings.SplitN(string(version), "\n", 2)[0] != bootstrapVersion {
+		t.Fatalf("requires explicit %s bootstrap", bootstrapVersion)
+	}
+	reference := bootstrap
+	if bootstrapVersion != "go1.27.1" {
+		reference = os.Getenv("GO_SSA_LINUX_REFERENCE")
+		if reference == "" {
+			t.Fatal("set GO_SSA_LINUX_REFERENCE to the official Go 1.27.1 target SDK")
+		}
+		reference, err = filepath.Abs(reference)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	root, err := filepath.Abs("../..")
 	if err != nil {
@@ -55,9 +79,9 @@ func testPinnedDistBootstrap(t *testing.T, arch string) {
 		t.Fatal(err)
 	}
 	verifyIntegrationFiles(t, tree, m)
-	targetTree, targetBootstrap := tree, bootstrap
+	targetTree, targetBootstrap, targetReference := tree, bootstrap, reference
 	if !linux {
-		targetTree, targetBootstrap = "/goroot", "/bootstrap"
+		targetTree, targetBootstrap, targetReference = "/goroot", "/bootstrap", "/reference"
 	}
 	target := func(parts ...string) string { return filepath.Join(append([]string{targetTree}, parts...)...) }
 	common := []string{
@@ -73,7 +97,7 @@ func testPinnedDistBootstrap(t *testing.T, arch string) {
 			cmd.Env = append(os.Environ(), environment...)
 			cmd.Dir = filepath.Join(tree, "src")
 		} else {
-			docker := []string{"run", "--rm", "--pull=never", "--platform", "linux/" + arch, "--entrypoint", "", "--network", "none", "--mount", "type=bind,source=" + bootstrap + ",target=/bootstrap,readonly", "--mount", "type=bind,source=" + tree + ",target=/goroot", "-w", "/goroot/src"}
+			docker := []string{"run", "--rm", "--pull=never", "--platform", "linux/" + arch, "--entrypoint", "", "--network", "none", "--mount", "type=bind,source=" + bootstrap + ",target=/bootstrap,readonly", "--mount", "type=bind,source=" + reference + ",target=/reference,readonly", "--mount", "type=bind,source=" + tree + ",target=/goroot", "-w", "/goroot/src"}
 			for _, e := range environment {
 				docker = append(docker, "-e", e)
 			}
@@ -87,8 +111,11 @@ func testPinnedDistBootstrap(t *testing.T, arch string) {
 		}
 		return output
 	}
-	if got := string(run(targetBootstrap, filepath.Join(targetBootstrap, "bin/go"), "version")); got != "go version go1.27.1 linux/"+arch+"\n" {
+	if got := string(run(targetBootstrap, filepath.Join(targetBootstrap, "bin/go"), "version")); got != "go version "+bootstrapVersion+" linux/"+arch+"\n" {
 		t.Fatal("unexpected bootstrap", got)
+	}
+	if got := string(run(targetReference, filepath.Join(targetReference, "bin/go"), "version")); got != "go version go1.27.1 linux/"+arch+"\n" {
+		t.Fatal("unexpected reference SDK", got)
 	}
 	output := run(targetTree, "bash", "./make.bash")
 	t.Logf("native dist bootstrap:\n%s", output)
@@ -145,8 +172,8 @@ func testPinnedDistBootstrap(t *testing.T, arch string) {
 		executable := target("pkg/tool/linux_"+arch, stage)
 		goroot := targetTree
 		if stage == "official" {
-			executable = filepath.Join(targetBootstrap, "pkg/tool/linux_"+arch+"/compile")
-			goroot = targetBootstrap
+			executable = filepath.Join(targetReference, "pkg/tool/linux_"+arch+"/compile")
+			goroot = targetReference
 		} else {
 			if identity := run(goroot, executable, "-V=full"); !bytes.Contains(identity, []byte(m.Library)) {
 				t.Fatalf("%s lacks library identity: %s", stage, identity)
@@ -188,10 +215,10 @@ func testPinnedDistBootstrap(t *testing.T, arch string) {
 	}
 	run(targetTree, target("bin/go"), "build", "-a", "-p=4", "-o", target("probe"), target("probe.go"))
 	ours := run(targetTree, target("probe"))
-	run(targetBootstrap, filepath.Join(targetBootstrap, "bin/go"), "build", "-p=4", "-o", target("official-probe"), target("probe.go"))
-	reference := run(targetBootstrap, target("official-probe"))
-	if !bytes.Equal(ours, reference) || string(ours) != "42 true\n" {
-		t.Fatalf("bootstrapped program differs: %q vs %q", ours, reference)
+	run(targetReference, filepath.Join(targetReference, "bin/go"), "build", "-p=4", "-o", target("official-probe"), target("probe.go"))
+	officialOutput := run(targetReference, target("official-probe"))
+	if !bytes.Equal(ours, officialOutput) || string(ours) != "42 true\n" {
+		t.Fatalf("bootstrapped program differs: %q vs %q", ours, officialOutput)
 	}
 	t.Logf("%d distinct packages recorded through the library; rebuilt toolchain program matches official execution", len(packages))
 }
