@@ -75,6 +75,9 @@ func reviewedHostCalls(files []*ast.File, before, after *types.Info, pkg *types.
 				result := actual.Results().At(0).Type()
 				named, ok := result.(*types.Named)
 				allowed := ok && named.Obj().Pkg() != nil && ((named.Obj().Pkg().Path() == "io" && named.Obj().Name() == iface) || (rule.Function == "Open" && named.Obj().Pkg().Path() == "io/fs" && named.Obj().Name() == "File"))
+				if len(rule.StreamMethods) != 0 {
+					allowed = hostStreamResult(native.Results().At(0).Type(), result, rule.StreamMethods)
+				}
 				if !allowed || !hostFileImplements(native.Results().At(0).Type(), result) {
 					return nil, fmt.Errorf("host file factory requires io.%s", iface)
 				}

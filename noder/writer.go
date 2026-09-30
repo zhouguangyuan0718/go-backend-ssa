@@ -28,3 +28,7 @@ type ParsedFile = compiler.ParsedFile
 
 // ParseErrors contains all native parser/directive errors in source order.
 type ParseErrors = compiler.ParseErrors
+
+// DependencyFile and ObjectConfig configure explicit native dependency inputs.
+type DependencyFile = compiler.DependencyFile
+type ObjectConfig = compiler.ObjectConfig

@@ -9,7 +9,7 @@ import (
 
 func hostStreamMethod(name string) bool {
 	switch name {
-	case "Read", "Write", "Seek", "Close", "ReadAt":
+	case "Read", "Write", "Seek", "Close", "ReadAt", "Name":
 		return true
 	}
 	return false

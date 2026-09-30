@@ -176,6 +176,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 				prov.Declarations = append(prov.Declarations, "retained-native-call:"+call.Function+":"+call.Method)
 			}
 		}
+		if u.BuildVariant != "" {
+			prov.Declarations = append(prov.Declarations, "selected-build-variant:"+u.BuildVariant)
+		}
 		for _, r := range u.MethodCalls {
 			if prov.SignatureSources == nil {
 				prov.SignatureSources = map[string]string{}
@@ -230,8 +233,14 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		for _, rule := range u.HostFields {
 			prov.Declarations = append(prov.Declarations, "host-stream-field:"+rule.Type+"."+rule.Field+":"+strings.Join(rule.Methods, ","))
 		}
+		for _, r := range u.HostConstants {
+			prov.Declarations = append(prov.Declarations, "host-constant:"+r.Package+"."+r.Constant+":"+r.Field)
+		}
 		for _, rule := range u.HostCalls {
 			prov.Declarations = append(prov.Declarations, "host-call:"+rule.Package+"."+rule.Function+":"+rule.Method+":"+strings.Join(rule.stringArguments(), ","))
+			if len(rule.StreamMethods) != 0 {
+				prov.Declarations = append(prov.Declarations, "host-factory-stream:"+rule.Package+"."+rule.Function+":"+strings.Join(rule.StreamMethods, ","))
+			}
 		}
 		for _, name := range u.AdapterMethods {
 			prov.Declarations = append(prov.Declarations, "adapter-method:"+name)
@@ -353,6 +362,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 		}
 	}
 	if err := checkEntryAdapters(units, pkg, outpkg, imports); err != nil {
+		return nil, nil, err
+	}
+	if err := checkHostConstants(units, info, outpkg); err != nil {
 		return nil, nil, err
 	}
 	if err := checkStateAdapters(units, before, outpkg, imports); err != nil {

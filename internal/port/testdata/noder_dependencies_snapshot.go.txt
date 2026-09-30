@@ -1,0 +1,32 @@
+package noder
+import("bytes";"encoding/json";"encoding/binary";"fmt";"go/token";"os";"reflect";"runtime";"sort";"testing";"IMPORT_OBJ";"IMPORT_SYS";"IMPORT_IR";"IMPORT_TYPES";"IMPORT_TYPECHECK";"IMPORT_TYPES2";DEPS_BASE_EXTRA AUTO_IMPORT PGO_HOOK_IMPORT IMPORT_BASE IMPORT_BUILDCFG)
+func TestSyncgoNativeSnapshot(t *testing.T){
+ target:=struct{arch string;size int;order binary.ByteOrder}{"amd64",8,binary.LittleEndian}
+ SETUP
+ PGO_HOOK_BIND
+ DEPENDENCY_BIND
+ _=runtime.GOOS
+ raw,e:=os.ReadFile(ARCHIVE);if e!=nil{t.Fatal(e)}
+ var out []string
+ for _,pair:=range [][2]int64{{0,0},{0,3},{1,2},{int64(len(raw))-2,5},{int64(len(raw)),1},{int64(len(raw))+1,1}}{data,e:=readPortableData(t,raw,pair[0],pair[1]);out=append(out,fmt.Sprintf("portable:%v:%x:%v",pair,data,e))}
+
+ for i,changed:=range [][]byte{raw,raw[:30],bytes.Replace(raw,[]byte("linux"),[]byte("xxxxx"),1),bytes.Replace(raw,[]byte("GOAMD64=v1"),[]byte("GOAMD64=v2"),1),bytes.Replace(raw,[]byte("regabiwrappers"),[]byte("regabixxxxxxxx"),1),bytes.Replace(raw,[]byte("\n$$\n"),[]byte("\nXX\n"),1)}{
+  data,err:=READ_DEPENDENCY_DATA
+  if err!=nil{out=append(out,fmt.Sprintf("archive:%d:%s",i,err))}else{out=append(out,fmt.Sprintf("archive:%d:%d:%x",i,len(data),data[len(data)-8:]))}
+ }
+ RD_FLAG.Cfg.ImportMap=map[string]string{"alias":"example/dep"}
+ for _,p:=range []string{"main","example/p","alias","./dep","../dep","/dep","example/dep","C:/dep"}{q,e:=UP.resolveImportPath(p);out=append(out,fmt.Sprintf("path:%s:%s:%v",p,q,e))}
+ for _,p:=range []string{"","unsafe","x y","x\x00y","x\\y","x:y","合法/包","a..b"}{out=append(out,fmt.Sprintf("check:%q:%v:%v",p,UP.checkImportPath(p,false),UP.checkImportPath(p,true)))}
+ dep,pkg,e:=READ_IMPORT("alias",TC.Target,checker,packages);if e!=nil{t.Fatal(e)}
+ again,again2,e:=READ_IMPORT("example/dep",TC.Target,checker,packages);if e!=nil{t.Fatal(e)}
+ out=append(out,fmt.Sprintf("identity:%t:%t:%t:%s:%s",dep==again,pkg==again2,dep.Direct,pkg.Path(),pkg.Name()))
+ for _,p:=range TC.Target.Imports{out=append(out,fmt.Sprintf("direct:%s:%t",p.Path,p.Direct))}
+ for _,p:=range LINK.Imports{out=append(out,fmt.Sprintf("fingerprint:%s:%x",p.Pkg,p.Fingerprint))}
+ names:=pkg.Scope().Names();for _,name:=range names{if token.IsIdentifier(name){obj:=pkg.Scope().Lookup(name);out=append(out,fmt.Sprintf("type:%s:%s",name,obj.Type()))}else{out=append(out,"synthetic:"+name)}}
+ var objects,bodies []string;for sym:=range UP.objReader{objects=append(objects,sym.Pkg.Path+"."+sym.Name)};for sym:=range UP.importBodyReader{bodies=append(bodies,sym.Pkg.Path+"."+sym.Name)};sort.Strings(objects);sort.Strings(bodies);out=append(out,fmt.Sprint("objects:",objects),fmt.Sprint("bodies:",bodies))
+ for _,name:=range []string{"example/dep.Exported","example/dep.Number.M","example/dep.(*Number).P","example/dep.Generic"}{fn,e:=PGO_LOOKUP(name);if e!=nil{out=append(out,"lookup:"+name+":"+e.Error());continue};out=append(out,fmt.Sprintf("lookup:%s:%v:%v:%d:%t",name,fn.Sym(),fn.Type(),len(fn.Body),TC.HaveInlineBody(fn)))}
+ a,b,e:=READ_IMPORT("unsafe",TC.Target,checker,packages);out=append(out,fmt.Sprintf("unsafe:%s:%s:%v:%d:%d",a.Path,b.Path(),e,len(TC.Target.Imports),len(LINK.Imports)))
+ PGO_CLEANUP()
+ out=append(out,fmt.Sprintf("pending:%d:%d:%d",len(UP.todoBodies),len(UP.todoDicts),len(TC.Target.Funcs)))
+ data,e:=json.Marshal(out);if e!=nil{t.Fatal(e)};fmt.Println("SYNCGO_IR="+string(data))
+}

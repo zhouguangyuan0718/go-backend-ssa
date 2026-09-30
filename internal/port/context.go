@@ -98,6 +98,21 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 				}
 			}
 		}
+		for _, r := range u.HostConstants {
+			found := false
+			for _, obj := range info.Uses {
+				if hostConstantObject(obj, r) {
+					if previous := external[obj]; previous != "" && previous != r.Field {
+						return fmt.Errorf("conflicting host constant binding")
+					}
+					external[obj] = r.Field
+					found = true
+				}
+			}
+			if !found {
+				return fmt.Errorf("host constant not used: %s.%s", r.Package, r.Constant)
+			}
+		}
 		for _, call := range u.HostCalls {
 			for _, object := range info.Uses {
 				if hostCallFunction(object, call) {
@@ -269,9 +284,31 @@ func rewritePackageContext(fs *token.FileSet, files []*ast.File, info *types.Inf
 		}
 	}
 	for _, f := range files {
+		// Imported package selectors occupy that package's namespace. A native
+		// types2.Context does not collide with this package's generated Context.
+		qualified := map[*ast.Ident]bool{}
+		ast.Inspect(f, func(n ast.Node) bool {
+			sel, ok := n.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			id, ok := sel.X.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			pkg, ok := info.Uses[id].(*types.PkgName)
+			if !ok {
+				return true
+			}
+			obj := info.Uses[sel.Sel]
+			if obj != nil && obj.Pkg() == pkg.Imported() && obj.Parent() == pkg.Imported().Scope() {
+				qualified[sel.Sel] = true
+			}
+			return true
+		})
 		collision := false
 		ast.Inspect(f, func(n ast.Node) bool {
-			if id, ok := n.(*ast.Ident); ok && (strings.HasPrefix(id.Name, "syncgo") || !context.Existing && (id.Name == context.Type || id.Name == context.Constructor)) {
+			if id, ok := n.(*ast.Ident); ok && (strings.HasPrefix(id.Name, "syncgo") || !context.Existing && !qualified[id] && (id.Name == context.Type || id.Name == context.Constructor)) {
 				collision = true
 			}
 			return true

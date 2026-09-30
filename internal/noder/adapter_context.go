@@ -3,8 +3,10 @@ package noder
 import (
 	"fmt"
 	"go-backend-ssa/diagnostic"
+	"go-backend-ssa/internal/go/buildcfg"
 	"go-backend-ssa/internal/go/pkgbits"
 	errors "go-backend-ssa/internal/go/types/errors"
+	"go-backend-ssa/internal/importer"
 	"go-backend-ssa/internal/inline"
 	"go-backend-ssa/internal/inline/inlheur"
 	"go-backend-ssa/internal/inline/interleaved"
@@ -30,6 +32,14 @@ import (
 // Context owns the formerly process-wide inputs used by the selected noder
 // algorithms. The supplied Link and its position table belong to this instance.
 type Context struct {
+	importHeader                *objabi.Context
+	hostOS                      string
+	dependencyOpen              func(string) (DependencyFile, error)
+	typeImports                 *importer.ImportContext
+	importPackages              map[string]*types2.Package
+	importChecker               *types2.Context
+	importStarted, importFailed bool
+
 	exportDone                                       bool
 	allowedStdPragmas                                map[string]bool
 	GOOS                                             string
@@ -465,4 +475,63 @@ func (c *Context) WriteParsedPackage(pkg *types2.Package, info *types2.Info, par
 		noders[i], files[i] = f.native, f.native.file
 	}
 	return c.writeCheckedPackage(pkg, info, files, noders, rangeClosures)
+}
+
+// DependencyFile is a caller-supplied archive handle. Native import processing
+// closes each successfully opened handle after reading its retained export data.
+type DependencyFile interface {
+	io.Reader
+	io.ReaderAt
+	io.Seeker
+	io.Closer
+	Name() string
+}
+
+// ObjectConfig contains the target features and version used by native object
+// compatibility checks. Experiment flags come from this compiler's Universe.
+type ObjectConfig = buildcfg.Context
+
+// BindImports configures native package lookup and archive validation before
+// the first dependency or local package is loaded. HostOS selects path syntax;
+// it is independent of the compilation target. Lookup flags live in Base.Flag.
+func (c *Context) BindImports(config ObjectConfig, hostOS string, open func(string) (DependencyFile, error)) {
+	if c == nil || c.Typecheck == nil || c.Checker == nil || c.importHeader != nil || c.localPkgReader != nil || len(c.Typecheck.Target.Imports) != 0 || config.GOARCH != c.GOARCH || config.GOOS == "" || config.GOOS != c.Ctxt.TargetOS || config.Version == "" || hostOS == "" || open == nil || c.GOOS != "" && c.GOOS != config.GOOS {
+		panic("dependency inputs require a fresh matching compiler context")
+	}
+	c.GOOS = config.GOOS
+	c.hostOS = hostOS
+	c.importHeader = &objabi.Context{ObjectConfig: &config, Experiment: c.Types.Experiment}
+	c.dependencyOpen = open
+	c.importChecker = c.Checker
+	c.typeImports = importer.NewContext(c.Checker)
+	c.importPackages = make(map[string]*types2.Package)
+}
+func (c *Context) openDependency(name string) (DependencyFile, error) {
+	if c.dependencyOpen == nil {
+		panic("dependency stream provider is unbound")
+	}
+	f, err := c.dependencyOpen(name)
+	if f == nil && err == nil {
+		return nil, fmt.Errorf("dependency provider returned a nil stream for %q", name)
+	}
+	return f, err
+}
+
+// Import runs the native compiler and type-checker dependency readers together.
+// Calls and lazy declarations within a compilation are serial. A failed import
+// can leave native direct-import state partially filled; discard this context.
+func (c *Context) Import(path string) (pkg *types2.Package, err error) {
+	if c == nil || c.importHeader == nil || c.Checker != c.importChecker || c.importFailed || c.localPkgReader != nil {
+		return nil, fmt.Errorf("dependency import requires an unfailed bound compiler context")
+	}
+	c.importStarted = true
+	completed := false
+	defer func() {
+		if !completed || err != nil {
+			c.importFailed = true
+		}
+	}()
+	_, pkg, err = c.readImportFile(path, c.Typecheck.Target, c.Checker, c.importPackages)
+	completed = true
+	return
 }

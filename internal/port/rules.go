@@ -239,6 +239,7 @@ func Migration() Plan {
 	plan.Units = objectFileMigration(plan.Units)
 	plan.Units = archiveMigration(plan.Units)
 	plan.Units = archiveInputMigration(plan.Units)
+	plan.Units = noderImportMigration(plan.Units)
 	plan.Units = gcCompileMigration(plan.Units)
 	plan.Units = dataMigration(plan.Units)
 	plan.Units = gcFixedPointMigration(plan.Units)

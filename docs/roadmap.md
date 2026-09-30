@@ -82,3 +82,5 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 原生 types2 Unified 导入器已接通，含惰性声明、泛型方法和递归约束，见 [类型导入器](m3-native-type-importer.md)。下一步将它与 noder 的原生路径解析、依赖头校验及 `checkFiles` 连接。
 
 原生缓冲输入与归档解析已迁入，见 [归档输入](m3-native-archive-input.md)。后续接通 noder 的显式依赖流、精确对象头校验和源码类型检查。
+
+完整原生 noder 依赖导入已迁入，见 [依赖导入](m3-native-dependency-imports.md)。后续将原生 `checkFiles`、统一前端和包编译驱动接到现有完整后端与输出。

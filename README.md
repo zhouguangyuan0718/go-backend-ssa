@@ -105,6 +105,7 @@
 88. [M3 原生编译器指令](docs/m3-native-directives.md)：原生 pragma、linkname/cgo/embed/wasm 解析与文件记录、并发源码输入及 writer/reader 贯通。
 89. [M3 原生类型导入器](docs/m3-native-type-importer.md)：Unified 导出数据的惰性类型加载、泛型/别名/方法字典和类型环境归属。
 90. [M3 原生归档输入](docs/m3-native-archive-input.md)：显式可定位输入流、原生缓冲读取、归档格式校验与大小受限读取。
+91. [M3 原生依赖导入](docs/m3-native-dependency-imports.md)：noder 路径查找、对象头匹配、types2/IR 同时导入和链接指纹。
 
 ## 当前可运行的工具
 
@@ -177,4 +178,4 @@ results := u.NewResults([]*types.Type{u.TypeMem})
 
 显式依赖的最终 Unified 导出数据可通过 `importer.NewContext(checker).ReadExport` 加载，同一对象可用作 `types2.Config.Importer`。见 [原生类型导入器](docs/m3-native-type-importer.md)。
 
-原生归档输入已迁入，支持显式内存流以及原生格式和截断错误处理，见 [归档输入](docs/m3-native-archive-input.md)。目标对象头匹配及 noder 依赖组装仍需继续接通。
+原生归档输入已迁入，支持显式内存流以及原生格式和截断错误处理，见 [归档输入](docs/m3-native-archive-input.md)。目标对象头匹配及 noder 依赖组装已接通，见 [依赖导入](docs/m3-native-dependency-imports.md)。通过 `BindImports` 配置后，noder Context 本身可作为 `types2.Config.Importer`；原生 `checkFiles` 与完整 unified 驱动仍待接通。

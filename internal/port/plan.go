@@ -3,13 +3,14 @@ package port
 
 import (
 	"fmt"
+	"go/build/constraint"
 	"go/token"
 	"path"
 	"regexp"
 	"strings"
 )
 
-const ToolVersion = "syncgo-m3-v60"
+const ToolVersion = "syncgo-m3-v61"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -47,6 +48,7 @@ type Unit struct {
 	ContextFrom            map[string]ContextSource
 	ContextAfterGuards     map[string]int // Preserve reviewed pure early returns before owner binding.
 	Source                 string
+	BuildVariant           string // Explicit native variant made unconditional after exact constraint validation.
 	Functions              []string
 	FunctionRegions        map[string]FunctionRegionRule
 	Declarations           []string // Types, complete constant groups, and Receiver.Method names.
@@ -60,6 +62,7 @@ type Unit struct {
 	SliceReinterpretations []SliceReinterpretationRule
 	HostFields             []HostFieldRule
 	HostSignatures         []HostSignatureRule
+	HostConstants          []HostConstantRule
 	HostResources          []HostResourceRule
 	HostCalls              []HostCallRule
 	State                  []StateRule
@@ -117,7 +120,10 @@ type HostResourceRule struct {
 // HostCallRule binds reviewed compiler diagnostics to an explicit instance
 // service. File factories return only the reviewed stream interface.
 // Environment and executable lookup calls accept reviewed literal keys only.
+type HostConstantRule struct{ Package, Constant, Field string }
+
 type HostCallRule struct {
+	StreamMethods             []string // Explicit os.Open result interface capabilities.
 	Package, Function, Method string
 	StringArgument            string
 	StringArguments           []string // Alternative literal keys; mutually exclusive with StringArgument.
@@ -416,6 +422,11 @@ func (p Plan) Validate() error {
 			}
 		}
 
+		if u.BuildVariant != "" {
+			if _, err := constraint.Parse("//go:build " + u.BuildVariant); err != nil {
+				return fmt.Errorf("invalid source build variant: %w", err)
+			}
+		}
 		seenHostFields := map[string]bool{}
 		for _, field := range u.HostFields {
 			key := field.Type + "." + field.Field
@@ -458,6 +469,14 @@ func (p Plan) Validate() error {
 				seen[member] = true
 			}
 		}
+		seenHostConstants := map[string]bool{}
+		for _, r := range u.HostConstants {
+			key := r.Package + "." + r.Constant
+			if key != "runtime.GOOS" || u.Context == nil || u.Context.Adapter == "" || !memberPath(r.Field) || seenHostConstants[key] {
+				return fmt.Errorf("invalid host constant: %s", key)
+			}
+			seenHostConstants[key] = true
+		}
 		seenHostCalls := map[string]bool{}
 		for _, call := range u.HostCalls {
 			key := call.Package + "." + call.Function
@@ -467,6 +486,21 @@ func (p Plan) Validate() error {
 			allowed = allowed || key == "math/rand.Perm"
 			if !allowed || u.Context == nil || u.Context.Adapter == "" || !token.IsIdentifier(call.Method) || call.Method == "_" || seenHostCalls[key] || needsKeys != (len(keys) != 0) || (call.StringArgument != "" && len(call.StringArguments) != 0) {
 				return fmt.Errorf("invalid host call binding: %s", key)
+			}
+			if len(call.StreamMethods) != 0 {
+				if key != "os.Open" {
+					return fmt.Errorf("stream methods require os.Open")
+				}
+				seen := map[string]bool{}
+				for _, name := range call.StreamMethods {
+					if !hostStreamMethod(name) || seen[name] {
+						return fmt.Errorf("invalid host factory stream method: %s", name)
+					}
+					seen[name] = true
+				}
+				if !seen["Read"] || !seen["Close"] {
+					return fmt.Errorf("input stream requires Read and Close")
+				}
 			}
 			seenKeys := map[string]bool{}
 			for _, value := range keys {

@@ -112,6 +112,34 @@ func selectFile(fset *token.FileSet, name string, data []byte, u Unit) (*ast.Fil
 	if err != nil {
 		return nil, err
 	}
+	if u.BuildVariant != "" {
+		found := 0
+		var groups []*ast.CommentGroup
+		for _, group := range f.Comments {
+			var comments []*ast.Comment
+			for _, c := range group.List {
+				if strings.HasPrefix(c.Text, "//go:build") {
+					if c.Text != "//go:build "+u.BuildVariant {
+						return nil, fmt.Errorf("native build variant changed: %s", c.Text)
+					}
+					found++
+					continue
+				}
+				if strings.HasPrefix(c.Text, "// +build") {
+					return nil, fmt.Errorf("legacy build constraint requires explicit review")
+				}
+				comments = append(comments, c)
+			}
+			group.List = comments
+			if len(comments) > 0 {
+				groups = append(groups, group)
+			}
+		}
+		if found != 1 {
+			return nil, fmt.Errorf("native build variant must match one constraint")
+		}
+		f.Comments = groups
+	}
 	if u.WholeFile {
 		methods := map[string]bool{}
 		for _, d := range f.Decls {
