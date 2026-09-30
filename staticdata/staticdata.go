@@ -1,5 +1,5 @@
 // Package staticdata exposes native static initializers, string data and
-// deferred function-value symbols. File-backed embed data is not yet ported.
+// deferred function-value symbols and embedded files through explicit inputs.
 package staticdata
 
 import (

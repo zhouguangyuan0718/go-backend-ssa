@@ -466,10 +466,8 @@ func TestNativeCheckerFromPublicModule(t *testing.T) {
 			finalizer.DumpGlobalConst(decl)
 		}
 	}
-	writer.ReflectData.WriteGCSymbols()
-	writer.ReflectData.StaticData.WriteFuncSyms()
 	link.DwFixups.Finalize(link.Pkgpath, false)
-	finalizer.AddGCLocals()
+	finalizer.DumpData()
 	finalizer.SetObjectHeader(compilergc.ObjectConfig{GOOS: "linux", GOARCH: "amd64", GOAMD64: backend.SSA.GOAMD64, Version: "go1.27.1"})
 	var artifact consumerObjectOutput
 	if err := finalizer.WriteArchive(&artifact, compilergc.CombinedObject); err != nil {

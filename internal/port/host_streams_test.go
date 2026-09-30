@@ -103,3 +103,60 @@ func TestStreams(t *testing.T){var wg sync.WaitGroup;for i:=range 8{wg.Go(func()
 		}
 	}
 }
+
+func TestBoundFileMetadata(t *testing.T) {
+	const path = "src/cmd/compile/internal/p/p.go"
+	const source = `package p
+import "os"
+func Size(path string)(int64,error){f,e:=os.Open(path);if e!=nil{return 0,e};defer f.Close();i,e:=f.Stat();if e!=nil{return 0,e};return i.Size(),nil}
+`
+	const adapter = `package p
+import "io/fs"
+type Context struct{Open func(string)(fs.File,error)}
+func(c *Context)open(p string)(fs.File,error){return c.Open(p)}
+`
+	repo, pin := fixtureRepo(t, map[string]string{"LICENSE": "fixture", "PATENTS": "fixture", path: source})
+	s, e := OpenSource(context.Background(), repo, pin)
+	if e != nil {
+		t.Fatal(e)
+	}
+	plan := Plan{InspectRoots: []string{"cmd/compile/internal/p"}, Units: []Unit{{Source: path, WholeFile: true, Context: &ContextRule{Type: "Context", Constructor: "initialize", Initialize: true, Selective: true, Adapter: "adapter_context.go"}, HostCalls: []HostCallRule{{Package: "os", Function: "Open", Method: "open"}}}}}
+	dir := t.TempDir()
+	writeTestFile(t, dir, "internal/p/adapter_context.go", adapter)
+	r, e := Render(s, plan, dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e := Install(dir, r); e != nil {
+		t.Fatal(e)
+	}
+	writeTestFile(t, dir, "go.mod", "module go-backend-ssa\n\ngo 1.27.1\n")
+	writeTestFile(t, dir, "internal/p/check_test.go", `package p
+import("fmt";"io/fs";"sync";"testing";"testing/fstest")
+func TestMetadata(t *testing.T){var w sync.WaitGroup;for i:=range 8{w.Go(func(){data:=fmt.Sprint(i);c:=&Context{Open:func(p string)(fs.File,error){return (fstest.MapFS{"input":&fstest.MapFile{Data:[]byte(data)}}).Open(p)}};n,e:=c.Size("input");if e!=nil||n!=int64(len(data)){t.Error(n,e)}})};w.Wait()}
+`)
+	cmd := exec.Command("go", "test", "-race", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.27.1")
+	if out, e := cmd.CombinedOutput(); e != nil {
+		t.Fatalf("%v\n%s", e, out)
+	}
+	for name, changed := range map[string]string{"descriptor": strings.Replace(source, "return i.Size(),nil", "_ = f.Fd();return i.Size(),nil", 1), "filesystem": source + `func Bad(p string)error{return os.Remove(p)}`} {
+		t.Run(name, func(t *testing.T) {
+			s.cache[path] = []byte(changed)
+			defer func() { s.cache[path] = []byte(source) }()
+			if _, e := Render(s, plan, dir); e == nil {
+				t.Fatal("unreviewed host method accepted")
+			}
+		})
+	}
+	for name, changed := range map[string]string{"native-file": strings.ReplaceAll(strings.ReplaceAll(adapter, `"io/fs"`, `"os"`), "fs.File", "*os.File"), "wrong-argument": strings.ReplaceAll(adapter, "p string", "p []byte")} {
+		t.Run(name, func(t *testing.T) {
+			writeTestFile(t, dir, "internal/p/adapter_context.go", changed)
+			defer writeTestFile(t, dir, "internal/p/adapter_context.go", adapter)
+			if _, e := Render(s, plan, dir); e == nil {
+				t.Fatal("invalid adapter accepted")
+			}
+		})
+	}
+}

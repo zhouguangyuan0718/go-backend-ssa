@@ -8,6 +8,7 @@ import (
 	errors "go-backend-ssa/internal/go/types/errors"
 	"go-backend-ssa/internal/ir"
 	"go-backend-ssa/internal/objw"
+	"io/fs"
 	"sync"
 )
 
@@ -16,6 +17,9 @@ import (
 // Serialize data writes; FuncLinksym may register concurrently after the input
 // graph is frozen, with WriteFuncSyms called only after registrations finish.
 type Context struct {
+	// OpenFile supplies immutable input bytes and metadata. Large inputs are
+	// reopened by Writer.Link.OpenObjectInput during object serialization.
+	OpenFile     func(string) (fs.File, error)
 	IR           *ir.Context
 	Writer       *objw.Context
 	ptrSize      int
@@ -52,5 +56,29 @@ func (c *Context) checkConst(n *ir.Name, off int64, value ir.Node, width int) {
 	c.checkName(n)
 	if value == nil || value.Type() == nil || value.Type().Universe() != c.IR.Types {
 		panic("static constant belongs to another or uninitialized compilation")
+	}
+}
+
+func (c *Context) openFile(path string) (fs.File, error) {
+	if c.OpenFile == nil {
+		return nil, fmt.Errorf("static data file provider is not configured: %s", path)
+	}
+	return c.OpenFile(path)
+}
+func (c *Context) errors() int {
+	n := 0
+	for _, ds := range [][]diagnostic.Diagnostic{c.IR.Diagnostics.Diagnostics(), c.IR.Types.Diagnostics.Diagnostics()} {
+		for _, d := range ds {
+			if d.Severity == diagnostic.Error {
+				n++
+			}
+		}
+	}
+	return n
+}
+func (c *Context) checkEmbed(n *ir.Name) {
+	c.checkName(n)
+	if n.Type() == nil || n.Embed == nil || len(*n.Embed) == 0 || c.Writer.Link.ObjectNumbered() {
+		panic("embed requires an owned typed declaration before object numbering")
 	}
 }

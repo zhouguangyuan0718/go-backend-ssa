@@ -74,7 +74,8 @@ func reviewedHostCalls(files []*ast.File, before, after *types.Info, pkg *types.
 				}
 				result := actual.Results().At(0).Type()
 				named, ok := result.(*types.Named)
-				if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != "io" || named.Obj().Name() != iface || !types.AssignableTo(native.Results().At(0).Type(), result) {
+				allowed := ok && named.Obj().Pkg() != nil && ((named.Obj().Pkg().Path() == "io" && named.Obj().Name() == iface) || (rule.Function == "Open" && named.Obj().Pkg().Path() == "io/fs" && named.Obj().Name() == "File"))
+				if !allowed || !hostFileImplements(native.Results().At(0).Type(), result) {
 					return nil, fmt.Errorf("host file factory requires io.%s", iface)
 				}
 				// Type aliases such as os.FileMode and fs.FileMode are identical.
@@ -286,4 +287,23 @@ func reviewedHostCalls(files []*ast.File, before, after *types.Info, pkg *types.
 		}
 	}
 	return reviewed, nil
+}
+
+// The two importers give fs.FileInfo independent named identities. Compare the
+// canonical signatures of the already allowlisted interface's complete method set.
+func hostFileImplements(native, narrowed types.Type) bool {
+	iface, ok := narrowed.Underlying().(*types.Interface)
+	if !ok {
+		return false
+	}
+	iface.Complete()
+	for i := 0; i < iface.NumMethods(); i++ {
+		want := iface.Method(i)
+		got, _, _ := types.LookupFieldOrMethod(native, true, nil, want.Name())
+		fn, ok := got.(*types.Func)
+		if !ok || hostCallSignature(fn.Type().(*types.Signature)) != hostCallSignature(want.Type().(*types.Signature)) {
+			return false
+		}
+	}
+	return true
 }

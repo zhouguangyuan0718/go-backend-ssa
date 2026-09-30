@@ -42,6 +42,7 @@ type Context struct {
 	Writer           *objw.Context
 	Package          *pkginit.Context
 	functionDataDone bool
+	dataFailed       bool
 }
 
 func NewContext(writer *objw.Context) *Context {
@@ -59,6 +60,19 @@ func (c *Context) AddGCLocals() {
 	}
 	c.functionDataDone = true
 	c.addGCLocals()
+}
+
+// DumpData runs native GC, plugin, embed, map-zero and function-data finalization.
+// Call after the package type/function fixed point and DWARF finalization.
+// A started data stage is consumed even if an input provider fails.
+func (c *Context) DumpData() {
+	if c == nil || c.Package == nil || c.functionDataDone || c.workerFailure != nil || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.StaticInit == nil || c.Package.Noder.ReflectData.StaticData == nil || c.Package.Noder.ReflectData.StaticData.Writer != c.Writer || c.Package.Noder.ReflectData.StaticData.IR != c.Package.Noder.Typecheck.IR {
+		panic("package data requires an unconsumed matching compiler graph")
+	}
+	c.functionDataDone = true
+	c.dataFailed = true
+	c.dumpdata()
+	c.dataFailed = c.errors() != 0
 }
 
 // BindPackage shares the package initialization and reflection graph used by
@@ -95,7 +109,7 @@ const (
 
 // SetObjectHeader freezes target/header inputs after compiler data finalization.
 func (c *Context) SetObjectHeader(config ObjectConfig) {
-	if c == nil || c.Writer == nil || !c.functionDataDone || c.header != nil || config.GOOS != c.Writer.Link.TargetOS || config.GOARCH != c.Writer.Link.Arch.Name || config.Version == "" {
+	if c == nil || c.Writer == nil || !c.functionDataDone || c.dataFailed || c.header != nil || config.GOOS != c.Writer.Link.TargetOS || config.GOARCH != c.Writer.Link.Arch.Name || config.Version == "" {
 		panic("object header requires finalized, matching target inputs")
 	}
 	exp := c.Writer.Types.Experiment

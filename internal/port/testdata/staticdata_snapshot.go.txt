@@ -1,5 +1,5 @@
 package staticdata
-import("fmt";"encoding/json";"encoding/binary";"os";"strings";"go/constant";"go/token";"testing";"IMPORT_TYPES";"IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";RD_OBJW IMPORT_BASE)
+import("fmt";"io/fs";"path/filepath";"encoding/json";"encoding/binary";"os";"strings";"go/constant";"go/token";"testing";"IMPORT_TYPES";"IMPORT_IR";"IMPORT_OBJ";"IMPORT_SRC";"IMPORT_SYS";"IMPORT_TYPECHECK";RD_OBJW IMPORT_BASE)
 func TestSyncgoNativeSnapshot(t *testing.T){
  target:=struct{arch string;size int;order binary.ByteOrder}{os.Getenv("SYNCGO_TARGET"),8,binary.LittleEndian}
  switch target.arch{case "386":target.size=4;case "mips":target.size=4;target.order=binary.BigEndian;case "ppc64":target.order=binary.BigEndian}
@@ -29,5 +29,16 @@ func TestSyncgoNativeSnapshot(t *testing.T){
  SD_FLAG.CompilingRuntime=true
  count:=len(LINK.Data);UP.WriteFuncSyms();out=append(out,fmt.Sprintf("runtime-repeat:%t",len(LINK.Data)==count))
  for _,s:=range LINK.Data{snapshot(s)}
+ SD_FILE_BIND
+ fileRoot:=t.TempDir()
+ for _,length:=range []int{0,5,1024,1025,4096}{
+  data:=strings.Repeat("x",length);file:=filepath.Join(fileRoot,fmt.Sprint(length));if err:=os.WriteFile(file,[]byte(data),0600);err!=nil{t.Fatal(err)}
+  for _,ro:=range []bool{true,false,true,false}{digest:=make([]byte,16);sym,n,err:=UP.fileStringSym(pos,file,ro,digest);if err!=nil{t.Fatal(err)};snapshot(sym);out=append(out,fmt.Sprintf("file:%d:%t:%x",n,ro,digest));if f:=sym.File();f!=nil{out=append(out,fmt.Sprintf("stream:%s:%d",filepath.Base(f.Name),f.Size))}}
+ }
+ SD_FLAG.Cfg.Embed.Patterns=map[string][]string{"one":{"5"},"all":{"1025","sub/5","5","sub/5"}}
+ SD_FLAG.Cfg.Embed.Files=map[string]string{"5":filepath.Join(fileRoot,"5"),"1025":filepath.Join(fileRoot,"1025"),"sub/5":filepath.Join(fileRoot,"5")}
+ decl:=GRAPH.NewDeclNameAt(pos,ir.OTYPE,TY.NewPkg("embed","embed").Lookup("FS"));fsType:=TY.NewNamed(decl);decl.SetType(fsType);decl.SetTypecheck(1);fsType.SetUnderlying(TY.NewStruct([]*types.Field{TY.NewField(pos,nil,TY.NewPtr(TY.Types[types.TUINT8]))}))
+ for i,typ:=range []*types.Type{TY.Types[types.TSTRING],bytesType,fsType}{n:=global(fmt.Sprint("embedded",i),typ);pattern:="one";if i==2{pattern="all"};n.Embed=&[]ir.Embed{{Pos:pos,Patterns:[]string{pattern}}};UP.WriteEmbed(n);snapshot(n.Linksym())}
+ for _,sym:=range LINK.Data{snapshot(sym)}
  encoded,err:=json.Marshal(out);if err!=nil{t.Fatal(err)};fmt.Println("SYNCGO_IR="+string(encoded))
 }
