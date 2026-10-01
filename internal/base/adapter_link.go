@@ -91,6 +91,7 @@ func (c *LinkContext) PrepareNativeFlags(debug *DebugFlags) (err error) {
 			h.logfile = c.Ctxt.TraceWriter
 		}
 	}
+	c.parseSpectre(c.Flag.Spectre)
 	c.prepareLinkFlags()
 	c.prepareInstrumentationFlags()
 	c.prepareConcurrencyFlags()
@@ -98,6 +99,8 @@ func (c *LinkContext) PrepareNativeFlags(debug *DebugFlags) (err error) {
 	*debug = c.debugDefaults
 	return nil
 }
+
+func (c *LinkContext) fatalLogf(format string, args ...any) { c.debugFlagFatalf(format, args...) }
 
 type debugSettingError struct{ message string }
 

@@ -74,6 +74,8 @@ type Options struct {
 	OptimizationReport int
 	// ClobberDead and ClobberDeadReg enable native dead stack/register debugging.
 	ClobberDead, ClobberDeadReg bool
+	// Spectre uses native comma-separated all, index, and ret mitigation settings.
+	Spectre string
 	// Stage applies to Build only; the empty value selects Built.
 	Stage                                              Stage
 	Workers                                            int
@@ -256,6 +258,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	flags := &graph.Base.Flag
 	flags.S = base.CountFlag(req.Options.AssemblyListing)
 	flags.LowerM = base.CountFlag(req.Options.OptimizationReport)
+	flags.Spectre = req.Options.Spectre
 	flags.ClobberDead = req.Options.ClobberDead
 	flags.ClobberDeadReg = req.Options.ClobberDeadReg
 	flags.Lang = language
@@ -376,6 +379,10 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	producer.Bool("dwarf", true, "")
 	producer.Bool("race", false, "")
 	producer.Bool("shared", false, "")
+	producer.String("spectre", "", "")
+	if req.Options.Spectre != "" {
+		_ = producer.Set("spectre", req.Options.Spectre)
+	}
 	if req.Options.Shared {
 		_ = producer.Set("shared", "true")
 	}
@@ -396,7 +403,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		link.GenAbstractFunc = nil
 	}
 	dwarf.Flags = producer
-	dwarf.RecordFlags("N", "l", "race", "shared", "dwarf")
+	dwarf.RecordFlags("N", "l", "race", "shared", "dwarf", "spectre")
 	backend.InitEnv()
 	backend.InitTables()
 	config := gc.ObjectConfig{GOOS: req.Target.GOOS, GOARCH: req.Target.GOARCH, GOAMD64: req.Target.GOAMD64, GOARM64: armFeatures, Version: Version}

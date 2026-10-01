@@ -132,6 +132,7 @@
 115. [M7 compiler 调试与回归](docs/m7-compiler-debug.md)：原生调试策略、优化报告、阶段 dump、HTML 生命周期及完整 compiler 短测试。
 
 116. [M7 Go codegen 回归](docs/m7-codegen-regression.md)：独立补全固定测试目录、clobber 调试输入及双架构官方对照。
+117. [M7 Spectre 参数](docs/m7-spectre.md)：原生目标限制、索引/间接调用防护及 AMD64 codegen 回归。
 
 ## 当前可运行的工具
 

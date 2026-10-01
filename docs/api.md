@@ -106,3 +106,5 @@ Built/EarlyOptimized 中的 Block.Values 不是执行顺序。消费方按照控
 `Request.Debug` 使用上游 `-d` 语法，明确提供调试输出文件、源文件、目录、计时及其它宿主服务。`Options.OptimizationReport` 对应 `-m` 详细级别。`Result.DebugOutput` 和 `Package.DebugOutput` 保存独立的原生报告文本；结构化 Diagnostics 仍保留 warning，展示原生文本时不应重复打印这些 warning。源码错误不返回部分结果，调试帮助返回 `*DebugHelp`。完整行为及验证见 [compiler 调试验收](m7-compiler-debug.md)。
 
 `Options.ClobberDead` 和 `Options.ClobberDeadReg` 对应原生死栈槽、死寄存器调试开关；`Debug.ClobberDeadHash` 显式提供函数 hash 后缀筛选。库不读取 `GOCLOBBERDEADHASH`，替换驱动负责传入。见 [Go codegen 验收](m7-codegen-regression.md)。
+
+`Options.Spectre` 接受原生 `all,index,ret` 设置语法，并保留目标限制、错误及 DWARF producer 记录。见 [Spectre 验收](m7-spectre.md)。
