@@ -26,6 +26,7 @@ const (
 
 type Metadata struct {
 	Race                                      bool `json:",omitempty"`
+	Shared                                    bool `json:",omitempty"`
 	UpstreamVersion, UpstreamCommit, Language string
 	Target                                    Target
 	Experiments                               string
@@ -99,7 +100,7 @@ func Build(ctx context.Context, req Request) (*Package, error) {
 func builtPackage(req Request, language string, c *internalgc.Context, held []*ssagen.Construction, diagnostics []diagnostic.Diagnostic) *Package {
 	n := c.Package.Noder
 	u, link := c.Writer.Types, c.Writer.Link
-	p := &Package{Name: u.LocalPkg.Name, ImportPath: req.ImportPath, Metadata: Metadata{Race: req.Options.Race, UpstreamVersion: Version, UpstreamCommit: UpstreamCommit, Language: language, Target: req.Target, Experiments: u.Experiment.String(), Stage: selectedStage(req)}, Declarations: n.Typecheck.Target, Types: u, Positions: &link.PosTable, Inlining: &link.InlTree, Diagnostics: diagnostics, OpenDefers: make(map[*ssa.Func]ssagen.OpenDeferLayout)}
+	p := &Package{Name: u.LocalPkg.Name, ImportPath: req.ImportPath, Metadata: Metadata{Race: req.Options.Race, Shared: req.Options.Shared, UpstreamVersion: Version, UpstreamCommit: UpstreamCommit, Language: language, Target: req.Target, Experiments: u.Experiment.String(), Stage: selectedStage(req)}, Declarations: n.Typecheck.Target, Types: u, Positions: &link.PosTable, Inlining: &link.InlTree, Diagnostics: diagnostics, OpenDefers: make(map[*ssa.Func]ssagen.OpenDeferLayout)}
 	for _, h := range held {
 		f := h.Func()
 		if f.RegAlloc != nil || h.NativeCompleted() {

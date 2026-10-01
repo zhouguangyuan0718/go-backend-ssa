@@ -4,7 +4,7 @@
 
 库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。目标是每次编译拥有独立状态，并让统一 Build 的返回结果跨后续调用保活。低层 BuildSSA 和指令接口使用原生 worker 缓存，须在同一 worker 复用前消费结果；源码级 compiler.Build 和 ConstructSSA 使用独立 cache 保留图。
 
-当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化；M3 已接通从显式源码/依赖到完整前端、SSA、AMD64/ARM64 机器码及原生归档的 `compiler.Compile`。固定 Go 1.27.1 的真实驱动替换、无 cgo 标准库和工具重建、默认 PGO 及正式 dist bootstrap 均已验证，强制重编后的编译器达到二进制固定点。** 源码级 `compiler.Build` 已返回独立保活的 Built/EarlyOptimized SSA、包元数据及严格版本化的 import artifact，三包泛型往返和官方导出/执行对照已通过。Linux/arm64 的 372 个标准库包重建、自编译及正式 bootstrap 也已通过；cgo 的双向调用、三种链接模式以及完整标准库和工具重建也已验证；race 驱动的双架构实际检测与官方归档对照也已通过；其余规定回归尚待完成；尚不能视为全部替换目标完成。详细验收范围见下列阶段记录。
+当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化；M3 已接通从显式源码/依赖到完整前端、SSA、AMD64/ARM64 机器码及原生归档的 `compiler.Compile`。固定 Go 1.27.1 的真实驱动替换、无 cgo 标准库和工具重建、默认 PGO 及正式 dist bootstrap 均已验证，强制重编后的编译器达到二进制固定点。** 源码级 `compiler.Build` 已返回独立保活的 Built/EarlyOptimized SSA、包元数据及严格版本化的 import artifact，三包泛型往返和官方导出/执行对照已通过。Linux/arm64 的 372 个标准库包重建、自编译及正式 bootstrap 也已通过；cgo 的双向调用、三种链接模式以及完整标准库和工具重建也已验证；race 驱动的双架构实际检测与官方归档对照也已通过；双架构官方 runtime/reflect/sync/ABI 短测试套件已通过；compiler/codegen 等剩余回归仍在推进；尚不能视为全部替换目标完成。详细验收范围见下列阶段记录。
 
 - 语言范围：默认 Go 1.27；Build / Compile 提供显式语言版本选项，artifact 严格匹配所选语言版本。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
@@ -125,6 +125,7 @@
 108. [M7 最低 bootstrap SDK](docs/m7-minimum-bootstrap.md)：Linux ARM64 从 Go 1.24.6 完成正式 bootstrap 及编译器固定点验证。
 109. [M6 race 编译与执行](docs/m6-race.md)：原生插桩策略、SSA/artifact 隔离、双架构完整归档对照及实际竞争/checkptr 检测。
 110. [M6 独立后端消费](docs/m6-independent-backend.md)：独立 module 的 ABI/Aux/初始化/defer 元数据审计及双架构、双阶段 SSA 子集执行。
+111. [M7 官方运行时回归](docs/m7-runtime-regression.md)：walk 错误处理、PIE/shared 输入及双架构官方完整短测试套件。
 
 ## 当前可运行的工具
 

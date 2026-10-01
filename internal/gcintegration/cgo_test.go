@@ -131,6 +131,7 @@ func main(){a:=C.sum(20,22);b:=C.call_go(10);s:=C.CString("cgo");defer C.free(un
 }
 
 type linuxDriverFixture struct {
+	native                             bool
 	arch, image, bootstrap, tree, work string
 	manifest                           *Manifest
 }
@@ -141,9 +142,10 @@ func newLinuxDriverFixture(t *testing.T, arch string) *linuxDriverFixture {
 		t.Fatal("unsupported integration architecture", arch)
 	}
 	f := &linuxDriverFixture{arch: arch, image: os.Getenv("GO_SSA_LINUX_" + strings.ToUpper(arch) + "_IMAGE"), bootstrap: os.Getenv("GO_SSA_LINUX_BOOTSTRAP")}
+	f.native = runtime.GOOS == "linux" && runtime.GOARCH == arch && f.image == ""
 	repo := os.Getenv("GO_SSA_SOURCE_REPO")
-	if repo == "" || f.image == "" || f.bootstrap == "" {
-		t.Fatal("requires source repository, installed Linux target image and matching official bootstrap SDK")
+	if repo == "" || !f.native && f.image == "" || f.bootstrap == "" {
+		t.Fatal("requires source repository, matching official bootstrap SDK and a target image when not running natively")
 	}
 	var err error
 	f.bootstrap, err = filepath.Abs(f.bootstrap)
@@ -203,6 +205,21 @@ func (f *linuxDriverFixture) command(t *testing.T, environment []string, executa
 }
 
 func (f *linuxDriverFixture) commandResult(environment []string, executable string, args ...string) ([]byte, error) {
+	if f.native {
+		nativeArgs := make([]string, len(args))
+		for i, arg := range args {
+			nativeArgs[i] = f.nativePath(arg)
+		}
+		nativeEnv := append([]string{}, os.Environ()...)
+		for _, entry := range environment {
+			nativeEnv = append(nativeEnv, f.nativePath(entry))
+		}
+		cmd := exec.Command(f.nativePath(executable), nativeArgs...)
+		cmd.Env = nativeEnv
+		cmd.Dir = f.work
+		return cmd.CombinedOutput()
+	}
+
 	docker := []string{"run", "--rm", "--pull=never", "--platform", "linux/" + f.arch, "--entrypoint", "", "--network", "none", "--mount", "type=bind,source=" + f.bootstrap + ",target=/bootstrap,readonly", "--mount", "type=bind,source=" + f.tree + ",target=/goroot", "--mount", "type=bind,source=" + f.work + ",target=/work", "-w", "/work"}
 	for _, e := range environment {
 		docker = append(docker, "-e", e)
@@ -258,4 +275,28 @@ func (f *linuxDriverFixture) verifyTrace(t *testing.T, name string, required ...
 	}
 	t.Logf("%s: %d packages compiled through library", name, len(packages))
 	return packages
+}
+
+// Replace only a virtual root prefix, including values in flag/environment
+// assignments. Cache suffixes such as /work/cache/bootstrap remain suffixes.
+func (f *linuxDriverFixture) nativePath(value string) string {
+	prefix, path, assigned := strings.Cut(value, "=")
+	if assigned {
+		return prefix + "=" + f.nativePath(path)
+	}
+	for _, root := range [][2]string{{"/bootstrap", f.bootstrap}, {"/goroot", f.tree}, {"/work", f.work}} {
+		if value == root[0] || strings.HasPrefix(value, root[0]+"/") {
+			return root[1] + strings.TrimPrefix(value, root[0])
+		}
+	}
+	return value
+}
+
+func TestNativeFixturePaths(t *testing.T) {
+	f := linuxDriverFixture{bootstrap: "/tmp/reference", tree: "/tmp/tree", work: "/tmp/probe"}
+	for input, want := range map[string]string{"/bootstrap/bin/go": "/tmp/reference/bin/go", "GOROOT=/goroot": "GOROOT=/tmp/tree", "GOCACHE=/work/cache/bootstrap": "GOCACHE=/tmp/probe/cache/bootstrap", "-importcfg=/work/input": "-importcfg=/tmp/probe/input", "GORACE=halt_on_error=1 exitcode=66": "GORACE=halt_on_error=1 exitcode=66", "/workspace/file": "/workspace/file"} {
+		if got := f.nativePath(input); got != want {
+			t.Errorf("%q => %q, want %q", input, got, want)
+		}
+	}
 }

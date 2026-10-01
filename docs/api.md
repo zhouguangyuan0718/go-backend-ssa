@@ -98,3 +98,5 @@ Built/EarlyOptimized 中的 Block.Values 不是执行顺序。消费方按照控
 源码 `compiler.Build` / `compiler.Compile` 支持 Linux AMD64 和 ARM64。AMD64 使用 `GOAMD64=1..4`；ARM64 使用 `GOARM64` 的原生版本/特征语法，空值规范化为 `v8.0`，并要求 `GOAMD64=0`。返回元数据及 artifact 均记录规范化后的目标；混合架构字段或不匹配的依赖会报错。低层 ARM64 处理函数通过公开 `arm64.NewContext` 安装。实现和端到端验证见 [M6 记录](m6-arm64.md)。
 
 `Options.Race` 在两种源码阶段及原生编译入口均采用固定上游的插桩、checkptr 和包排除策略。`Metadata.Race` 保留请求模式；import artifact 的模式必须匹配当前请求。`InstallSuffix` 是显式驱动输入，不会自动查找任何宿主依赖。见 [race 验收](m6-race.md)。
+
+`Options.Shared` 请求原生可共享代码生成，`Metadata.Shared` 及 artifact 保留该模式并严格匹配依赖。原生 `Compile` 支持该选项的归档输出；PIE 归档和真实链接验收见 [M7 记录](m7-runtime-regression.md)。

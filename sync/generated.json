@@ -10720,7 +10720,7 @@
         "host-call:math/rand.Perm:permutation:",
         "compilequeue"
       ],
-      "adapter_sha256": "e80b3c7af401f908b71648b6821285f469d53860acad794394d6e4115a7ff8b3",
+      "adapter_sha256": "c23888e813b1f68330faa627b7bb37e1d7fbcdef6b5f25cae2f4dc1cc55ccfe6",
       "signature_sources": {
         "src/cmd/compile/internal/base/debug.go": "993de7fcc9bf1d1ae39e99277df18dbc04113aba450c155609a02238ea9050ab",
         "src/cmd/compile/internal/base/flag.go": "4a0fa18857d702ea677247cc6c562795c780f4ae6a669e1a2e2352febdcb660a",
@@ -10761,7 +10761,7 @@
       "declarations": [
         "dumpasmhdr"
       ],
-      "adapter_sha256": "e80b3c7af401f908b71648b6821285f469d53860acad794394d6e4115a7ff8b3",
+      "adapter_sha256": "c23888e813b1f68330faa627b7bb37e1d7fbcdef6b5f25cae2f4dc1cc55ccfe6",
       "signature_sources": {
         "src/cmd/compile/internal/base/flag.go": "4a0fa18857d702ea677247cc6c562795c780f4ae6a669e1a2e2352febdcb660a",
         "src/cmd/compile/internal/base/link.go": "316af57f6117869dae6d8762325773c582a8fc7e8fc8638cb69f8d0381b111f8",
@@ -10821,7 +10821,7 @@
         "retained-native-call:dumpdata:DumpData",
         "method-call:Link.NumberSyms:numberSymbols"
       ],
-      "adapter_sha256": "e80b3c7af401f908b71648b6821285f469d53860acad794394d6e4115a7ff8b3",
+      "adapter_sha256": "c23888e813b1f68330faa627b7bb37e1d7fbcdef6b5f25cae2f4dc1cc55ccfe6",
       "signature_sources": {
         "src/cmd/compile/internal/base/debug.go": "993de7fcc9bf1d1ae39e99277df18dbc04113aba450c155609a02238ea9050ab",
         "src/cmd/compile/internal/base/flag.go": "4a0fa18857d702ea677247cc6c562795c780f4ae6a669e1a2e2352febdcb660a",
@@ -10884,7 +10884,7 @@
         "dumpembeds",
         "modeCompilerObj"
       ],
-      "adapter_sha256": "e80b3c7af401f908b71648b6821285f469d53860acad794394d6e4115a7ff8b3",
+      "adapter_sha256": "c23888e813b1f68330faa627b7bb37e1d7fbcdef6b5f25cae2f4dc1cc55ccfe6",
       "signature_sources": {
         "src/cmd/compile/internal/base/flag.go": "4a0fa18857d702ea677247cc6c562795c780f4ae6a669e1a2e2352febdcb660a",
         "src/cmd/compile/internal/base/link.go": "316af57f6117869dae6d8762325773c582a8fc7e8fc8638cb69f8d0381b111f8",

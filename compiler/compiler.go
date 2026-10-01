@@ -70,6 +70,7 @@ type Options struct {
 	Complete, Standard, CompilingRuntime               bool
 	AssemblyHeader, NoLocalImports                     bool
 	Race                                               bool
+	Shared                                             bool
 	InstallSuffix                                      string
 	// Language defaults to go1.27 and may select an earlier language version.
 	Language, BuildID, TrimPath, LocalImportPrefix string
@@ -183,6 +184,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	}
 	link := &obj.Link{Arch: &obj.LinkArch{Arch: arch}, Pkgpath: req.ImportPath, Pathname: workingDirectory, UseBASEntries: true, Flag_locationlists: !req.Options.DisableDwarf && built == nil}
 	link.TargetOS = req.Target.GOOS
+	link.Flag_shared = req.Options.Shared
 	if e = link.Headtype.Set(req.Target.GOOS); e != nil {
 		return nil, e
 	}
@@ -217,6 +219,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	flags.Lang = language
 	flags.BuildID = req.Options.BuildID
 	flags.Race = req.Options.Race
+	flags.Shared = &link.Flag_shared
 	flags.InstallSuffix = req.Options.InstallSuffix
 	graph.Base.Experiment = *exp
 	flags.TrimPath = req.Options.TrimPath
@@ -304,6 +307,10 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	producer.Var(new(countFlag), "l", "")
 	producer.Bool("dwarf", true, "")
 	producer.Bool("race", false, "")
+	producer.Bool("shared", false, "")
+	if req.Options.Shared {
+		_ = producer.Set("shared", "true")
+	}
 	if req.Options.Race {
 		_ = producer.Set("race", "true")
 	}
@@ -321,7 +328,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		link.GenAbstractFunc = nil
 	}
 	dwarf.Flags = producer
-	dwarf.RecordFlags("N", "l", "race", "dwarf")
+	dwarf.RecordFlags("N", "l", "race", "shared", "dwarf")
 	backend.InitTables()
 	config := gc.ObjectConfig{GOOS: req.Target.GOOS, GOARCH: req.Target.GOARCH, GOAMD64: req.Target.GOAMD64, GOARM64: armFeatures, Version: Version}
 	nd.BindImports(config, hostOS, func(name string) (noder.DependencyFile, error) {

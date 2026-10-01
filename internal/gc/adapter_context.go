@@ -276,9 +276,11 @@ func (c *Context) CompileQueued(profile *pgoir.Profile) {
 	if c == nil || c.Backend == nil || c.functionDataDone || c.finishStarted || c.frontendRunning || c.frontendFailed || c.declarationsStarted && !c.declarationsRunning || c.workerFailure != nil || c.Package.Noder.Typecheck.IR.CurFunc != nil {
 		panic("compile queue is not ready")
 	}
-	if c.Backend.WorkerCount() != c.Package.Noder.Typecheck.IR.Base.Flag.LowerC || c.Backend.WorkerCount() < 1 || c.errors() != 0 || (profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile)) {
-		panic("compiler queue has invalid workers, profile or diagnostics")
+	if c.Backend.WorkerCount() != c.Package.Noder.Typecheck.IR.Base.Flag.LowerC || c.Backend.WorkerCount() < 1 || (profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile)) {
+		panic("compiler queue has invalid workers or profile")
 	}
+	// Native enqueueFunc omits functions that report walk errors. Other queued
+	// functions remain valid; package diagnostics are returned after the fixed point.
 	c.compileFunctions(profile)
 	if c.workerFailure != nil {
 		panic(c.workerFailure)
