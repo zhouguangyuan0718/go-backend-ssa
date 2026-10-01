@@ -45,4 +45,5 @@ func (c *Context) fatalf(f string, a ...any) { panic(fmt.Errorf(f, a...)) }
 func (c *Context) warnfAt(p src.XPos, f string, a ...any) {
 	g := c.Backend.Typecheck.IR
 	g.Diagnostics.Add(diagnostic.Warning, "", g.Base.Ctxt.OutermostPos(p), fmt.Sprintf(f, a...))
+	g.Base.ReportWarning(p, f, a...)
 }

@@ -79,6 +79,7 @@ func (c *Context) assertCondition(ok bool) {
 }
 func (c *Context) warnfAt(p src.XPos, f string, a ...any) {
 	c.SSA.IR.Diagnostics.Add(diagnostic.Warning, "", c.SSA.IR.Base.Ctxt.OutermostPos(p), fmt.Sprintf(f, a...))
+	c.SSA.IR.Base.ReportWarning(p, f, a...)
 }
 
 func (c *Context) errorfAt(p src.XPos, code errorspkg.Code, f string, a ...any) {

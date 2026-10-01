@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	stderrors "errors"
 	"flag"
 	"fmt"
 	"go-backend-ssa/internal/base"
@@ -14,6 +15,7 @@ import (
 	"io"
 	"io/fs"
 	"maps"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -68,6 +70,8 @@ type Options struct {
 	// and instructions, 2 adds DWARF auxiliary symbols, and 3 adds symbol indexes.
 	// Only Compile emits machine assembly; Build rejects nonzero levels.
 	AssemblyListing int
+	// OptimizationReport selects native -m detail; zero disables it.
+	OptimizationReport int
 	// Stage applies to Build only; the empty value selects Built.
 	Stage                                              Stage
 	Workers                                            int
@@ -103,6 +107,7 @@ type Request struct {
 	Files      []SourceFile
 	Target     Target
 	Options    Options
+	Debug      DebugOptions
 	Paths      SourcePaths
 	// Imports maps canonical import paths to complete matching compiler archives.
 	// Inputs must remain unchanged during Compile. Returned data is independent.
@@ -120,6 +125,7 @@ type Result struct {
 	Archive         []byte
 	AssemblyHeader  []byte
 	AssemblyListing []byte
+	DebugOutput     []byte
 	PackageName     string
 	ImportPath      string
 	Target          Target
@@ -203,6 +209,19 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	u.Experiment = *exp
 	graph := ir.NewContext(u, link)
 	graph.Debug = base.DefaultDebugFlags()
+	phaseOptions, e := parseDebugOptions(&graph.Debug, req.Debug)
+	if e != nil {
+		return nil, e
+	}
+	var debugOutput debugBuffer
+	var reportFiles debugFiles
+	if req.Debug.OpenFile != nil {
+		req.Debug.OpenFile = reportFiles.wrap(req.Debug.OpenFile)
+	}
+	graph.TraceWriter = &debugOutput
+	link.TraceWriter = &debugOutput
+	graph.OpenAST = req.Debug.OpenFile
+	graph.ASTWorkingDirectory = func() (string, error) { return workingDirectory, nil }
 	diagnostics := func() []diagnostic.Diagnostic {
 		return append(graph.Diagnostics.Diagnostics(), u.Diagnostics.Diagnostics()...)
 	}
@@ -211,6 +230,14 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	defer func() {
 		failure := recover()
 		graph.CloseHTMLWriters()
+		closeErr := reportFiles.close()
+		if closeErr != nil {
+			result = nil
+			err = stderrors.Join(err, closeErr)
+			if built != nil {
+				*built = nil
+			}
+		}
 		if failure != nil {
 			panic(failure)
 		}
@@ -226,6 +253,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	tc.InitRuntime()
 	flags := &graph.Base.Flag
 	flags.S = base.CountFlag(req.Options.AssemblyListing)
+	flags.LowerM = base.CountFlag(req.Options.OptimizationReport)
 	flags.Lang = language
 	flags.BuildID = req.Options.BuildID
 	flags.Race = req.Options.Race
@@ -255,13 +283,9 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		flags.N = 1
 	}
 	flags.GenDwarfInl = 2
-	link.CompressInstructions = graph.Debug.CompressInstructions != 0
-	link.Flag_optimize = !req.Options.DisableOptimization
-	if exp.LoopVar {
-		graph.Debug.LoopVar = 1
+	if e = graph.Base.PrepareNativeFlags(&graph.Debug); e != nil {
+		return nil, e
 	}
-	graph.Base.PrepareNativeFlags(&graph.Debug)
-	graph.Base.ConvertHash = graph.Base.NewHashDebug("converthash", "qn", nil)
 	flags.Cfg.ImportMap = maps.Clone(req.ImportMap)
 	flags.Cfg.PackageFile = make(map[string]string, len(req.Imports))
 	archives := make(map[string][]byte, len(req.Imports))
@@ -283,6 +307,8 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		return nil, e
 	}
 	nd.GOROOT = req.Paths.GOROOT
+	nd.OpenSyntaxHTML = req.Debug.OpenFile
+	nd.SyntaxWorkingDirectory = func() (string, error) { return workingDirectory, nil }
 	writer := objw.NewContext(u, link, req.Target.GOOS)
 	rt := rttype.NewContext(writer)
 	rt.Init()
@@ -304,6 +330,33 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	backend.GOARM64 = armFeatures
 	backend.SSA.FramePointerEnabled = true
 	backend.SSA.Now = func() time.Time { return time.Time{} }
+	if req.Debug.Now != nil {
+		backend.SSA.Now = req.Debug.Now
+	}
+	backend.SSA.ReadMemStats = req.Debug.ReadMemStats
+	backend.SSA.TraceWriter = &debugOutput
+	backend.SSA.DumpDirectory = req.Debug.Directory
+	backend.SSA.OpenHTML = req.Debug.OpenFile
+	backend.SSA.WorkingDirectory = func() (string, error) { return workingDirectory, nil }
+	backend.SSA.LookPath = req.Debug.LookPath
+	backend.SSA.Command = req.Debug.Command
+	if req.Debug.OpenFile != nil {
+		backend.SSA.CreateDump = func(name string) (io.WriteCloser, error) {
+			return req.Debug.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+		}
+	}
+	backend.DumpFunction, backend.DumpDirectory = req.Debug.Function, req.Debug.Directory
+	backend.MakeDumpDirectory = req.Debug.MakeDirectory
+	backend.OpenSource = req.Debug.OpenSource
+	backend.ExpandSourcePath = req.Debug.ExpandSourcePath
+	if backend.ExpandSourcePath == nil {
+		backend.ExpandSourcePath = func(path string) string { return path }
+	}
+	for _, option := range phaseOptions {
+		if message := backend.SSA.PhaseOption(option.phase, option.flag, option.value, option.text); message != "" {
+			return nil, fmt.Errorf("%s", message)
+		}
+	}
 	backend.Liveness = liveness.NewContext(backend.SSA)
 	if req.Target.GOARCH == "amd64" {
 		amd64.NewContext(backend)
@@ -339,6 +392,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	}
 	dwarf.Flags = producer
 	dwarf.RecordFlags("N", "l", "race", "shared", "dwarf")
+	backend.InitEnv()
 	backend.InitTables()
 	config := gc.ObjectConfig{GOOS: req.Target.GOOS, GOARCH: req.Target.GOARCH, GOAMD64: req.Target.GOAMD64, GOARM64: armFeatures, Version: Version}
 	nd.BindImports(config, hostOS, func(name string) (noder.DependencyFile, error) {
@@ -449,6 +503,14 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		if err = ctx.Err(); err != nil {
 			return nil, err
 		}
+		for _, h := range held {
+			if f := h.Func(); f.HTMLWriter != nil {
+				f.HTMLWriter.Close()
+				f.HTMLWriter = nil
+			}
+		}
+		graph.Base.FlushReports()
+		pkg.DebugOutput = debugOutput.snapshot()
 		*built = pkg
 		return nil, nil
 	}
@@ -484,10 +546,11 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
+	graph.Base.FlushReports()
 	if e = link.Bso.Flush(); e != nil {
 		return nil, e
 	}
-	return &Result{Archive: output.data, AssemblyHeader: assembly.data, AssemblyListing: assemblyListing.Bytes(), PackageName: u.LocalPkg.Name, ImportPath: req.ImportPath, Target: req.Target, Diagnostics: diagnostics()}, nil
+	return &Result{Archive: output.data, AssemblyHeader: assembly.data, AssemblyListing: assemblyListing.Bytes(), DebugOutput: debugOutput.snapshot(), PackageName: u.LocalPkg.Name, ImportPath: req.ImportPath, Target: req.Target, Diagnostics: diagnostics()}, nil
 }
 
 type archiveInput struct {

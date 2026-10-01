@@ -176,6 +176,7 @@ func (c *Context) tracePrintf(format string, args ...any) (int, error) {
 func (c *Context) warnfAt(pos src.XPos, format string, args ...any) {
 	g := c.Typecheck.IR
 	g.Diagnostics.Add(diagnostic.Warning, "", g.Base.Ctxt.OutermostPos(pos), fmt.Sprintf(format, args...))
+	g.Base.ReportWarning(pos, format, args...)
 }
 
 // SSAConfig returns the configuration prepared by native InitConfig.

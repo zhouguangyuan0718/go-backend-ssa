@@ -6,6 +6,7 @@ import (
     "cmd/compile/internal/arm64"
     "cmd/compile/internal/base"
     "cmd/compile/internal/ssagen"
+    "cmd/compile/internal/ssa"
     "cmd/internal/obj"
     "cmd/internal/objabi"
     "context"
@@ -17,6 +18,11 @@ import (
     "io/fs"
     "log"
     "os"
+    "os/exec"
+    "io"
+    "strings"
+    "time"
+    "go-backend-ssa/diagnostic"
     "runtime"
 )
 
@@ -48,9 +54,6 @@ func run() error {
     if buildcfg.GOOS != "linux" || (buildcfg.GOARCH != "amd64" && buildcfg.GOARCH != "arm64") {
         return fmt.Errorf("go-backend-ssa currently supports linux/amd64 and linux/arm64, got %s/%s", buildcfg.GOOS, buildcfg.GOARCH)
     }
-    for _, key := range []string{"GOCOMPILEDEBUG", "GOSSAFUNC", "GOSSADIR"} {
-        if os.Getenv(key) != "" { return fmt.Errorf("unsupported compiler environment setting %s", key) }
-    }
     // Retain the official driver parser, config-file readers and diagnostics.
     // This native graph is used only to parse driver settings. Source loading
     // and every compiler pass run exclusively through compiler.Compile below.
@@ -59,6 +62,7 @@ func run() error {
     base.Ctxt.DiagFunc = base.Errorf
     base.Ctxt.DiagFlush = base.FlushErrors
     base.Ctxt.UseBASEntries = base.Ctxt.Headtype != objabi.Hdarwin
+    base.DebugSSA = ssa.PhaseOption
     base.ParseFlags()
     supported := map[string]bool{
         "p": true, "o": true, "lang": true, "std": true, "+": true,
@@ -66,7 +70,7 @@ func run() error {
         "trimpath": true, "nolocalimports": true, "D": true,
         "importcfg": true, "embedcfg": true, "symabis": true,
         "pack": true, "asmhdr": true, "c": true, "N": true, "pgoprofile": true,
-        "l": true, "dwarf": true, "race": true, "installsuffix": true, "shared": true, "S": true,
+        "l": true, "dwarf": true, "race": true, "installsuffix": true, "shared": true, "S": true, "d": true, "m": true,
     }
     var unsupported string
     flag.Visit(func(f *flag.Flag) { if !supported[f.Name] && unsupported == "" { unsupported = f.Name } })
@@ -81,7 +85,7 @@ func run() error {
         Target: target,
         Paths: compiler.SourcePaths{WorkingDirectory: base.Ctxt.Pathname, GOROOT: buildcfg.GOROOT, HostOS: runtime.GOOS},
         Options: compiler.Options{
-            AssemblyListing: int(base.Flag.S),
+            AssemblyListing: int(base.Flag.S), OptimizationReport: int(base.Flag.LowerM),
             Race: base.Flag.Race, Shared: *base.Flag.Shared, InstallSuffix: base.Flag.InstallSuffix,
             Workers: base.Flag.LowerC, DisableOptimization: base.Flag.N != 0,
             DisableInlining: base.Flag.LowerL == 1, DisableDwarf: !base.Flag.Dwarf,
@@ -91,6 +95,14 @@ func run() error {
         },
         Imports: map[string][]byte{}, ImportMap: base.Flag.Cfg.ImportMap,
         Embed: compiler.EmbedConfig{Patterns: base.Flag.Cfg.Embed.Patterns, Files: base.Flag.Cfg.Embed.Files, Open: func(path string)(fs.File,error){ return os.Open(path) }},
+    }
+    req.Debug = compiler.DebugOptions{
+        Flags: debugSettings(os.Args[1:], os.Getenv("GOCOMPILEDEBUG")),
+        Function: os.Getenv("GOSSAFUNC"), Directory: os.Getenv("GOSSADIR"),
+        OpenFile: func(path string, flags int, mode fs.FileMode)(io.WriteCloser,error){return os.OpenFile(path,flags,mode)},
+        MakeDirectory: os.MkdirAll, OpenSource: func(path string)(io.ReadCloser,error){return os.Open(path)},
+        ExpandSourcePath: os.ExpandEnv, Now: time.Now, ReadMemStats: runtime.ReadMemStats,
+        LookPath: exec.LookPath, Command: exec.Command,
     }
     for _, name := range flag.Args() {
         data, err := os.ReadFile(name); if err != nil { return err }
@@ -109,8 +121,9 @@ func run() error {
     }
     result, err := compiler.Compile(context.Background(), req)
     if err != nil { return err }
+    if _, err = os.Stdout.Write(result.DebugOutput); err != nil { return err }
     if _, err = os.Stdout.Write(result.AssemblyListing); err != nil { return err }
-    for _, d := range result.Diagnostics { fmt.Fprintln(os.Stderr, d.String()) }
+    for _, d := range result.Diagnostics { if d.Severity != diagnostic.Warning { fmt.Fprintln(os.Stderr, d.String()) } }
     if err = os.WriteFile(base.Flag.LowerO, result.Archive, 0666); err != nil { return err }
     if base.Flag.AsmHdr != "" {
         if err = os.WriteFile(base.Flag.AsmHdr, result.AssemblyHeader, 0666); err != nil { return err }
@@ -122,4 +135,21 @@ func run() error {
         _, err = f.Write(append(record, '\n')); closeErr := f.Close(); if err != nil { return err }; return closeErr
     }
     return nil
+}
+
+// The native parser validates these settings; its String method is empty.
+// Retain only the ordered -d payloads for replay into the owned compiler graph.
+func debugSettings(args []string, environment string) []string {
+    var settings []string
+    for i:=0;i<len(args);i++ {
+        arg:=args[i]
+        if arg=="--" || !strings.HasPrefix(arg,"-") {break}
+        arg=strings.TrimPrefix(strings.TrimPrefix(arg,"-"),"-")
+        key,value,equals:=strings.Cut(arg,"=")
+        if key=="d" {if !equals {i++;value=args[i]};settings=append(settings,value);continue}
+        // flag.Parse consumes the following word for non-boolean flags.
+        if !equals {if f:=flag.Lookup(key);f!=nil {if boolean,ok:=f.Value.(interface{IsBoolFlag()bool});!ok||!boolean.IsBoolFlag(){i++}}}
+    }
+    if environment!="" {settings=append(settings,environment)}
+    return settings
 }

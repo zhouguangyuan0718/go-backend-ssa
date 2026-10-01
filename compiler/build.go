@@ -81,6 +81,7 @@ type Package struct {
 	Inlining         *gcbridge.InlTree
 	OpenDefers       map[*ssa.Func]ssagen.OpenDeferLayout
 	Diagnostics      []diagnostic.Diagnostic
+	DebugOutput      []byte
 }
 
 // Build runs the source frontend and native declaration fixed point, stopping
@@ -188,6 +189,9 @@ func selectedStage(req Request) Stage {
 }
 
 func validateStage(req Request, building bool) error {
+	if req.Options.OptimizationReport < 0 {
+		return fmt.Errorf("optimization reports require a nonnegative detail level")
+	}
 	if req.Options.AssemblyListing < 0 {
 		return fmt.Errorf("assembly listing requires a nonnegative detail level")
 	}

@@ -125,7 +125,7 @@ func (c *Context) traceWriter() io.Writer {
 	return io.Discard
 }
 func (c *Context) warn(format string, args ...any) {
-	c.Diagnostics.Add(diagnostic.Warning, "", c.Ctxt.PosTable.Pos(c.Types.Pos), fmt.Sprintf(format, args...))
+	c.warnfAt(c.Types.Pos, format, args...)
 }
 func (c *Context) errorfAt(pos src.XPos, code errors.Code, format string, args ...any) {
 	c.Diagnostics.Add(diagnostic.Error, code.String(), c.Ctxt.PosTable.Pos(pos), fmt.Sprintf(format, args...))
@@ -313,6 +313,7 @@ func scopeReaderContext(r *reader) *Context {
 
 func (c *Context) warnfAt(pos src.XPos, format string, args ...any) {
 	c.Diagnostics.Add(diagnostic.Warning, "", c.Ctxt.PosTable.Pos(pos), fmt.Sprintf(format, args...))
+	c.Base.ReportWarning(pos, format, args...)
 }
 
 // ReadBodies runs the native pending dictionary/body driver for this package.

@@ -273,5 +273,10 @@ func Migration() Plan {
 		units = append(units, u)
 	}
 	plan.Units = units
+	for i := range plan.Units {
+		if strings.HasPrefix(plan.Units[i].Source, "src/cmd/compile/internal/base/") && plan.Units[i].Context != nil {
+			plan.Units[i].Context.RedirectTrace = true
+		}
+	}
 	return plan
 }

@@ -87,6 +87,7 @@ func (c *Context) warn(f string, a ...any) { c.warnfAt(c.Typecheck.IR.Types.Pos,
 func (c *Context) warnfAt(pos src.XPos, f string, a ...any) {
 	g := c.Typecheck.IR
 	g.Diagnostics.Add(diagnostic.Warning, "", g.Base.Ctxt.OutermostPos(pos), fmt.Sprintf(f, a...))
+	g.Base.ReportWarning(pos, f, a...)
 }
 func (c *Context) errors() int {
 	n := 0

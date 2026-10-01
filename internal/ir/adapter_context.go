@@ -147,6 +147,7 @@ func (c *Context) errorfAt(pos src.XPos, code errors.Code, format string, args .
 }
 func (c *Context) warnfAt(pos src.XPos, format string, args ...any) {
 	c.Diagnostics.Add(diagnostic.Warning, "", c.Base.Ctxt.PosTable.Pos(pos), fmt.Sprintf(format, args...))
+	c.Base.ReportWarning(pos, format, args...)
 }
 func (c *Context) warn(format string, args ...any) { c.warnfAt(c.Types.Pos, format, args...) }
 func (c *Context) traceWriter() io.Writer {

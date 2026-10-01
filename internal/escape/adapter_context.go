@@ -54,6 +54,7 @@ func (c *Context) assertCondition(ok bool) {
 func (c *Context) warnfAt(pos src.XPos, f string, a ...any) {
 	g := c.Typecheck.IR
 	g.Diagnostics.Add(diagnostic.Warning, "", g.Base.Ctxt.OutermostPos(pos), fmt.Sprintf(f, a...))
+	g.Base.ReportWarning(pos, f, a...)
 }
 func (c *Context) errorfAt(pos src.XPos, code errorspkg.Code, f string, a ...any) {
 	g := c.Typecheck.IR

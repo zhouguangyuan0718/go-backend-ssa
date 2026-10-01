@@ -55,6 +55,7 @@ func (c *Context) checkNewProgs(fn *ir.Func, worker int) {
 }
 func (c *Context) warn(format string, args ...any) {
 	c.IR.Diagnostics.Add(diagnostic.Warning, "", c.Link.OutermostPos(c.Types.Pos), fmt.Sprintf(format, args...))
+	c.IR.Base.ReportWarning(c.Types.Pos, format, args...)
 }
 
 // OwnsProgs reports whether pp is an active instruction buffer of this writer.

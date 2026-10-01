@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m7-v83"
+const ToolVersion = "syncgo-m7-v84"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.

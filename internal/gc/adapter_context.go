@@ -230,6 +230,7 @@ func (c *Context) tracePrintf(f string, a ...any) (int, error) {
 	return len(message), nil
 }
 func (c *Context) flushErrors() {
+	c.Package.Noder.Base.FlushReports()
 	for _, d := range c.Package.Noder.Diagnostics.Diagnostics() {
 		c.outputMessages = append(c.outputMessages, d.String())
 	}

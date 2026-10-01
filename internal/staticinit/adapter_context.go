@@ -58,6 +58,7 @@ func (c *Context) fatalfAt(pos src.XPos, f string, a ...any) {
 }
 func (c *Context) warnfAt(pos src.XPos, f string, a ...any) {
 	c.Typecheck.IR.Diagnostics.Add(diagnostic.Warning, "", c.Typecheck.IR.Base.Ctxt.PosTable.Pos(pos), fmt.Sprintf(f, a...))
+	c.Typecheck.IR.Base.ReportWarning(pos, f, a...)
 }
 func (c *Context) traceWriter() io.Writer {
 	if c.Typecheck.IR.TraceWriter != nil {
