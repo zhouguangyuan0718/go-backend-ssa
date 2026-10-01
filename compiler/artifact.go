@@ -190,7 +190,7 @@ func packageArtifact(req Request, p *Package, payload string) (*Artifact, error)
 	return &Artifact{info: info, payload: payload, encoded: encoded, hash: sha256.Sum256(encoded)}, nil
 }
 
-func validateArtifactInputs(req Request, language, experiments string) error {
+func validateArtifactInputs(req Request, language, experiments string, resolve func(string) ([]byte, bool, error)) error {
 	paths := make([]string, 0, len(req.Artifacts))
 	for path := range req.Artifacts {
 		paths = append(paths, path)
@@ -217,7 +217,11 @@ func validateArtifactInputs(req Request, language, experiments string) error {
 					nativeReferences = nativeReferences || d.info.NativeObjectReferences
 				}
 			} else {
-				if d, ok := req.Imports[dep.Path]; ok {
+				d, ok, loadErr := resolve(dep.Path)
+				if loadErr != nil {
+					return fmt.Errorf("SSA artifact %q dependency %q: %w", path, dep.Path, loadErr)
+				}
+				if ok {
 					hash = sha256.Sum256(d)
 					nativeReferences = true
 				}

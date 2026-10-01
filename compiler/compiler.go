@@ -118,6 +118,9 @@ type Request struct {
 	// Imports maps canonical import paths to complete matching compiler archives.
 	// Inputs must remain unchanged during Compile. Returned data is independent.
 	Imports map[string][]byte
+	// ImportLoaders declares native archives loaded on demand. A path cannot also
+	// appear in Imports or Artifacts. Unused archives are not opened.
+	ImportLoaders map[string]ImportLoader
 	// Artifacts supplies immutable library import artifacts. Include their exact
 	// dependency closure; an import path cannot also appear in Imports.
 	Artifacts map[string]*Artifact
@@ -138,10 +141,14 @@ type Result struct {
 	Diagnostics     []diagnostic.Diagnostic
 }
 type Error struct {
+	cause       error
 	Diagnostics []diagnostic.Diagnostic
 	// Report preserves native formatting, ordering, and diagnostic limits.
 	Report []byte
 }
+
+// Unwrap preserves errors returned by explicit import loaders.
+func (e *Error) Unwrap() error { return e.cause }
 
 func (e *Error) Error() string {
 	if len(e.Report) != 0 {
@@ -199,7 +206,12 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	if e != nil {
 		return nil, e
 	}
-	if e = validateArtifactInputs(req, language, exp.String()); e != nil {
+	inputs, e := newImportInputs(ctx, req)
+	if e != nil {
+		return nil, e
+	}
+	req.Imports = inputs.data
+	if e = validateArtifactInputs(req, language, exp.String(), inputs.resolve); e != nil {
 		return nil, e
 	}
 	architectures := sys.NewContext()
@@ -259,10 +271,18 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 				panic(failure)
 			}
 		}
+		if inputs.cancelled != nil {
+			result = nil
+			err = inputs.cancelled
+			if built != nil {
+				*built = nil
+			}
+			return
+		}
 		if errors() {
 			graph.Base.FlushReports()
 			result = nil
-			err = &Error{Diagnostics: diagnostics(), Report: debugOutput.snapshot()}
+			err = &Error{Diagnostics: diagnostics(), Report: debugOutput.snapshot(), cause: inputs.failure()}
 		}
 	}()
 	tc := typecheck.NewContext(graph)
@@ -318,11 +338,12 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		return nil, e
 	}
 	flags.Cfg.ImportMap = maps.Clone(req.ImportMap)
-	flags.Cfg.PackageFile = make(map[string]string, len(req.Imports))
-	archives := make(map[string][]byte, len(req.Imports))
-	for name, data := range req.Imports {
+	flags.Cfg.PackageFile = make(map[string]string, len(req.Imports)+len(inputs.loaders))
+	for name := range req.Imports {
 		flags.Cfg.PackageFile[name] = name
-		archives[name] = bytes.Clone(data)
+	}
+	for name := range inputs.loaders {
+		flags.Cfg.PackageFile[name] = name
 	}
 	artifacts := maps.Clone(req.Artifacts)
 	for name := range artifacts {
@@ -435,7 +456,10 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		if a := artifacts[name]; a != nil {
 			return noder.NewUnifiedDependency(name, a.payload), nil
 		}
-		data, ok := archives[name]
+		data, ok, loadErr := inputs.resolve(name)
+		if loadErr != nil {
+			return nil, loadErr
+		}
 		if !ok {
 			return nil, fmt.Errorf("dependency archive not supplied: %q", name)
 		}

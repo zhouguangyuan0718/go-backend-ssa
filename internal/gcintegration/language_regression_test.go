@@ -72,3 +72,10 @@ func TestPinnedDiagnosticRegression(t *testing.T) {
 	}
 	testPinnedTestDirectory(t, "diagnostic", "^Test$/^(fixedbugs|slice3err.go)$/^(issue14999|issue20027|issue42058a|issue42058b|issue4468|issue49767|issue49814|issue78355|notinheap2|issue22662b)\\.go$")
 }
+
+func TestPinnedImportConfigRegression(t *testing.T) {
+	if os.Getenv("GO_SSA_LANGUAGE_REGRESSION") == "" {
+		t.Skip("set GO_SSA_LANGUAGE_REGRESSION and Linux driver fixture inputs")
+	}
+	testPinnedTestDirectory(t, "importcfg", "^Test$/^(alias3.go|closure3.go|closure5.go|ddd2.go|fixedbugs)$/^bug369.go$", "test/slow", "test/fast")
+}

@@ -110,3 +110,5 @@ Built/EarlyOptimized 中的 Block.Values 不是执行顺序。消费方按照控
 `Options.Spectre` 接受原生 `all,index,ret` 设置语法，并保留目标限制、错误及 DWARF producer 记录。见 [Spectre 验收](m7-spectre.md)。
 
 `compiler.Error.Report` 保存独立的原生诊断文本，`Error()` 使用该文本；`Diagnostics` 保留结构化坐标与消息。`Options.UnlimitedErrors`、`OmitErrorColumns`、`ActualErrorFiles` 分别对应 `-e`、`-C`、`-L`，列号开关仅影响文本。详见 [错误报告验收](m7-error-reports.md)。
+
+`Request.ImportLoaders` 将包路径映射为 `func(context.Context) ([]byte, error)`，仅在原生导入或 artifact 依赖校验需要时调用。同一路径每次编译最多加载一次，字节快照独立；不能与 `Imports` 或 `Artifacts` 重复声明。提供器错误可通过 `errors.Is/As` 检查。见 [按需归档验收](m7-lazy-imports.md)。

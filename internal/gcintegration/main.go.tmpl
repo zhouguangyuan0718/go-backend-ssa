@@ -96,7 +96,7 @@ func run() error {
             AssemblyHeader: base.Flag.AsmHdr != "", NoLocalImports: base.Flag.NoLocalImports,
             Language: base.Flag.Lang, BuildID: base.Flag.BuildID, TrimPath: base.Flag.TrimPath, LocalImportPrefix: base.Flag.D,
         },
-        Imports: map[string][]byte{}, ImportMap: base.Flag.Cfg.ImportMap,
+        ImportLoaders: map[string]compiler.ImportLoader{}, ImportMap: base.Flag.Cfg.ImportMap,
         Embed: compiler.EmbedConfig{Patterns: base.Flag.Cfg.Embed.Patterns, Files: base.Flag.Cfg.Embed.Files, Open: func(path string)(fs.File,error){ return os.Open(path) }},
     }
     req.Debug = compiler.DebugOptions{
@@ -113,8 +113,7 @@ func run() error {
         req.Files = append(req.Files, compiler.SourceFile{Name: name, Data: data})
     }
     for path, name := range base.Flag.Cfg.PackageFile {
-        data, err := os.ReadFile(name); if err != nil { return err }
-        req.Imports[path] = data
+        req.ImportLoaders[path] = func(context.Context) ([]byte,error) { return os.ReadFile(name) }
     }
     if base.Flag.SymABIs != "" {
         data, err := os.ReadFile(base.Flag.SymABIs); if err != nil { return err }; req.SymABIs = data
