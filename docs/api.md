@@ -38,7 +38,7 @@ Build 不修改输入；调用期间输入字节不得被外部并发改写。�
 
 artifact 包含原生类型信息以及泛型实例化、跨包内联所需的函数体/Unified IR 信息。解码进入本次 Universe，不接受另一次 Build 的可变 *types.Type / *ir.Package 作为隐式共享缓存。
 
-artifact header 标记 format、精确上游版本/提交、语言、目标、实验、race 模式、包身份、原生对象引用能力及依赖哈希；完整容器用 SHA-256 验证。校验严格匹配，不假定不同 Go patch 可互换。官方 .a 已作为显式 `Imports` 适配器验收，同一路径的两种输入不能混用。
+artifact header 标记 format、精确上游版本/提交、语言、目标、实验、race 模式、包身份、原生对象引用能力及依赖哈希；完整容器用 SHA-256 验证。校验严格匹配，不假定不同 Go patch 可互换。官方 .a 已作为显式 `Imports` 适配器验收，同一路径不能同时登记 artifact、预加载归档或延迟归档提供器。
 
 Package → artifact → 新 Universe 的三包往返已验证泛型、类型别名和跨包内联。纯 artifact 闭包使用名称引用；原生归档混合输入保留其原生对象身份，并通过 `NativeObjectReferences` 显式标记。处理标准库从最小依赖闭包起步；不默认与宿主标准库缓存混用。
 
@@ -59,13 +59,13 @@ Package
   Diagnostics    成功调用的警告/说明
 ```
 
-不只返回函数列表；遗漏字符串、静态初始化、泛型字典、方法包装函数或类型元数据会让后端无法完成包编译。M3 的子集可只填充其支持的内容，遇到未支持语义必须拒绝。
+不只返回函数列表；遗漏字符串、静态初始化、泛型字典、方法包装函数或类型元数据会让后端无法完成包编译。输出字段及当前验收范围见 [独立后端消费](m6-independent-backend.md)。
 
 ## SSA 的公开可用性
 
 直接返回本库维护/移植的 Func、Block、Value、Type、Op。保持与上游结构尽量接近，初期不额外设计另一个 IR。
 
-Aux 的每种可达对象必须有外部可用的具体描述或 typed accessor，例如符号引用、局部槽、调用描述、类型和偏移。不可要求后端通过反射或 unsafe 解读内部 ir.Name/obj.LSym。采用原始结构公开还是 accessor 在 M2 按具体 Aux 清单决定，不能悄悄丢字段。
+Aux 的每种可达对象必须有外部可用的具体描述或 typed accessor，例如符号引用、局部槽、调用描述、类型和偏移。不可要求后端通过反射或 unsafe 解读内部 ir.Name/obj.LSym。当前通过公开别名及 typed accessor 保留原始对象身份；独立 consumer module 验证无需导入 internal。
 
 Built/EarlyOptimized 中的 Block.Values 不是执行顺序。消费方按照控制流、数据依赖和 memory chain 调度，并正确补全 Phi；返回阶段描述中记录是否已排序。自定义后端可做自己的调度，不强制运行原生 machine schedule。
 

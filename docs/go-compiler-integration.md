@@ -49,21 +49,10 @@ Go dist 的 bootstrap 阶段、所需语言版本、生成器、编译器自举�
 
 M2 起做最小桥接试验，M6 后完成整条回接链路，M7 发布验收纳入替换编译器自举。这样不会到末期才发现接口无法接回原生后端。
 
-## 当前进展
+## 当前验收
 
-M2 第一批提供 position/gcbridge 的共享类型别名，并以独立 consumer module 验证位置编码/解码与对象身份。此试验尚未修改或构建宿主 cmd/compile，不代表完成前端、SSA、native tail 的替换。直接消费者约束及后续 Universe 方案见 [M2 记录](m2.md)。
+同一套 `compiler.Build` / `compiler.Compile` 实现已接入隔离 Go 1.27.1 的真实 `cmd/compile`。Linux/amd64 与 Linux/arm64 已通过标准库和工具重建、带默认 PGO 的正式 dist bootstrap、强制编译器重编的二进制固定点、真实程序执行，以及完整 compiler、runtime/reflect/sync/ABI 和 Go 测试目录的短测试。
 
-M2 第二批增加 Type/Pkg/Sym/Object 与真实 LSym 数据结构接入，外部 consumer 验证对象身份及 Object/Aux 接口；完整原生算法尚未接回。见 [第二批记录](m2-universe.md)。
+独立 Built/EarlyOptimized API、严格 artifact、公共后端元数据消费、cgo/race、最低 ARM64 bootstrap SDK 也有独立验收。入口调用记录、上游/库内容哈希、官方对照和范围边界集中在 [最终验收](m7-qualification.md)。各早期阶段文档保存当时的证据，不代表最终状态。
 
-M2 第三批把上游 SSA 特殊类型绑定与 tuple/results 构造转为 Universe 成员，独立消费者可直接使用 `u.TypeMem`、`u.NewTuple`、`u.NewResults`。后续宿主中的 `types.TypeMem` 等访问必须接到对应编译实例，不能为了桥接重新建立全局别名。当前仅验证类型切片与未去全局化的上游切片一致，尚未编译宿主后端。
-
-M3 已接通真实隔离 `cmd/compile` 驱动、Linux/amd64 无 cgo 标准库重建及一次编译器自编译后的代码生成，见[接入记录](m3-upstream-compiler-driver.md)。驱动编译使用隔离 cmd 模块的 vendor 副本，生产编译直接进入本库；完整 bootstrap 和其余最终验收仍未完成。
-
-原生 raw/gzip/预处理 PGO 输入已接通，自编译现在使用上游默认 profile，且产物继续生成与第一阶段相同的测试归档，见[PGO 验证](m3-native-profile-input.md)。这尚未替代 dist bootstrap 的完整多阶段验收。
-
-正式 dist bootstrap 已在 Linux/amd64、CGO_ENABLED=0 和 Go 1.27.1 bootstrap SDK 下通过；各阶段归档及强制重编后的编译器二进制保持一致，详见[自举记录](m3-dist-bootstrap.md)。独立 SSA 阶段接口、第二目标、其余驱动与回归要求仍未全部完成。
-
-
-M5 已提供源码 Built/EarlyOptimized 图与严格 import artifact；M6 已把相同源码驱动、完整后端及正式 bootstrap 扩展到 Linux/arm64，见 [ARM64 记录](m6-arm64.md)。剩余验收包括完整后端元数据消费、cgo/race 驱动、最低 bootstrap SDK 与规定回归。
-
-Linux 双架构的 cgo 双向调用、三种链接模式和完整标准库/工具重建已验证，见 [cgo 记录](m6-cgo.md)；race 驱动、SSA/归档对照和真实检测已验证，见 [race 记录](m6-race.md)。最低 Go 1.24.6 启动 SDK 的 ARM64 正式自举见 [最低 SDK 记录](m7-minimum-bootstrap.md)。完整后端元数据消费及规定回归仍继续推进。
+替换驱动仅支持已声明的 Linux 两种目标；未接入驱动标志明确报错。独立库不负责下载模块、选择构建标签、预处理 cgo 或最终链接。MSan/ASan、完整覆盖率驱动、其他目标和所有实验组合均不在本次支持声明内。

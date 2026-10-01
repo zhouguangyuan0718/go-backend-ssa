@@ -1,6 +1,6 @@
 # 整体设计
 
-状态：设计基线，2026-09-29。硬约束已确定；具体类型名和字段在各里程碑细化后落地。
+状态：已实现源码级 Build/Compile、双架构后端和隔离工具链替换。验收结果与边界见 [最终验收](m7-qualification.md)。
 
 ## 目标与范围
 
@@ -8,7 +8,7 @@
 
 并列目标：完成后可替换官方 Go 1.27 编译器中的对应实现，通过适配继续连接原生后端并完成工具链构建。使用同一套库实现，详见 [原生编译器回接](go-compiler-integration.md)。
 
-源码解析之前的模块下载、构建标签选择、cgo 预处理由调用方或未来独立 loader 完成。核心库不调用外部编译器，也不从宿主 GOROOT 偷取内部包。cgo、汇编、race/MSan/ASan、PGO、覆盖率和实验特性先标记为不支持，不静默忽略。后续分别开放能力，不能把“不支持”当成 Go 1.27 全语言支持已经完成。
+源码解析之前的模块下载、构建标签选择、cgo 预处理由调用方或未来独立 loader 完成。核心库不调用外部编译器，也不从宿主 GOROOT 偷取内部包。cgo 预处理和外部汇编由原生构建工具负责，库接收其源码与 SymABIs；cgo、race、PGO 及汇编协作已分别验证。MSan/ASan、完整覆盖率驱动和未验收实验组合不在当前公开支持范围。替换驱动拒绝未接入选项，不静默忽略。
 
 只维护一套 Go 1.27 移植实现。当前 pin 为官方 go1.27.1；不引入多 Go 版本兼容框架。GoALLC 可提供经验和差分验证，但不是默认移植源。
 
@@ -46,25 +46,23 @@ flowchart TD
 ## 目标目录
 
 ```text
-build.go, request.go, result.go       根包：公开编译入口（待实现）
-ssa/                                 公开 SSA 接口（待实现）
-types/                               初步 Universe 和类型/包/符号别名
-position/ target/ diagnostic/        首批公开基础设施（已实现）
-symbol/                              公共符号接口（待实现）
-gcbridge/                            位置和类型对象接入；原生算法待接回
+compiler/                            源码 Build/Compile、Request、Package、Artifact
+ssa/ types/ ir/ ssagen/ gcbridge/    公开图、类型与原生后端元数据接口
+position/ target/ diagnostic/       公开位置、布局与结构化诊断
+amd64/ arm64/                       公开目标后端安装入口
 internal/
-  syntax/ types2/ noder/ ir/          保留 src/cmd/compile/ 以下结构
-  types/ typecheck/ inline/           保留上游包名和文件名
+  syntax/ types2/ noder/ ir/         保留 src/cmd/compile/ 以下结构
+  types/ typecheck/ inline/
   devirtualize/ escape/ walk/
-  ssa/ ssagen/ abi/ ...              移植算法与同包 adapter_*.go
-  cmd/objabi/ cmd/obj/ cmd/src/ ...   src/cmd/internal/ 的辅助包
-  go/abi/ go/buildcfg/ go/pkgbits/ ... src/internal/ 的辅助包
-  frontend/                          本库维护的阶段组装与驱动
-  port/                              移植工具；rules.go 定义版本和规则
-cmd/syncgo/                           移植工具入口
-sync/generated.json                  工具自动维护的生成文件清单
-third_party/go/                      上游 LICENSE/PATENTS
-testdata/                            源码夹具与阶段期望
+  ssa/ ssagen/ abi/ gc/ ...         移植算法与同包 adapter_*.go
+  cmd/objabi/ cmd/obj/ cmd/src/ ...  src/cmd/internal/ 辅助包
+  go/abi/ go/buildcfg/ go/pkgbits/   src/internal/ 辅助包
+  gcintegration/                    隔离原生驱动、vendor 和 bootstrap 适配
+  port/                             移植工具；rules.go 定义版本与规则
+cmd/syncgo/                         inspect/generate/check 命令
+cmd/gcintegrate/                    创建隔离替换工具链源码树
+sync/generated.json                生成文件与源码哈希账本
+third_party/go/                     上游 LICENSE/PATENTS
 ```
 
 编译器源码以 `src/cmd/compile/` 为相对根，直接映射到项目根。例如 `src/cmd/compile/internal/types/pkg.go` 对应 `internal/types/pkg.go`。不增加版本目录或 `upstream/src/cmd/compile/` 前缀，也不按抽取功能重命名上游包。辅助依赖分别放在 `internal/cmd/` 和 `internal/go/`，避免编译器 `abi` 与 Go 内部 `abi` 等包发生冲突；各自根以下结构保持不变。

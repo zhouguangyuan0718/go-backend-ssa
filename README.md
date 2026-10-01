@@ -4,7 +4,7 @@
 
 库维护基础设施、公共数据模型、状态归属和生命周期；移植工具从固定上游提交抽取算法，通过可复现的结构改写接入这些设施。目标是每次编译拥有独立状态，并让统一 Build 的返回结果跨后续调用保活。低层 BuildSSA 和指令接口使用原生 worker 缓存，须在同一 worker 复用前消费结果；源码级 compiler.Build 和 ConstructSSA 使用独立 cache 保留图。
 
-当前状态：**M1 已完成，M2 已完成原生类型布局与预声明类型初始化；M3 已接通从显式源码/依赖到完整前端、SSA、AMD64/ARM64 机器码及原生归档的 `compiler.Compile`。固定 Go 1.27.1 的真实驱动替换、无 cgo 标准库和工具重建、默认 PGO 及正式 dist bootstrap 均已验证，强制重编后的编译器达到二进制固定点。** 源码级 `compiler.Build` 已返回独立保活的 Built/EarlyOptimized SSA、包元数据及严格版本化的 import artifact，三包泛型往返和官方导出/执行对照已通过。Linux/arm64 的 372 个标准库包重建、自编译及正式 bootstrap 也已通过；cgo 的双向调用、三种链接模式以及完整标准库和工具重建也已验证；race 驱动的双架构实际检测与官方归档对照也已通过；双架构官方 runtime/reflect/sync/ABI 短测试套件已通过；双架构完整 compiler 短测试套件也已通过；双架构完整 Go 测试目录短测试已通过，剩余 dist 验收仍在推进；尚不能视为全部替换目标完成。详细验收范围见下列阶段记录。
+当前已实现源码级 `compiler.Build`（独立保活的 Built/EarlyOptimized SSA）与 `compiler.Compile`（完整 AMD64/ARM64 原生归档）。固定 Go 1.27.1 的 Linux 两种目标已通过真实驱动替换、标准库与工具重建、正式自举及编译器二进制固定点；完整 Go 测试目录和 compiler/SSA 短测试与官方对照通过。最终证据、性能基线和明确的支持边界集中在 [M7 验收](docs/m7-qualification.md)。
 
 - 语言范围：默认 Go 1.27；Build / Compile 提供显式语言版本选项，artifact 严格匹配所选语言版本。
 - 首个源码基线：官方 `go1.27.1`，提交 `862c888e612ac346c7c4d99c9392bdfd265f33b0`。
@@ -12,6 +12,8 @@
 - 对外保证目标：调用隔离、无共享可变编译状态、可重入、跨调用并发安全。
 - 并列验收目标：可替换官方 Go 1.27 编译器对应实现，接回原生后端并完成工具链构建。
 - 初始目标配置：`linux/amd64` 和 `linux/arm64`；`linux/386` 已加入布局隔离验证，不表示支持完整的 386 编译器。
+
+源码 API 的最小示例见 [ExampleBuild](compiler/example_test.go)，隔离工具链由 [gcintegrate](cmd/gcintegrate/main.go) 准备。生成源码已纳入版本管理，使用库无需先执行移植工具。
 
 ## 阅读顺序
 
@@ -137,6 +139,7 @@
 119. [M7 按需依赖归档](docs/m7-lazy-imports.md)：支持含未来输出的 importcfg、独立加载缓存及严格 artifact 身份校验。
 120. [M7 原生前端选项](docs/m7-frontend-flags.md)：内联级别、活跃性报告、边界检查、小栈帧和写屏障设置及上游回归。
 121. [M7 动态链接与分离归档](docs/m7-link-modes.md)：动态符号引用、artifact 模式身份、编译器/链接器归档分离及完整 Go 测试目录验收。
+122. [M7 最终验收](docs/m7-qualification.md)：支持矩阵、自举与官方回归、全状态约束、性能基线和复现入口。
 
 ## 当前可运行的工具
 
@@ -149,12 +152,13 @@ export GO_SSA_SOURCE_REPO=/path/to/local/golang-go
 go run ./cmd/syncgo inspect -repo "$GO_SSA_SOURCE_REPO" -out _work/inspection.json -summary _work/inspection-summary.json
 go run ./cmd/syncgo generate -repo "$GO_SSA_SOURCE_REPO"
 go run ./cmd/syncgo check -repo "$GO_SSA_SOURCE_REPO"
-go test -race -timeout 30m ./...
+env -u GO_SSA_SOURCE_REPO go test -race ./...
+GOMAXPROCS=4 go test ./internal/port -run '^TestPinnedUpstreamAndUpgrade$' -count=1 -timeout=90m
 ```
 
 上游版本和移植规则统一维护在 [internal/port/rules.go](internal/port/rules.go)，不需要 JSON 配置。审计报告按需生成到 `_work/`；`sync/generated.json` 仅由工具自动维护。
 
-设定 `GO_SSA_SOURCE_REPO` 时，测试额外验证官方 go1.27.1 再生成、两版上游位置/符号回归与 SSA 类型切片差分测试、源码树未变以及 go1.27.0 → go1.27.1 升级；仓库需包含两个 tag。完整双版本差分包含多组独立原生编译，使用 `-timeout 30m`，避免默认 10 分钟时限。无该变量时仅跳过这项集成测试，其他测试照常执行。
+设定 `GO_SSA_SOURCE_REPO` 时，测试额外验证官方 go1.27.1 再生成、两版上游位置/符号回归与 SSA 类型切片差分测试、源码树未变以及 go1.27.0 → go1.27.1 升级；仓库需包含两个 tag。完整双版本差分包含完整前端/SSA/后端的独立原生编译矩阵，使用 `-timeout 90m` 并预留资源；昂贵快照最多同时运行两组。无该变量时仅跳过这项集成测试，其他测试照常执行。
 
 编译器源码从 `src/cmd/compile/` 以下保留目录、包名和文件名；辅助依赖分别归入 `internal/cmd/` 与 `internal/go/`。当前移植代码包括完整位置模块、完整前端语法解析器与 AST、完整 types2 checker、pkgbits codec、rangefunc 重写器和 noder writer，原生 IR 图构造与完整 typecheck 生产包，以及 types/objabi 的结构和算法切片；reader 的类型/对象实例化、函数体和字典读取主体已接入并完成源码差分；整包内联、方法包装、loopvar、pkginit、ABI wrappers、deadlocals、escape、slice 和完整 walk 已接通；源码经 ssagen 构造 SSA、机器码和原生编译队列已接通；原生手动图构造、架构配置及 `ssa.Compile` 完整阶段入口已公开。
 
