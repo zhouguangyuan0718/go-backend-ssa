@@ -151,3 +151,33 @@ func TestABIRejectsForeignInputs(t *testing.T) {
 	mustPanic(t, func() { copy.RegisterTypesAndOffsets() })
 	_ = fmt.Sprint(ra)
 }
+
+func TestBindSyntheticABIParamAssignment(t *testing.T) {
+	for _, size := range []int{4, 8} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			c := abiContext(size)
+			u := c.IR.Types
+			typ := u.NewPtr(u.Types[types.TINT])
+			name := c.IR.NewNameAt(u.Pos, u.LocalPkg.Lookup(".closureptr"), typ)
+			name.SetType(typ)
+			raw := ABIParamAssignment{Type: typ, Name: name, Registers: []RegIndex{0}, offset: 19}
+			bound := c.BindParamAssignment(raw)
+			if raw.compilation != nil || bound.compilation != c || bound.Type != typ || bound.Name != name || bound.offset != 19 || &bound.Registers[0] != &raw.Registers[0] {
+				t.Fatal("literal fields or identities changed")
+			}
+			ts, offsets := bound.RegisterTypesAndOffsets()
+			if len(ts) != 1 || ts[0] != typ || len(offsets) != 1 || offsets[0] != 0 {
+				t.Fatal("synthetic parameter decomposition", ts, offsets)
+			}
+			other := abiContext(size)
+			mustPanic(t, func() { other.BindParamAssignment(raw) })
+			mustPanic(t, func() { c.BindParamAssignment(bound) })
+			bad := raw
+			bad.Name = other.IR.NewNameAt(other.IR.Types.Pos, other.IR.Types.LocalPkg.Lookup("foreign"), other.IR.Types.Types[types.TINT])
+			mustPanic(t, func() { c.BindParamAssignment(bad) })
+			if raw.compilation != nil || bound.compilation != c {
+				t.Fatal("failed bind changed retained assignment")
+			}
+		})
+	}
+}

@@ -54,6 +54,7 @@ func ssagenEmitMigration(units []Unit) []Unit {
 			u.State = debug.State
 			u.Calls = debug.Calls
 			u.ContextParams = []string{"debugState.*"}
+			u.Literals = append(u.Literals, LiteralRule{Source: root + "abi/abiutils.go", Type: "ABIParamAssignment", Method: "ABI.BindParamAssignment"})
 			u.Checks = map[string]string{"BuildFuncDebug": "checkFuncDebug", "BuildFuncDebugNoOptimized": "checkFuncDebugNoOptimized"}
 			u.Owner = &OwnerRule{Types: []string{"FuncDebug"}, Context: "Context", Field: "compilation"}
 			u.ContextFrom = map[string]ContextSource{"BuildFuncDebug": {Argument: "f", Resolver: "diagnosticContext"}, "BuildFuncDebugNoOptimized": {Argument: "f", Resolver: "diagnosticContext"}, "PopulateABIInRegArgOps": {Argument: "f", Resolver: "diagnosticContext"}}

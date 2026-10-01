@@ -88,3 +88,14 @@ func (c *ABIConfig) Universe() *types.Universe {
 	}
 	return c.compilation.IR.Types
 }
+
+// BindParamAssignment attaches a native synthetic parameter literal to this
+// compilation. The type, name, register slice and native offsets are preserved.
+func (c *Context) BindParamAssignment(a ABIParamAssignment) ABIParamAssignment {
+	if c == nil || c.IR == nil || a.compilation != nil {
+		panic("ABI assignment binding requires a fresh literal and compilation")
+	}
+	a.compilation = c
+	assignmentContext(&a)
+	return a
+}

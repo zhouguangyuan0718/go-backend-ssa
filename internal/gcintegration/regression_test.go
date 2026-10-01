@@ -19,6 +19,10 @@ func TestPinnedRuntimeRegression(t *testing.T) {
 }
 
 func testPinnedNativeRegression(t *testing.T, suite string, packages ...string) {
+	testPinnedNativeRegressionRun(t, suite, "", packages...)
+}
+
+func testPinnedNativeRegressionRun(t *testing.T, suite, run string, packages ...string) {
 	arch := os.Getenv("GO_SSA_TEST_ARCH")
 	if arch == "" {
 		arch = "arm64"
@@ -38,6 +42,9 @@ func testPinnedNativeRegression(t *testing.T, suite string, packages ...string) 
 		t.Run(fmt.Sprint(library), func(t *testing.T) {
 			name := fmt.Sprintf("%s-regression-%t", suite, library)
 			args := append([]string{"test", "-json", "-short", "-count=1", "-p=4", "-timeout=15m"}, packages...)
+			if run != "" {
+				args = append(args, "-run", run)
+			}
 			out := f.goRun(t, library, name, args...)
 			passed, skipped := 0, 0
 			for _, line := range bytes.Split(out, []byte{'\n'}) {

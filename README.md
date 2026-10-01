@@ -126,6 +126,7 @@
 109. [M6 race 编译与执行](docs/m6-race.md)：原生插桩策略、SSA/artifact 隔离、双架构完整归档对照及实际竞争/checkptr 检测。
 110. [M6 独立后端消费](docs/m6-independent-backend.md)：独立 module 的 ABI/Aux/初始化/defer 元数据审计及双架构、双阶段 SSA 子集执行。
 111. [M7 官方运行时回归](docs/m7-runtime-regression.md)：walk 错误处理、PIE/shared 输入及双架构官方完整短测试套件。
+112. [M7 range-over-func 调试信息](docs/m7-rangefunc-debug.md)：无优化闭包 ABI 所有权、双架构完整归档及上游 race 执行回归。
 
 ## 当前可运行的工具
 
