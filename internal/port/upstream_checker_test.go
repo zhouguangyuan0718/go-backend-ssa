@@ -1,6 +1,7 @@
 package port
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path"
@@ -8,6 +9,49 @@ import (
 	"strings"
 	"testing"
 )
+
+// TestPinnedCheckerAndWriter compares the checked-in library with the native
+// pin without repeating the full regeneration/upgrade pass. Ledger hashes are
+// checked before using the generated files; the upgrade test checks the rules.
+func TestPinnedCheckerAndWriter(t *testing.T) {
+	root, source, rendered := checkedInPinnedSnapshot(t)
+	testUpstreamChecker(t, source, rendered, root)
+}
+
+func checkedInPinnedSnapshot(t *testing.T) (string, *Source, *Rendered) {
+	t.Helper()
+	repo := os.Getenv("GO_SSA_SOURCE_REPO")
+	if repo == "" {
+		t.Skip("set GO_SSA_SOURCE_REPO for checker/writer differential")
+	}
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := OpenSource(context.Background(), repo, Baseline())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger, err := readLedger(root)
+	if err != nil || ledger == nil {
+		t.Fatal("missing ledger", err)
+	}
+	if ledger.Commit != source.Pin.Commit {
+		t.Fatal("ledger source pin differs")
+	}
+	rendered := &Rendered{Files: map[string][]byte{}}
+	for _, file := range ledger.Files {
+		data, err := os.ReadFile(filepath.Join(root, file.Output))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hash(data) != file.OutputSHA256 {
+			t.Fatal("generated source differs", file.Output)
+		}
+		rendered.Files[file.Output] = data
+	}
+	return root, source, rendered
+}
 
 // Compile the complete original checker and parser alongside the migrated
 // library. The reference changes import paths only, retaining globals and init.

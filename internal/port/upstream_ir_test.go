@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,81 +19,100 @@ import (
 // compiler. The reference uses immutable Git blobs through a temporary Go build
 // overlay; neither GOROOT nor the user's upstream checkout is modified.
 func testUpstreamIR(t *testing.T, s *Source, r *Rendered, root string) {
-	testUpstreamNativeGraph(t, s, r, root, "midway")
-	testUpstreamNativeGraph(t, s, r, root, "ir")
-	testUpstreamNativeGraph(t, s, r, root, "ir", "ir_symbols")
-	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_inline")
-	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_interleaved")
-	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_wrappers")
-	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_loopvar")
-	testUpstreamNativeGraph(t, s, r, root, "pkginit")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_abi")
-	testUpstreamNativeGraph(t, s, r, root, "abi")
-	testUpstreamNativeGraph(t, s, r, root, "deadlocals")
-	testUpstreamNativeGraph(t, s, r, root, "escape")
-	testUpstreamNativeGraph(t, s, r, root, "slice")
-	testUpstreamNativeGraph(t, s, r, root, "compare")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_value")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_types")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_objects")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_opcodes")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_graph")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_containers")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_allocators")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_dom")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_aux")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_numeric")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_diagnostics")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_mutations")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_deadcode")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_check")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_lower")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_generic")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_optimizer")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_calls")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_allocation")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_phases")
-	testUpstreamNativeGraph(t, s, r, root, "ssa", "ssa_compile")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_frontend")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_sources")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_frames")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_build")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_construction")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_resume")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_early")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_early_resume")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_emit")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_assemble")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_flush")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_object")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_archive")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_queue")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_data")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_fixed")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_pipeline")
-	testUpstreamNativeGraph(t, s, r, root, "ssagen", "ssagen_package")
-	testUpstreamNativeGraph(t, s, r, root, "walk", "walk_target")
-	testUpstreamNativeGraph(t, s, r, root, "walk")
-	testUpstreamNativeGraph(t, s, r, root, "typecheck")
-	testUpstreamNativeGraph(t, s, r, root, "pgoir")
-	testUpstreamNativeGraph(t, s, r, root, "logopt")
-	testUpstreamNativeGraph(t, s, r, root, "base")
-	testUpstreamNativeGraph(t, s, r, root, "inline")
-	testUpstreamNativeGraph(t, s, r, root, "noder")
-	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_dict")
-	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_body")
-	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_import")
-	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_dependencies")
-	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_source")
-	testUpstreamNativeGraph(t, s, r, root, "noder", "noder_prepackage")
-	testUpstreamNativeGraph(t, s, r, root, "dwarfgen")
-	testUpstreamNativeGraph(t, s, r, root, "objw")
-	testUpstreamNativeGraph(t, s, r, root, "staticdata")
-	testUpstreamNativeGraph(t, s, r, root, "staticinit", "staticinit_zero")
-	testUpstreamNativeGraph(t, s, r, root, "rttype")
-	testUpstreamNativeGraph(t, s, r, root, "reflectdata")
-	testUpstreamNativeGraph(t, s, r, root, "reflectdata", "reflectdata_descriptors")
+	t.Helper()
+	cases := [][]string{
+		{"midway"},
+		{"ir"},
+		{"ir", "ir_symbols"},
+		{"noder", "noder_inline"},
+		{"noder", "noder_interleaved"},
+		{"noder", "noder_wrappers"},
+		{"noder", "noder_loopvar"},
+		{"pkginit"},
+		{"ssagen", "ssagen_abi"},
+		{"abi"},
+		{"deadlocals"},
+		{"escape"},
+		{"slice"},
+		{"compare"},
+		{"ssa", "ssa_value"},
+		{"ssa", "ssa_types"},
+		{"ssa", "ssa_objects"},
+		{"ssa", "ssa_opcodes"},
+		{"ssa", "ssa_graph"},
+		{"ssa", "ssa_containers"},
+		{"ssa", "ssa_allocators"},
+		{"ssa", "ssa_dom"},
+		{"ssa", "ssa_aux"},
+		{"ssa", "ssa_numeric"},
+		{"ssa", "ssa_diagnostics"},
+		{"ssa", "ssa_mutations"},
+		{"ssa", "ssa_deadcode"},
+		{"ssa", "ssa_check"},
+		{"ssa", "ssa_lower"},
+		{"ssa", "ssa_generic"},
+		{"ssa", "ssa_optimizer"},
+		{"ssa", "ssa_calls"},
+		{"ssa", "ssa_allocation"},
+		{"ssa", "ssa_phases"},
+		{"ssa", "ssa_compile"},
+		{"ssagen", "ssagen_frontend"},
+		{"ssagen", "ssagen_sources"},
+		{"ssagen", "ssagen_frames"},
+		{"ssagen", "ssagen_build"},
+		{"ssagen", "ssagen_construction"},
+		{"ssagen", "ssagen_resume"},
+		{"ssagen", "ssagen_early"},
+		{"ssagen", "ssagen_early_resume"},
+		{"ssagen", "ssagen_emit"},
+		{"ssagen", "ssagen_assemble"},
+		{"ssagen", "ssagen_flush"},
+		{"ssagen", "ssagen_object"},
+		{"ssagen", "ssagen_archive"},
+		{"ssagen", "ssagen_queue"},
+		{"ssagen", "ssagen_data"},
+		{"ssagen", "ssagen_fixed"},
+		{"ssagen", "ssagen_pipeline"},
+		{"ssagen", "ssagen_package"},
+		{"walk", "walk_target"},
+		{"walk"},
+		{"typecheck"},
+		{"pgoir"},
+		{"logopt"},
+		{"base"},
+		{"inline"},
+		{"noder"},
+		{"noder", "noder_dict"},
+		{"noder", "noder_body"},
+		{"noder", "noder_import"},
+		{"noder", "noder_dependencies"},
+		{"noder", "noder_source"},
+		{"noder", "noder_prepackage"},
+		{"dwarfgen"},
+		{"objw"},
+		{"staticdata"},
+		{"staticinit", "staticinit_zero"},
+		{"rttype"},
+		{"reflectdata"},
+		{"reflectdata", "reflectdata_descriptors"},
+	}
+	// Every snapshot owns its reference tree, library copy and lazy Git cache.
+	// Bound expensive compiler subprocesses even if go test permits more workers.
+	slots := make(chan struct{}, 2)
+	t.Run("native-"+s.Pin.Tag, func(t *testing.T) {
+		for _, c := range cases {
+			t.Run(strings.Join(c, "/"), func(t *testing.T) {
+				t.Parallel()
+				slots <- struct{}{}
+				defer func() { <-slots }()
+				source := *s
+				source.cache = maps.Clone(s.cache)
+				testUpstreamNativeGraph(t, &source, r, root, c[0], c[1:]...)
+			})
+		}
+	})
 }
+
 func testUpstreamNativeGraph(t *testing.T, s *Source, r *Rendered, root, pkgName string, snapshots ...string) {
 	t.Helper()
 	arm64Target := len(snapshots) > 1 && snapshots[1] == "arm64"

@@ -9,7 +9,7 @@ import (
 )
 
 // Opt-in, offline: GO_SSA_SOURCE_REPO points at a local repository containing
-// both official tags. Use -timeout 30m for the complete native differential.
+// both official tags. Use -timeout 90m for the complete native differential.
 // Ordinary unit tests need no checkout or network.
 func TestPinnedUpstreamAndUpgrade(t *testing.T) {
 	repo := os.Getenv("GO_SSA_SOURCE_REPO")
@@ -114,4 +114,21 @@ func TestPinnedUpstreamAndUpgrade(t *testing.T) {
 		t.Fatal("source worktree changed")
 	}
 	t.Logf("go1.27.0 -> go1.27.1: %d output Go files changed; same selection/context rules; source tree preserved", changed)
+}
+
+// Focus the remaining source-level references on the checked-in pin. This is
+// useful when a reference fixture fails before the two-version upgrade pass.
+func TestPinnedCurrentUpstreamOracles(t *testing.T) {
+	root, source, rendered := checkedInPinnedSnapshot(t)
+	for _, c := range []struct {
+		name string
+		run  func(*testing.T, *Source, *Rendered, string)
+	}{
+		{"positions", testUpstreamNoderPositions},
+		{"directives", testUpstreamNoderDirectives},
+		{"imports", testUpstreamTypeImporter},
+		{"archives", testUpstreamArchiveInput},
+	} {
+		t.Run(c.name, func(t *testing.T) { c.run(t, source, rendered, root) })
+	}
 }

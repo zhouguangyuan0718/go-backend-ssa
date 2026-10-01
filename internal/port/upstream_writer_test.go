@@ -3,6 +3,7 @@ package port
 import (
 	"go/token"
 	"path"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -45,7 +46,12 @@ func prepareUpstreamWriter(t *testing.T, s *Source, dir string) {
 			u.Functions = []string{"deref2"}
 			u.Context.Fields = nil
 		}
+		if path.Base(u.Source) == "lex.go" {
+			// The writer needs the native function-pragma mask, not parser callbacks.
+			u = Unit{Source: u.Source, Declarations: []string{"funcPragmas"}}
+		}
 		if path.Base(u.Source) == "noder.go" {
+			u.Declarations = slices.DeleteFunc(slices.Clone(u.Declarations), func(name string) bool { return name == "noder.pragma" })
 			u.Functions = []string{"trimFilename", "checkEmbed"}
 			delete(u.Context.Fields, "renameinitgen")
 		}

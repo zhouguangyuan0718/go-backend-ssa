@@ -9,6 +9,11 @@ import (
 	"testing"
 )
 
+func TestPinnedObjectDeclarations(t *testing.T) {
+	_, source, rendered := checkedInPinnedSnapshot(t)
+	testUpstreamObjectDeclarations(t, source, rendered)
+}
+
 // Compare entire type bodies, including private fields and callback signatures,
 // directly with pinned source. Only import qualifiers may differ. This catches
 // a tempting partial Link/Prog replacement before native-backend integration.
@@ -63,19 +68,53 @@ func testUpstreamObjectDeclarations(t *testing.T, s *Source, r *Rendered) {
 					ts := spec.(*ast.TypeSpec)
 					if !original && u.Source == "src/cmd/internal/obj/link.go" && ts.Name.Name == "Link" {
 						st := ts.Type.(*ast.StructType)
-						extra := st.Fields.List[len(st.Fields.List)-2:]
-						embed, ok := extra[0].Type.(*ast.Ident)
-						ptr, pok := extra[1].Type.(*ast.StarExpr)
-						if !ok || embed.Name != "dataState" || len(extra[0].Names) != 0 || !pok || len(extra[1].Names) != 1 || extra[1].Names[0].Name != "bisectFIPS" {
-							t.Fatal("unexpected Link state extension")
+						// These reviewed fields replace native package state. Every
+						// original Link field and callback is compared below.
+						extra := []struct{ name, typ string }{
+							{"", "dataState"}, {"aSpace", "[]opSet"}, {"bisectFIPS", "matcher"},
+							{"inlHashLen", "int"}, {"opSuffixSpace", "[]opSuffixSet"},
+							{"regListSpace", "[]regListSet"}, {"regSpace", "[]regSet"}, {"spcSpace", "[]spcSet"},
+							{"textAttrStrings", "[19]struct { bit Attribute s string }"},
 						}
-						sel, sok := ptr.X.(*ast.SelectorExpr)
-						if !sok || sel.Sel.Name != "Matcher" || names[sel.X.(*ast.Ident).Name] != "go-backend-ssa/internal/go/bisect" {
-							t.Fatal("unexpected Link matcher type")
+						start := len(st.Fields.List) - len(extra)
+						if start < 0 {
+							t.Fatal("missing Link state extensions")
 						}
-						// Compare every original field and callback unchanged;
-						// only these two reviewed instance fields are appended.
-						st.Fields.List = st.Fields.List[:len(st.Fields.List)-2]
+						for i, want := range extra {
+							field := st.Fields.List[start+i]
+							name := ""
+							if len(field.Names) == 1 {
+								name = field.Names[0].Name
+							}
+							if len(field.Names) > 1 || name != want.name || field.Tag != nil {
+								t.Fatal("unexpected Link state extension", want.name)
+							}
+							if want.typ == "matcher" {
+								ptr, ok := field.Type.(*ast.StarExpr)
+								if !ok {
+									t.Fatal("invalid matcher pointer")
+								}
+								sel, ok := ptr.X.(*ast.SelectorExpr)
+								if !ok {
+									t.Fatal("invalid matcher selector")
+								}
+								id, ok := sel.X.(*ast.Ident)
+								if !ok || sel.Sel.Name != "Matcher" || names[id.Name] != "go-backend-ssa/internal/go/bisect" {
+									t.Fatal("unexpected Link matcher type")
+								}
+							} else if got := strings.Join(strings.Fields(nodeText(fs, field.Type)), " "); got != want.typ {
+								t.Fatal("unexpected Link extension type", want.name, got)
+							}
+						}
+						st.Fields.List = st.Fields.List[:start]
+					}
+					if !original && (u.Source == "src/cmd/internal/objabi/flag.go" && ts.Name.Name == "DebugFlag" || u.Source == "src/cmd/internal/sys/arch.go" && ts.Name.Name == "Arch") {
+						st := ts.Type.(*ast.StructType)
+						last := st.Fields.List[len(st.Fields.List)-1]
+						if len(last.Names) != 1 || last.Names[0].Name != "compilation" || nodeText(fs, last.Type) != "*Context" || last.Tag != nil {
+							t.Fatal("unexpected owner extension")
+						}
+						st.Fields.List = st.Fields.List[:len(st.Fields.List)-1]
 					}
 					ast.Inspect(ts.Type, func(n ast.Node) bool {
 						if sel, ok := n.(*ast.SelectorExpr); ok {
@@ -97,7 +136,7 @@ func testUpstreamObjectDeclarations(t *testing.T, s *Source, r *Rendered) {
 				continue
 			}
 			if got := ported[name]; got != want {
-				t.Fatalf("native declaration changed: %s %s\nported: %s\noriginal: %s", u.Source, name, got, want)
+				t.Errorf("native declaration changed: %s %s\nported: %s\noriginal: %s", u.Source, name, got, want)
 			}
 		}
 	}
@@ -149,9 +188,30 @@ func testUpstreamObjectMethods(t *testing.T, s *Source, r *Rendered) {
 		for name, body := range original {
 			original[name] = strings.NewReplacer("src.NoXPos", "(src.XPos{})", "src.NoPos", "(src.Pos{})").Replace(body)
 		}
+		// Attribute.String now owns its constant display table through the
+		// reviewed context resolver. Compare the complete native algorithm
+		// after checking and removing only that explicit state binding.
+		if source == "src/cmd/internal/obj/link.go" {
+			const binding = "\tsyncgoCtx := attributeLink(a)\n\tif syncgoCtx == nil {\n\t\tpanic(\"uninitialized compilation\")\n\t}\n"
+			body := ported["Attribute.String"]
+			if strings.Count(body, binding) != 1 {
+				t.Fatal("unexpected Attribute.String context binding")
+			}
+			body = strings.Replace(body, binding, "", 1)
+			ported["Attribute.String"] = strings.ReplaceAll(body, "syncgoCtx.textAttrStrings", "textAttrStrings")
+		}
+		if source == "src/cmd/internal/obj/sym.go" {
+			const guard = "\tif ctxt == nil || false {\n\t\tpanic(\"receiver has no compilation owner\")\n\t}\n\tctxt.checkNumberSyms()\n"
+			body := ported["Link.NumberSyms"]
+			if strings.Count(body, guard) != 1 || strings.Count(body, "ctxt.ObjectBuiltins.BuiltinIdx") != 1 {
+				t.Fatal("unexpected NumberSyms instance bindings")
+			}
+			body = strings.Replace(body, guard, "", 1)
+			ported["Link.NumberSyms"] = strings.Replace(body, "ctxt.ObjectBuiltins.BuiltinIdx", "goobj.BuiltinIdx", 1)
+		}
 		for _, name := range names {
 			if original[name] == "" || ported[name] != original[name] {
-				t.Fatalf("native object method changed: %s %s\noriginal: %s\nported: %s", source, name, original[name], ported[name])
+				t.Errorf("native object method changed: %s %s\noriginal: %s\nported: %s", source, name, original[name], ported[name])
 			}
 		}
 	}
