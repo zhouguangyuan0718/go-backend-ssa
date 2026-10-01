@@ -17,6 +17,8 @@ import (
 // Flags are applied in order with the native -d syntax. No process environment,
 // output path, source file, clock, or command is discovered implicitly.
 type DebugOptions struct {
+	// ClobberDeadHash is the explicit native GOCLOBBERDEADHASH suffix filter.
+	ClobberDeadHash     string
 	Flags               []string
 	Function, Directory string
 	OpenFile            func(string, int, fs.FileMode) (io.WriteCloser, error)

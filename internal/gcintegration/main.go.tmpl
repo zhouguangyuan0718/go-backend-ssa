@@ -65,6 +65,7 @@ func run() error {
     base.DebugSSA = ssa.PhaseOption
     base.ParseFlags()
     supported := map[string]bool{
+        "clobberdead": true, "clobberdeadreg": true,
         "p": true, "o": true, "lang": true, "std": true, "+": true,
         "complete": true, "buildid": true, "goversion": true,
         "trimpath": true, "nolocalimports": true, "D": true,
@@ -86,6 +87,7 @@ func run() error {
         Paths: compiler.SourcePaths{WorkingDirectory: base.Ctxt.Pathname, GOROOT: buildcfg.GOROOT, HostOS: runtime.GOOS},
         Options: compiler.Options{
             AssemblyListing: int(base.Flag.S), OptimizationReport: int(base.Flag.LowerM),
+            ClobberDead: base.Flag.ClobberDead, ClobberDeadReg: base.Flag.ClobberDeadReg,
             Race: base.Flag.Race, Shared: *base.Flag.Shared, InstallSuffix: base.Flag.InstallSuffix,
             Workers: base.Flag.LowerC, DisableOptimization: base.Flag.N != 0,
             DisableInlining: base.Flag.LowerL == 1, DisableDwarf: !base.Flag.Dwarf,
@@ -98,6 +100,7 @@ func run() error {
     }
     req.Debug = compiler.DebugOptions{
         Flags: debugSettings(os.Args[1:], os.Getenv("GOCOMPILEDEBUG")),
+        ClobberDeadHash: os.Getenv("GOCLOBBERDEADHASH"),
         Function: os.Getenv("GOSSAFUNC"), Directory: os.Getenv("GOSSADIR"),
         OpenFile: func(path string, flags int, mode fs.FileMode)(io.WriteCloser,error){return os.OpenFile(path,flags,mode)},
         MakeDirectory: os.MkdirAll, OpenSource: func(path string)(io.ReadCloser,error){return os.Open(path)},

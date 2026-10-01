@@ -72,6 +72,8 @@ type Options struct {
 	AssemblyListing int
 	// OptimizationReport selects native -m detail; zero disables it.
 	OptimizationReport int
+	// ClobberDead and ClobberDeadReg enable native dead stack/register debugging.
+	ClobberDead, ClobberDeadReg bool
 	// Stage applies to Build only; the empty value selects Built.
 	Stage                                              Stage
 	Workers                                            int
@@ -254,6 +256,8 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	flags := &graph.Base.Flag
 	flags.S = base.CountFlag(req.Options.AssemblyListing)
 	flags.LowerM = base.CountFlag(req.Options.OptimizationReport)
+	flags.ClobberDead = req.Options.ClobberDead
+	flags.ClobberDeadReg = req.Options.ClobberDeadReg
 	flags.Lang = language
 	flags.BuildID = req.Options.BuildID
 	flags.Race = req.Options.Race
@@ -358,6 +362,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		}
 	}
 	backend.Liveness = liveness.NewContext(backend.SSA)
+	backend.Liveness.ClobberDeadHash = req.Debug.ClobberDeadHash
 	if req.Target.GOARCH == "amd64" {
 		amd64.NewContext(backend)
 	} else {

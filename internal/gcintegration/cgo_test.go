@@ -131,7 +131,9 @@ func main(){a:=C.sum(20,22);b:=C.call_go(10);s:=C.CString("cgo");defer C.free(un
 }
 
 type linuxDriverFixture struct {
-	native                             bool
+	native bool
+	// writableReference is set only for an owned SDK copy, never an input SDK.
+	writableReference                  bool
 	arch, image, bootstrap, tree, work string
 	manifest                           *Manifest
 }
@@ -220,7 +222,11 @@ func (f *linuxDriverFixture) commandResult(environment []string, executable stri
 		return cmd.CombinedOutput()
 	}
 
-	docker := []string{"run", "--rm", "--pull=never", "--platform", "linux/" + f.arch, "--entrypoint", "", "--network", "none", "--mount", "type=bind,source=" + f.bootstrap + ",target=/bootstrap,readonly", "--mount", "type=bind,source=" + f.tree + ",target=/goroot", "--mount", "type=bind,source=" + f.work + ",target=/work", "-w", "/work"}
+	referenceMount := "type=bind,source=" + f.bootstrap + ",target=/bootstrap"
+	if !f.writableReference {
+		referenceMount += ",readonly"
+	}
+	docker := []string{"run", "--rm", "--pull=never", "--platform", "linux/" + f.arch, "--entrypoint", "", "--network", "none", "--mount", referenceMount, "--mount", "type=bind,source=" + f.tree + ",target=/goroot", "--mount", "type=bind,source=" + f.work + ",target=/work", "-w", "/work"}
 	for _, e := range environment {
 		docker = append(docker, "-e", e)
 	}

@@ -28,6 +28,11 @@ func testPinnedNativeRegressionRun(t *testing.T, suite, run string, packages ...
 		arch = "arm64"
 	}
 	f := newLinuxDriverFixture(t, arch)
+	testPinnedNativeRegressionFixture(t, f, suite, run, packages, packages...)
+}
+
+func testPinnedNativeRegressionFixture(t *testing.T, f *linuxDriverFixture, suite, run string, required []string, packages ...string) {
+	arch := f.arch
 	for _, name := range []string{"addr2line", "cover", "nm", "objdump", "pack", "test2json", "vet"} {
 		relative := "pkg/tool/linux_" + arch + "/" + name
 		data, err := os.ReadFile(filepath.Join(f.bootstrap, relative))
@@ -47,6 +52,7 @@ func testPinnedNativeRegressionRun(t *testing.T, suite, run string, packages ...
 			}
 			out := f.goRun(t, library, name, args...)
 			passed, skipped := 0, 0
+			suiteSkipped := false
 			for _, line := range bytes.Split(out, []byte{'\n'}) {
 				var event struct{ Action, Test string }
 				if json.Unmarshal(line, &event) != nil {
@@ -58,12 +64,18 @@ func testPinnedNativeRegressionRun(t *testing.T, suite, run string, packages ...
 					}
 					if event.Action == "skip" {
 						skipped++
+						if event.Test == "Test" {
+							suiteSkipped = true
+						}
 					}
 				}
 			}
+			if passed == 0 || suiteSkipped {
+				t.Fatal("native regression suite did not execute tests")
+			}
 			t.Logf("native %s suite: %d passed tests, %d skipped tests", suite, passed, skipped)
 			if library {
-				f.verifyTrace(t, name, packages...)
+				f.verifyTrace(t, name, required...)
 			}
 		})
 	}

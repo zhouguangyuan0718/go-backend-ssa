@@ -131,6 +131,8 @@
 114. [M7 原生调试参数解析器](docs/m7-debug-parser.md)：保持上游参数语义，隔离帮助、错误及并发实例状态。
 115. [M7 compiler 调试与回归](docs/m7-compiler-debug.md)：原生调试策略、优化报告、阶段 dump、HTML 生命周期及完整 compiler 短测试。
 
+116. [M7 Go codegen 回归](docs/m7-codegen-regression.md)：独立补全固定测试目录、clobber 调试输入及双架构官方对照。
+
 ## 当前可运行的工具
 
 本地 module 路径为 `go-backend-ssa`，工具链为 Go 1.27.1。维护命令读取固定 Git 对象，不修改来源 Go 工作树；日常测试不需要来源仓库或网络。

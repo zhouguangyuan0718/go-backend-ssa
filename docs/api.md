@@ -104,3 +104,5 @@ Built/EarlyOptimized 中的 Block.Values 不是执行顺序。消费方按照控
 `Options.AssemblyListing` 为 `Compile` 选择原生 `-S` 的输出详细级别，结果通过 `Result.AssemblyListing` 返回。零值不打印；1、2、3 逐级包含普通符号/指令、DWARF 辅助符号及符号索引。该输出独立于 `AssemblyHeader`；`Build` 不接受非零级别。详见 [汇编输出验收](m7-assembly-listing.md)。
 
 `Request.Debug` 使用上游 `-d` 语法，明确提供调试输出文件、源文件、目录、计时及其它宿主服务。`Options.OptimizationReport` 对应 `-m` 详细级别。`Result.DebugOutput` 和 `Package.DebugOutput` 保存独立的原生报告文本；结构化 Diagnostics 仍保留 warning，展示原生文本时不应重复打印这些 warning。源码错误不返回部分结果，调试帮助返回 `*DebugHelp`。完整行为及验证见 [compiler 调试验收](m7-compiler-debug.md)。
+
+`Options.ClobberDead` 和 `Options.ClobberDeadReg` 对应原生死栈槽、死寄存器调试开关；`Debug.ClobberDeadHash` 显式提供函数 hash 后缀筛选。库不读取 `GOCLOBBERDEADHASH`，替换驱动负责传入。见 [Go codegen 验收](m7-codegen-regression.md)。
