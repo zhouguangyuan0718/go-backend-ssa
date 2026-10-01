@@ -202,8 +202,8 @@ func validateArtifactInputs(req Request, language, experiments string) error {
 			return fmt.Errorf("missing SSA artifact for %q", path)
 		}
 		m := a.info.Metadata
-		if path != a.info.ImportPath || m.Language != language || m.Target.GOOS != req.Target.GOOS || m.Target.GOARCH != req.Target.GOARCH || m.Target.GOAMD64 != req.Target.GOAMD64 || m.Target.GOARM64 != req.Target.GOARM64 || m.Experiments != experiments {
-			return fmt.Errorf("SSA artifact %q is incompatible with the requested package, language, target or experiments", path)
+		if path != a.info.ImportPath || m.Language != language || m.Target.GOOS != req.Target.GOOS || m.Target.GOARCH != req.Target.GOARCH || m.Target.GOAMD64 != req.Target.GOAMD64 || m.Target.GOARM64 != req.Target.GOARM64 || m.Experiments != experiments || m.Race != req.Options.Race {
+			return fmt.Errorf("SSA artifact %q is incompatible with the requested package, language, target, experiments or instrumentation", path)
 		}
 		if _, ok := req.Imports[path]; ok {
 			return fmt.Errorf("dependency %q has both artifact and native archive inputs", path)

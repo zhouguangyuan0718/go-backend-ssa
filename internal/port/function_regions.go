@@ -316,12 +316,28 @@ func regionAnchor(file *ast.File, stmt ast.Stmt, anchor SourceCallAnchor) (bool,
 			return false
 		}
 		root, member := regionSelector(a.Lhs[0])
-		if root == nil || regionImports(file)[root.Name] != "" || root.Obj != nil && root.Obj != file.Scope.Lookup(root.Name) {
+		if root == nil {
 			return false
 		}
 		name := root.Name
-		if member != "" {
-			name += "." + member
+		if anchor.Package != "" {
+			if root.Obj != nil || regionImports(file)[root.Name] != anchor.Package {
+				return false
+			}
+			name = member
+		} else {
+			if regionImports(file)[root.Name] != "" || root.Obj != nil && root.Obj != file.Scope.Lookup(root.Name) {
+				return false
+			}
+			if member != "" {
+				name += "." + member
+			}
+		}
+		if anchor.AssignmentLiteral != "" {
+			lit, ok := ast.Unparen(a.Rhs[0]).(*ast.BasicLit)
+			if !ok || lit.Value != anchor.AssignmentLiteral {
+				return false
+			}
 		}
 		return name == anchor.Assignment
 	}

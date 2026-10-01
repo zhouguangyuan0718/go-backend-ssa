@@ -125,3 +125,5 @@ Built 阶段未必可用官方 GOSSAFUNC dump 精确截取；测试可以在临�
 
 
 Linux ARM64 的完整后端、规范化 CPU 身份和隔离替换驱动已接通，见 [M6 记录](m6-arm64.md)。当前后续重心是完整后端元数据消费、cgo/race 驱动、最低 bootstrap SDK 与规定回归。
+
+Linux 双架构的 cgo 双向调用、三种链接模式和完整标准库/工具重建已验证，见 [cgo 记录](m6-cgo.md)；race 驱动、SSA/归档对照和真实检测已验证，见 [race 记录](m6-race.md)。最低 Go 1.24.6 启动 SDK 的 ARM64 正式自举见 [最低 SDK 记录](m7-minimum-bootstrap.md)。完整后端元数据消费及规定回归仍继续推进。

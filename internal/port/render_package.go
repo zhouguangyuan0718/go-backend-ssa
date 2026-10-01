@@ -175,6 +175,9 @@ func renderPackage(s *Source, units []Unit, imports map[string]string, root stri
 					if anchor.Assignment != "" {
 						prov.Declarations = append(prov.Declarations, fmt.Sprintf("function-region-assignment:%s:%d:%s", name, i, anchor.Assignment))
 					}
+					if anchor.AssignmentLiteral != "" {
+						prov.Declarations = append(prov.Declarations, fmt.Sprintf("function-region-assignment-literal:%s:%d:%s", name, i, anchor.AssignmentLiteral))
+					}
 					if anchor.Enclosing != "" {
 						prov.Declarations = append(prov.Declarations, fmt.Sprintf("function-region-enclosing:%s:%d:%s", name, i, anchor.Enclosing))
 					}

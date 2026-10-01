@@ -130,9 +130,9 @@ func main(){x:=[]int{5,1,3};slices.Sort(x);ch:=make(chan int);go func(){ch<-twic
 	// Unsupported options cannot silently invoke the original compiler or
 	// produce an archive using ignored semantics.
 	rejected := filepath.Join(probe, "rejected.a")
-	cmd := exec.Command(compiler, "-race", "-p", "main", "-o", rejected, filepath.Join(probe, "main.go"))
+	cmd := exec.Command(compiler, "-smallframes", "-p", "main", "-o", rejected, filepath.Join(probe, "main.go"))
 	cmd.Env = targetEnv
-	if b, e := cmd.CombinedOutput(); e == nil || !bytes.Contains(b, []byte("unsupported go-backend-ssa compiler option -race")) {
+	if b, e := cmd.CombinedOutput(); e == nil || !bytes.Contains(b, []byte("unsupported go-backend-ssa compiler option -smallframes")) {
 		t.Fatalf("unsupported option was not rejected: %v %s", e, b)
 	}
 	if _, e = os.Stat(rejected); !os.IsNotExist(e) {

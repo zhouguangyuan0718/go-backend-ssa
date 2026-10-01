@@ -495,3 +495,16 @@ func (c *Context) buildDeclarations(symABIs *ssagen.SymABIs, profile *pgoir.Prof
 	c.Package.Noder.Typecheck.CheckFuncStack()
 	return append([]*ssagen.Construction(nil), c.constructed...), nil
 }
+
+// PrepareInstrumentation applies native package exclusions after flag normalization
+// and before backend configuration or source lowering.
+func (c *Context) PrepareInstrumentation() {
+	if c == nil || c.Package == nil || c.Backend != nil || c.frontendStarted {
+		panic("instrumentation requires a bound package before backend setup")
+	}
+	c.prepareNoInstrument()
+	c.prepareInstrumentation()
+}
+func (c *Context) lookupPkgSpecial(path string) objabi.PkgSpecial {
+	return objabi.NewContext().LookupPkgSpecial(path)
+}

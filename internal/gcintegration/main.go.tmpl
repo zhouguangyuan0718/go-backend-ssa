@@ -59,7 +59,7 @@ func run() error {
         "trimpath": true, "nolocalimports": true, "D": true,
         "importcfg": true, "embedcfg": true, "symabis": true,
         "pack": true, "asmhdr": true, "c": true, "N": true, "pgoprofile": true,
-        "l": true, "dwarf": true,
+        "l": true, "dwarf": true, "race": true, "installsuffix": true,
     }
     var unsupported string
     flag.Visit(func(f *flag.Flag) { if !supported[f.Name] && unsupported == "" { unsupported = f.Name } })
@@ -74,6 +74,7 @@ func run() error {
         Target: target,
         Paths: compiler.SourcePaths{WorkingDirectory: base.Ctxt.Pathname, GOROOT: buildcfg.GOROOT, HostOS: runtime.GOOS},
         Options: compiler.Options{
+            Race: base.Flag.Race, InstallSuffix: base.Flag.InstallSuffix,
             Workers: base.Flag.LowerC, DisableOptimization: base.Flag.N != 0,
             DisableInlining: base.Flag.LowerL == 1, DisableDwarf: !base.Flag.Dwarf,
             Complete: base.Flag.Complete, Standard: base.Flag.Std, CompilingRuntime: base.Flag.CompilingRuntime,

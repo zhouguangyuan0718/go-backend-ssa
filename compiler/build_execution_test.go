@@ -85,7 +85,7 @@ func testSourceBuildOfficialOracle(t *testing.T, stage compiler.Stage, architect
  `
 	file := filepath.Join(dir, "p.go")
 	write(file, []byte(source))
-	modes := []string{"default", "noinline", "noopt", "amd64v3"}
+	modes := []string{"default", "noinline", "noopt", "amd64v3", "race"}
 	if arch == "arm64" {
 		modes[3] = "arm64v81"
 	}
@@ -99,6 +99,10 @@ func testSourceBuildOfficialOracle(t *testing.T, stage compiler.Stage, architect
 			req.Files[0].Name = file
 			req.Options.Complete = true
 			args := []string{"tool", "compile", "-p", "p", "-complete", "-dwarf=false"}
+			if mode == "race" {
+				req.Options.Race = true
+				args = append(args, "-race")
+			}
 			if mode == "noinline" {
 				req.Options.DisableInlining = true
 				args = append(args, "-l")

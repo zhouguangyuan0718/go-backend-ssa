@@ -5,12 +5,14 @@ import (
 	"go-backend-ssa/internal/cmd/obj"
 	"go-backend-ssa/internal/cmd/objabi"
 	"go-backend-ssa/internal/go/bisect"
+	"go-backend-ssa/internal/go/buildcfg"
 	"io"
 )
 
 // LinkContext owns the native linker-symbol namespace inputs. The Link and its
 // lookup maps stay intact; no second symbol representation is introduced.
 type LinkContext struct {
+	Experiment                                          buildcfg.ExperimentFlags
 	debugDefaults                                       DebugFlags
 	hashDebug                                           *HashDebug
 	ConvertHash, FmaHash, LoopVarHash, PGOHash          *HashDebug
@@ -63,6 +65,8 @@ func (c *LinkContext) PrepareNativeFlags(debug *DebugFlags) {
 	}
 	c.debugDefaults = *debug
 	c.preparePackageFlags()
+	c.prepareInstrumentationFlags()
+	c.prepareConcurrencyFlags()
 	c.normalizePackageFlags()
 	*debug = c.debugDefaults
 }

@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const ToolVersion = "syncgo-m6-v76"
+const ToolVersion = "syncgo-m6-v78"
 
 // Compiler paths are relative to src/cmd/compile. The two auxiliary internal
 // trees get distinct roots to avoid collisions such as compiler abi vs Go abi.
@@ -112,9 +112,11 @@ type RangeContinuationRule struct {
 
 type SourceCallAnchor struct {
 	// Assignment anchors a direct assignment to a package variable or field.
-	// It is mutually exclusive with the imported-call anchor fields.
-	Assignment      string
-	Package, Member string
+	// Package optionally identifies an imported variable; Member is empty.
+	// AssignmentLiteral optionally requires the exact basic-literal RHS token.
+	Assignment        string
+	AssignmentLiteral string
+	Package, Member   string
 	// Enclosing selects a complete top-level range or if containing the call.
 	// Empty requires a direct call statement.
 	Enclosing      string
@@ -339,12 +341,12 @@ func (p Plan) Validate() error {
 			}
 			for _, a := range []SourceCallAnchor{r.First, r.Last} {
 				if a.Assignment != "" {
-					if !memberPath(a.Assignment) || a.Package != "" || a.Member != "" || (a.Enclosing != "" && a.Enclosing != "if" && a.Enclosing != "range") || a.StringArgument != nil {
+					if !memberPath(a.Assignment) || (a.Package != "" && !safePath(a.Package)) || a.Member != "" || (a.Enclosing != "" && a.Enclosing != "if" && a.Enclosing != "range") || a.StringArgument != nil {
 						return fmt.Errorf("invalid assignment region anchor: %s", name)
 					}
 					continue
 				}
-				if a.Package == "" || !safePath(a.Package) || !memberPath(a.Member) || (a.Enclosing != "" && a.Enclosing != "range" && a.Enclosing != "if") || (a.StringArgument != nil && a.StringArgument.Index < 0) {
+				if a.AssignmentLiteral != "" || a.Package == "" || !safePath(a.Package) || !memberPath(a.Member) || (a.Enclosing != "" && a.Enclosing != "range" && a.Enclosing != "if") || (a.StringArgument != nil && a.StringArgument.Index < 0) {
 					return fmt.Errorf("invalid function region anchor: %s", name)
 				}
 			}

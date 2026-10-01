@@ -65,3 +65,5 @@ M3 已接通真实隔离 `cmd/compile` 驱动、Linux/amd64 无 cgo 标准库重
 
 
 M5 已提供源码 Built/EarlyOptimized 图与严格 import artifact；M6 已把相同源码驱动、完整后端及正式 bootstrap 扩展到 Linux/arm64，见 [ARM64 记录](m6-arm64.md)。剩余验收包括完整后端元数据消费、cgo/race 驱动、最低 bootstrap SDK 与规定回归。
+
+Linux 双架构的 cgo 双向调用、三种链接模式和完整标准库/工具重建已验证，见 [cgo 记录](m6-cgo.md)；race 驱动、SSA/归档对照和真实检测已验证，见 [race 记录](m6-race.md)。最低 Go 1.24.6 启动 SDK 的 ARM64 正式自举见 [最低 SDK 记录](m7-minimum-bootstrap.md)。完整后端元数据消费及规定回归仍继续推进。

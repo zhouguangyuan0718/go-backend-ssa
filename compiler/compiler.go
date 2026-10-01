@@ -69,6 +69,8 @@ type Options struct {
 	DisableInlining, DisableOptimization, DisableDwarf bool
 	Complete, Standard, CompilingRuntime               bool
 	AssemblyHeader, NoLocalImports                     bool
+	Race                                               bool
+	InstallSuffix                                      string
 	// Language defaults to go1.27 and may select an earlier language version.
 	Language, BuildID, TrimPath, LocalImportPrefix string
 }
@@ -214,6 +216,9 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	flags := &graph.Base.Flag
 	flags.Lang = language
 	flags.BuildID = req.Options.BuildID
+	flags.Race = req.Options.Race
+	flags.InstallSuffix = req.Options.InstallSuffix
+	graph.Base.Experiment = *exp
 	flags.TrimPath = req.Options.TrimPath
 	flags.NoLocalImports = req.Options.NoLocalImports
 	flags.D = req.Options.LocalImportPrefix
@@ -276,6 +281,9 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	nd.ReflectData = reflectdata.NewContext(tc, rt, sd)
 	nd.StaticInit = staticinit.NewContext(tc, nd.ReflectData)
 	lowering.BindFrontend(nd, escape.NewContext(tc, nd.Inline.Log))
+	finalizer := gc.NewContext(writer)
+	finalizer.BindPackage(pkginit.NewContext(nd))
+	finalizer.PrepareInstrumentation()
 	backend := ssagen.NewContext(tc)
 	backend.Inline = nd.Inline
 	backend.SSA = ssa.NewContext(abi.NewContext(graph), nd.ReflectData, nd.Inline.Log)
@@ -295,6 +303,10 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	producer.Var(new(countFlag), "N", "")
 	producer.Var(new(countFlag), "l", "")
 	producer.Bool("dwarf", true, "")
+	producer.Bool("race", false, "")
+	if req.Options.Race {
+		_ = producer.Set("race", "true")
+	}
 	if flags.N != 0 {
 		_ = producer.Set("N", "1")
 	}
@@ -309,7 +321,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		link.GenAbstractFunc = nil
 	}
 	dwarf.Flags = producer
-	dwarf.RecordFlags("N", "l", "dwarf")
+	dwarf.RecordFlags("N", "l", "race", "dwarf")
 	backend.InitTables()
 	config := gc.ObjectConfig{GOOS: req.Target.GOOS, GOARCH: req.Target.GOARCH, GOAMD64: req.Target.GOAMD64, GOARM64: armFeatures, Version: Version}
 	nd.BindImports(config, hostOS, func(name string) (noder.DependencyFile, error) {
@@ -373,8 +385,6 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 			return nil, err
 		}
 	}
-	finalizer := gc.NewContext(writer)
-	finalizer.BindPackage(pkginit.NewContext(nd))
 	finalizer.BindBackend(backend, lowering)
 	finalizer.PrepareFrontend(syms, profile)
 	if errors() {

@@ -38,7 +38,7 @@ Build 不修改输入；调用期间输入字节不得被外部并发改写。�
 
 artifact 包含原生类型信息以及泛型实例化、跨包内联所需的函数体/Unified IR 信息。解码进入本次 Universe，不接受另一次 Build 的可变 *types.Type / *ir.Package 作为隐式共享缓存。
 
-artifact header 标记 format、精确上游版本/提交、语言、目标、实验、包身份、原生对象引用能力及依赖哈希；完整容器用 SHA-256 验证。校验严格匹配，不假定不同 Go patch 可互换。官方 .a 已作为显式 `Imports` 适配器验收，同一路径的两种输入不能混用。
+artifact header 标记 format、精确上游版本/提交、语言、目标、实验、race 模式、包身份、原生对象引用能力及依赖哈希；完整容器用 SHA-256 验证。校验严格匹配，不假定不同 Go patch 可互换。官方 .a 已作为显式 `Imports` 适配器验收，同一路径的两种输入不能混用。
 
 Package → artifact → 新 Universe 的三包往返已验证泛型、类型别名和跨包内联。纯 artifact 闭包使用名称引用；原生归档混合输入保留其原生对象身份，并通过 `NativeObjectReferences` 显式标记。处理标准库从最小依赖闭包起步；不默认与宿主标准库缓存混用。
 
@@ -96,3 +96,5 @@ Built/EarlyOptimized 中的 Block.Values 不是执行顺序。消费方按照控
 ## 已实现的完整目标
 
 源码 `compiler.Build` / `compiler.Compile` 支持 Linux AMD64 和 ARM64。AMD64 使用 `GOAMD64=1..4`；ARM64 使用 `GOARM64` 的原生版本/特征语法，空值规范化为 `v8.0`，并要求 `GOAMD64=0`。返回元数据及 artifact 均记录规范化后的目标；混合架构字段或不匹配的依赖会报错。低层 ARM64 处理函数通过公开 `arm64.NewContext` 安装。实现和端到端验证见 [M6 记录](m6-arm64.md)。
+
+`Options.Race` 在两种源码阶段及原生编译入口均采用固定上游的插桩、checkptr 和包排除策略。`Metadata.Race` 保留请求模式；import artifact 的模式必须匹配当前请求。`InstallSuffix` 是显式驱动输入，不会自动查找任何宿主依赖。见 [race 验收](m6-race.md)。
