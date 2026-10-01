@@ -55,11 +55,11 @@ func Migration() Plan {
 				Functions: []string{"PathToPrefix", "PrefixToPath"},
 			},
 			{Source: "src/cmd/internal/objabi/line.go", Functions: []string{"AbsFile", "ApplyRewrites", "applyRewrite", "hasPathPrefix"},
-				Context: &ContextRule{Type: "Context", Constructor: "newContext", Adapter: "adapter_path.go", Selective: true},
+				Context: &ContextRule{Type: "Context", Constructor: "newContext", Adapter: "adapter_path.go", RedirectTrace: true, RedirectExit: true, Selective: true},
 				State:   []StateRule{{Source: "src/internal/buildcfg/cfg.go", Variable: "GOROOT", Field: "GOROOT"}}},
 			{Source: "src/cmd/internal/objabi/pkgspecial.go", WholeFile: true,
 
-				Context: &ContextRule{Type: "Context", Constructor: "newContext", Adapter: "adapter_path.go", Selective: true, Fields: map[string]string{"pkgSpecialsOnce": "pkgSpecialsOnce", "runtimePkgs": "runtimePkgs", "extraNoInstrumentPkgs": "extraNoInstrumentPkgs", "noRaceFuncPkgs": "noRaceFuncPkgs", "allowAsmABIPkgs": "allowAsmABIPkgs"}}},
+				Context: &ContextRule{Type: "Context", Constructor: "newContext", Adapter: "adapter_path.go", RedirectTrace: true, RedirectExit: true, Selective: true, Fields: map[string]string{"pkgSpecialsOnce": "pkgSpecialsOnce", "runtimePkgs": "runtimePkgs", "extraNoInstrumentPkgs": "extraNoInstrumentPkgs", "noRaceFuncPkgs": "noRaceFuncPkgs", "allowAsmABIPkgs": "allowAsmABIPkgs"}}},
 			{Source: "src/cmd/internal/objabi/util.go", Declarations: []string{"GlobalDictPrefix"}},
 			{Source: "src/cmd/internal/objabi/symkind.go", WholeFile: true},
 			{Source: "src/cmd/internal/objabi/reloctype.go", WholeFile: true},
@@ -172,11 +172,12 @@ func Migration() Plan {
 			},
 		},
 	}
+	// The native debug parser in objabi also consumes bisect.
+	plan.Units = append(objectDataMigration()[:1], plan.Units...)
 	for i, u := range plan.Units {
 		if u.Source == "src/cmd/internal/obj/link.go" {
 			units := append([]Unit(nil), plan.Units[:i]...)
 			dataUnits := objectDataMigration()
-			units = append(units, dataUnits[:1]...) // bisect precedes native Link state
 			units = append(units, objectDeclarations()...)
 			units = append(units, dataUnits[1:]...)
 			plan.Units = append(units, plan.Units[i:]...)

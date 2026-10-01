@@ -5,6 +5,9 @@ package port
 // Dependencies precede their users in the ordinary migration order.
 func objectDeclarations() []Unit {
 	return []Unit{
+		{Source: "src/cmd/internal/objabi/flag.go", Declarations: []string{"DebugFlag", "debugField", "DebugSSA", "debugHelpHeader", "DebugFlag.Set", "DebugFlag.String"}, Functions: []string{"NewDebugFlag"},
+			Context: &ContextRule{Type: "Context", Constructor: "newContext", Adapter: "adapter_path.go", Selective: true, RedirectTrace: true, RedirectExit: true},
+			Owner:   &OwnerRule{Types: []string{"DebugFlag"}, Context: "Context", Field: "compilation"}},
 		{Source: "src/cmd/internal/hash/hash.go", WholeFile: true},
 		{Source: "src/internal/goarch/goarch.go", Declarations: []string{"ArchFamilyType", "AMD64"}},
 		{Source: "src/cmd/internal/sys/arch.go", Declarations: []string{"Arch", "ArchFamily", "AMD64"}},

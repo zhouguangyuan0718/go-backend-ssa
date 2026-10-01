@@ -26,7 +26,7 @@ func archiveMigration(units []Unit) []Unit {
 			}
 		case internal + "objabi/util.go":
 			u.Functions = append(u.Functions, "HeaderString")
-			u.Context = &ContextRule{Type: "Context", Constructor: "newContext", Selective: true, Adapter: "adapter_path.go"}
+			u.Context = &ContextRule{Type: "Context", Constructor: "newContext", Selective: true, RedirectTrace: true, RedirectExit: true, Adapter: "adapter_path.go"}
 			for _, name := range []string{"GOOS", "GOARCH", "Version"} {
 				u.State = append(u.State, StateRule{Source: "src/internal/buildcfg/cfg.go", Variable: name, Field: "ObjectConfig." + name})
 			}
