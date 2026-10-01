@@ -124,6 +124,7 @@
 107. [M6 cgo 驱动验证](docs/m6-cgo.md)：双目标真实 C 工具链、内部/外部链接、回调、GC 和完整发行包重建。
 108. [M7 最低 bootstrap SDK](docs/m7-minimum-bootstrap.md)：Linux ARM64 从 Go 1.24.6 完成正式 bootstrap 及编译器固定点验证。
 109. [M6 race 编译与执行](docs/m6-race.md)：原生插桩策略、SSA/artifact 隔离、双架构完整归档对照及实际竞争/checkptr 检测。
+110. [M6 独立后端消费](docs/m6-independent-backend.md)：独立 module 的 ABI/Aux/初始化/defer 元数据审计及双架构、双阶段 SSA 子集执行。
 
 ## 当前可运行的工具
 
