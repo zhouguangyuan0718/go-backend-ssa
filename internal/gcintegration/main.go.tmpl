@@ -65,7 +65,7 @@ func run() error {
     base.DebugSSA = ssa.PhaseOption
     base.ParseFlags()
     supported := map[string]bool{
-        "wb": true, "live": true, "B": true, "smallframes": true, "e": true, "C": true, "L": true, "spectre": true, "clobberdead": true, "clobberdeadreg": true,
+        "dynlink": true, "linkobj": true, "wb": true, "live": true, "B": true, "smallframes": true, "e": true, "C": true, "L": true, "spectre": true, "clobberdead": true, "clobberdeadreg": true,
         "p": true, "o": true, "lang": true, "std": true, "+": true,
         "complete": true, "buildid": true, "goversion": true,
         "trimpath": true, "nolocalimports": true, "D": true,
@@ -88,7 +88,7 @@ func run() error {
             UnlimitedErrors: base.Flag.LowerE != 0, OmitErrorColumns: base.Flag.C != 0, ActualErrorFiles: base.Flag.L == 1,
             AssemblyListing: int(base.Flag.S), OptimizationReport: int(base.Flag.LowerM),
             Spectre: base.Flag.Spectre, ClobberDead: base.Flag.ClobberDead, ClobberDeadReg: base.Flag.ClobberDeadReg,
-            Race: base.Flag.Race, Shared: *base.Flag.Shared, InstallSuffix: base.Flag.InstallSuffix,
+            Race: base.Flag.Race, Shared: *base.Flag.Shared, DynamicLink: *base.Flag.Dynlink, SplitObjects: base.Flag.LinkObj != "", InstallSuffix: base.Flag.InstallSuffix,
             Workers: base.Flag.LowerC, DisableOptimization: base.Flag.N != 0,
             InliningLevel: int(base.Flag.LowerL), LivenessReport: int(base.Flag.Live), BoundsCheckMode: int(base.Flag.B), SmallFrames: base.Flag.SmallFrames, DisableWriteBarrier: !base.Flag.WB, DisableDwarf: !base.Flag.Dwarf,
             Complete: base.Flag.Complete, Standard: base.Flag.Std, CompilingRuntime: base.Flag.CompilingRuntime,
@@ -127,6 +127,9 @@ func run() error {
     if _, err = os.Stdout.Write(result.AssemblyListing); err != nil { return err }
     for _, d := range result.Diagnostics { if d.Severity != diagnostic.Warning { fmt.Fprintln(os.Stderr, d.String()) } }
     if err = os.WriteFile(base.Flag.LowerO, result.Archive, 0666); err != nil { return err }
+    if base.Flag.LinkObj != "" {
+        if err = os.WriteFile(base.Flag.LinkObj, result.LinkerArchive, 0666); err != nil { return err }
+    }
     if base.Flag.AsmHdr != "" {
         if err = os.WriteFile(base.Flag.AsmHdr, result.AssemblyHeader, 0666); err != nil { return err }
     }

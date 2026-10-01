@@ -114,3 +114,5 @@ Built/EarlyOptimized 中的 Block.Values 不是执行顺序。消费方按照控
 `Request.ImportLoaders` 将包路径映射为 `func(context.Context) ([]byte, error)`，仅在原生导入或 artifact 依赖校验需要时调用。同一路径每次编译最多加载一次，字节快照独立；不能与 `Imports` 或 `Artifacts` 重复声明。提供器错误可通过 `errors.Is/As` 检查。见 [按需归档验收](m7-lazy-imports.md)。
 
 `Options.InliningLevel` 对应原生 `-l` 计数（0 为默认，1 关闭内联，较高值使用上游实验级别）；`DisableInlining` 是级别 1 的别名，不能与非零级别同时设置。`LivenessReport` 对应 `-live`，`BoundsCheckMode` 对应 `-B` 计数，`SmallFrames` 对应 `-smallframes`，`DisableWriteBarrier` 对应 `-wb=false`。原生报告进入 `DebugOutput`。见 [前端选项验收](m7-frontend-flags.md)。
+
+`Options.DynamicLink` 对应原生 `-dynlink` 并启用有效 Shared 模式。`Metadata.DynamicLink` 和有效 `Metadata.Shared` 进入 artifact 身份校验。`Options.SplitObjects` 对应 `-linkobj`：`Result.Archive` 返回编译器导出归档，`Result.LinkerArchive` 返回链接器归档；默认仍返回单一完整归档。SplitObjects 只用于 Compile，Build 会拒绝。见 [链接模式验收](m7-link-modes.md)。

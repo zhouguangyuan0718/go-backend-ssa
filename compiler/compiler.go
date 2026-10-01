@@ -98,7 +98,12 @@ type Options struct {
 	AssemblyHeader, NoLocalImports                     bool
 	Race                                               bool
 	Shared                                             bool
-	InstallSuffix                                      string
+	// DynamicLink permits references to Go symbols in other shared libraries.
+	DynamicLink bool
+	// SplitObjects returns separate compiler and linker archives, as -linkobj does.
+	// It applies only to Compile.
+	SplitObjects  bool
+	InstallSuffix string
 	// Language defaults to go1.27 and may select an earlier language version.
 	Language, BuildID, TrimPath, LocalImportPrefix string
 }
@@ -143,7 +148,10 @@ type Request struct {
 	Embed      EmbedConfig
 }
 type Result struct {
-	Archive         []byte
+	// Archive contains the combined archive, or compiler exports when SplitObjects is set.
+	Archive []byte
+	// LinkerArchive is populated only for SplitObjects.
+	LinkerArchive   []byte
 	AssemblyHeader  []byte
 	AssemblyListing []byte
 	DebugOutput     []byte
@@ -240,6 +248,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	link.Debugasm = req.Options.AssemblyListing
 	link.TargetOS = req.Target.GOOS
 	link.Flag_shared = req.Options.Shared
+	link.Flag_dynlink = req.Options.DynamicLink
 	if e = link.Headtype.Set(req.Target.GOOS); e != nil {
 		return nil, e
 	}
@@ -324,6 +333,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	flags.BuildID = req.Options.BuildID
 	flags.Race = req.Options.Race
 	flags.Shared = &link.Flag_shared
+	flags.Dynlink = &link.Flag_dynlink
 	flags.InstallSuffix = req.Options.InstallSuffix
 	graph.Base.Experiment = *exp
 	flags.TrimPath = req.Options.TrimPath
@@ -444,12 +454,16 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	producer.Bool("dwarf", true, "")
 	producer.Bool("race", false, "")
 	producer.Bool("shared", false, "")
+	producer.Bool("dynlink", false, "")
 	producer.String("spectre", "", "")
 	if req.Options.Spectre != "" {
 		_ = producer.Set("spectre", req.Options.Spectre)
 	}
-	if req.Options.Shared {
+	if link.Flag_shared {
 		_ = producer.Set("shared", "true")
+	}
+	if req.Options.DynamicLink {
+		_ = producer.Set("dynlink", "true")
 	}
 	if req.Options.Race {
 		_ = producer.Set("race", "true")
@@ -474,7 +488,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		link.GenAbstractFunc = nil
 	}
 	dwarf.Flags = producer
-	dwarf.RecordFlags("B", "N", "l", "race", "shared", "dwarf", "smallframes", "spectre")
+	dwarf.RecordFlags("B", "N", "l", "race", "shared", "dynlink", "dwarf", "smallframes", "spectre")
 	finalizer.ConfigureFrontendFlags()
 	backend.InitEnv()
 	backend.InitTables()
@@ -620,9 +634,18 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		return nil, &Error{Diagnostics: diagnostics()}
 	}
 	finalizer.SetObjectHeader(config)
-	var output archiveOutput
-	if e = finalizer.WriteArchive(&output, gc.CombinedObject); e != nil {
+	var output, linker archiveOutput
+	mode := gc.CombinedObject
+	if req.Options.SplitObjects {
+		mode = gc.CompilerObject
+	}
+	if e = finalizer.WriteArchive(&output, mode); e != nil {
 		return nil, e
+	}
+	if req.Options.SplitObjects {
+		if e = finalizer.WriteArchive(&linker, gc.LinkerObject); e != nil {
+			return nil, e
+		}
 	}
 	var assembly archiveOutput
 	if req.Options.AssemblyHeader {
@@ -641,7 +664,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	if e = link.Bso.Flush(); e != nil {
 		return nil, e
 	}
-	return &Result{Archive: output.data, AssemblyHeader: assembly.data, AssemblyListing: assemblyListing.Bytes(), DebugOutput: debugOutput.snapshot(), PackageName: u.LocalPkg.Name, ImportPath: req.ImportPath, Target: req.Target, Diagnostics: diagnostics()}, nil
+	return &Result{Archive: output.data, LinkerArchive: linker.data, AssemblyHeader: assembly.data, AssemblyListing: assemblyListing.Bytes(), DebugOutput: debugOutput.snapshot(), PackageName: u.LocalPkg.Name, ImportPath: req.ImportPath, Target: req.Target, Diagnostics: diagnostics()}, nil
 }
 
 type archiveInput struct {
