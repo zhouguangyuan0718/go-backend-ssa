@@ -4,6 +4,7 @@
 package compiler
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"flag"
@@ -63,6 +64,10 @@ type SourceFile struct {
 	Data []byte
 }
 type Options struct {
+	// AssemblyListing selects native -S detail: zero disables it, 1 prints symbols
+	// and instructions, 2 adds DWARF auxiliary symbols, and 3 adds symbol indexes.
+	// Only Compile emits machine assembly; Build rejects nonzero levels.
+	AssemblyListing int
 	// Stage applies to Build only; the empty value selects Built.
 	Stage                                              Stage
 	Workers                                            int
@@ -112,12 +117,13 @@ type Request struct {
 	Embed      EmbedConfig
 }
 type Result struct {
-	Archive        []byte
-	AssemblyHeader []byte
-	PackageName    string
-	ImportPath     string
-	Target         Target
-	Diagnostics    []diagnostic.Diagnostic
+	Archive         []byte
+	AssemblyHeader  []byte
+	AssemblyListing []byte
+	PackageName     string
+	ImportPath      string
+	Target          Target
+	Diagnostics     []diagnostic.Diagnostic
 }
 type Error struct{ Diagnostics []diagnostic.Diagnostic }
 
@@ -183,6 +189,9 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		arch = architectures.ArchARM64
 	}
 	link := &obj.Link{Arch: &obj.LinkArch{Arch: arch}, Pkgpath: req.ImportPath, Pathname: workingDirectory, UseBASEntries: true, Flag_locationlists: !req.Options.DisableDwarf && built == nil}
+	var assemblyListing bytes.Buffer
+	link.Bso = bufio.NewWriter(&assemblyListing)
+	link.Debugasm = req.Options.AssemblyListing
 	link.TargetOS = req.Target.GOOS
 	link.Flag_shared = req.Options.Shared
 	if e = link.Headtype.Set(req.Target.GOOS); e != nil {
@@ -216,6 +225,7 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	tc.InitUniverse()
 	tc.InitRuntime()
 	flags := &graph.Base.Flag
+	flags.S = base.CountFlag(req.Options.AssemblyListing)
 	flags.Lang = language
 	flags.BuildID = req.Options.BuildID
 	flags.Race = req.Options.Race
@@ -474,7 +484,10 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
-	return &Result{Archive: output.data, AssemblyHeader: assembly.data, PackageName: u.LocalPkg.Name, ImportPath: req.ImportPath, Target: req.Target, Diagnostics: diagnostics()}, nil
+	if e = link.Bso.Flush(); e != nil {
+		return nil, e
+	}
+	return &Result{Archive: output.data, AssemblyHeader: assembly.data, AssemblyListing: assemblyListing.Bytes(), PackageName: u.LocalPkg.Name, ImportPath: req.ImportPath, Target: req.Target, Diagnostics: diagnostics()}, nil
 }
 
 type archiveInput struct {

@@ -188,7 +188,13 @@ func selectedStage(req Request) Stage {
 }
 
 func validateStage(req Request, building bool) error {
+	if req.Options.AssemblyListing < 0 {
+		return fmt.Errorf("assembly listing requires a nonnegative detail level")
+	}
 	if building {
+		if req.Options.AssemblyListing != 0 {
+			return fmt.Errorf("assembly listings require native Compile")
+		}
 		if req.Options.Stage != "" && req.Options.Stage != Built && req.Options.Stage != EarlyOptimized {
 			return fmt.Errorf("unsupported SSA build stage %q", req.Options.Stage)
 		}
