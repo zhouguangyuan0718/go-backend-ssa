@@ -112,3 +112,5 @@ Built/EarlyOptimized 中的 Block.Values 不是执行顺序。消费方按照控
 `compiler.Error.Report` 保存独立的原生诊断文本，`Error()` 使用该文本；`Diagnostics` 保留结构化坐标与消息。`Options.UnlimitedErrors`、`OmitErrorColumns`、`ActualErrorFiles` 分别对应 `-e`、`-C`、`-L`，列号开关仅影响文本。详见 [错误报告验收](m7-error-reports.md)。
 
 `Request.ImportLoaders` 将包路径映射为 `func(context.Context) ([]byte, error)`，仅在原生导入或 artifact 依赖校验需要时调用。同一路径每次编译最多加载一次，字节快照独立；不能与 `Imports` 或 `Artifacts` 重复声明。提供器错误可通过 `errors.Is/As` 检查。见 [按需归档验收](m7-lazy-imports.md)。
+
+`Options.InliningLevel` 对应原生 `-l` 计数（0 为默认，1 关闭内联，较高值使用上游实验级别）；`DisableInlining` 是级别 1 的别名，不能与非零级别同时设置。`LivenessReport` 对应 `-live`，`BoundsCheckMode` 对应 `-B` 计数，`SmallFrames` 对应 `-smallframes`，`DisableWriteBarrier` 对应 `-wb=false`。原生报告进入 `DebugOutput`。见 [前端选项验收](m7-frontend-flags.md)。

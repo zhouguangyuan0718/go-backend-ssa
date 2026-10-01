@@ -66,6 +66,18 @@ type SourceFile struct {
 	Data []byte
 }
 type Options struct {
+	// InliningLevel is the native -l count: zero uses the default policy, 1
+	// disables inlining, and higher values select native experimental levels.
+	// DisableInlining is an alias for level 1 and cannot accompany a nonzero level.
+	InliningLevel int
+	// LivenessReport selects native -live report detail.
+	LivenessReport int
+	// BoundsCheckMode is the native -B count; any nonzero value disables checks.
+	BoundsCheckMode int
+	// SmallFrames uses the native reduced stack allocation limits.
+	SmallFrames bool
+	// DisableWriteBarrier corresponds to native -wb=false.
+	DisableWriteBarrier bool
 	// AssemblyListing selects native -S detail: zero disables it, 1 prints symbols
 	// and instructions, 2 adds DWARF auxiliary symbols, and 3 adds symbol indexes.
 	// Only Compile emits machine assembly; Build rejects nonzero levels.
@@ -186,6 +198,9 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	}
 	if req.ImportPath == "" || len(req.Files) == 0 || req.Options.Workers < 0 {
 		return nil, fmt.Errorf("compiler requires an import path, source files and nonnegative worker count")
+	}
+	if req.Options.DisableInlining && req.Options.InliningLevel != 0 {
+		return nil, fmt.Errorf("DisableInlining cannot accompany InliningLevel")
 	}
 	language := req.Options.Language
 	if language == "" {
@@ -320,16 +335,19 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	flags.Complete = req.Options.Complete
 	flags.Std = req.Options.Standard
 	flags.CompilingRuntime = req.Options.CompilingRuntime
-	flags.WB = true
+	flags.WB = !req.Options.DisableWriteBarrier
 	flags.Dwarf = !req.Options.DisableDwarf && built == nil
 	flags.LowerC = req.Options.Workers
 	if flags.LowerC == 0 || built != nil {
 		flags.LowerC = 1
 	}
-	flags.LowerL = 1
+	flags.LowerL = base.CountFlag(req.Options.InliningLevel)
 	if req.Options.DisableInlining {
-		flags.LowerL = 0
+		flags.LowerL = 1
 	}
+	flags.Live = base.CountFlag(req.Options.LivenessReport)
+	flags.B = base.CountFlag(req.Options.BoundsCheckMode)
+	flags.SmallFrames = req.Options.SmallFrames
 	if req.Options.DisableOptimization {
 		flags.N = 1
 	}
@@ -421,6 +439,8 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	producer.SetOutput(io.Discard)
 	producer.Var(new(countFlag), "N", "")
 	producer.Var(new(countFlag), "l", "")
+	producer.Var(new(countFlag), "B", "")
+	producer.Bool("smallframes", false, "")
 	producer.Bool("dwarf", true, "")
 	producer.Bool("race", false, "")
 	producer.Bool("shared", false, "")
@@ -437,8 +457,14 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	if flags.N != 0 {
 		_ = producer.Set("N", "1")
 	}
-	if req.Options.DisableInlining {
-		_ = producer.Set("l", "1")
+	if flags.LowerL != 0 {
+		_ = producer.Set("l", strconv.Itoa(int(flags.LowerL)))
+	}
+	if flags.B != 0 {
+		_ = producer.Set("B", strconv.Itoa(int(flags.B)))
+	}
+	if flags.SmallFrames {
+		_ = producer.Set("smallframes", "true")
 	}
 	if req.Options.DisableDwarf || built != nil {
 		_ = producer.Set("dwarf", "false")
@@ -448,7 +474,8 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		link.GenAbstractFunc = nil
 	}
 	dwarf.Flags = producer
-	dwarf.RecordFlags("N", "l", "race", "shared", "dwarf", "spectre")
+	dwarf.RecordFlags("B", "N", "l", "race", "shared", "dwarf", "smallframes", "spectre")
+	finalizer.ConfigureFrontendFlags()
 	backend.InitEnv()
 	backend.InitTables()
 	config := gc.ObjectConfig{GOOS: req.Target.GOOS, GOARCH: req.Target.GOARCH, GOAMD64: req.Target.GOAMD64, GOARM64: armFeatures, Version: Version}

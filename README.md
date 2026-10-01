@@ -135,6 +135,7 @@
 117. [M7 Spectre 参数](docs/m7-spectre.md)：原生目标限制、索引/间接调用防护及 AMD64 codegen 回归。
 118. [M7 原生错误报告](docs/m7-error-reports.md)：错误数量限制、位置格式、排序去重及独立的文本诊断。
 119. [M7 按需依赖归档](docs/m7-lazy-imports.md)：支持含未来输出的 importcfg、独立加载缓存及严格 artifact 身份校验。
+120. [M7 原生前端选项](docs/m7-frontend-flags.md)：内联级别、活跃性报告、边界检查、小栈帧和写屏障设置及上游回归。
 
 ## 当前可运行的工具
 

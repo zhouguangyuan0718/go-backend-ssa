@@ -65,7 +65,7 @@ func run() error {
     base.DebugSSA = ssa.PhaseOption
     base.ParseFlags()
     supported := map[string]bool{
-        "e": true, "C": true, "L": true, "spectre": true, "clobberdead": true, "clobberdeadreg": true,
+        "wb": true, "live": true, "B": true, "smallframes": true, "e": true, "C": true, "L": true, "spectre": true, "clobberdead": true, "clobberdeadreg": true,
         "p": true, "o": true, "lang": true, "std": true, "+": true,
         "complete": true, "buildid": true, "goversion": true,
         "trimpath": true, "nolocalimports": true, "D": true,
@@ -78,7 +78,6 @@ func run() error {
     if unsupported != "" { return fmt.Errorf("unsupported go-backend-ssa compiler option -%s", unsupported) }
     if base.Ctxt.Pkgpath == obj.UnlinkablePkg { return fmt.Errorf("go-backend-ssa driver currently requires an explicit -p package path") }
     if base.Flag.N != 0 && base.Flag.N != 1 { return fmt.Errorf("unsupported optimization mode -N=%d",base.Flag.N) }
-    if base.Flag.LowerL != 0 && base.Flag.LowerL != 1 { return fmt.Errorf("unsupported inline mode -l=%d", base.Flag.LowerL) }
     target := compiler.Target{GOOS: buildcfg.GOOS, GOARCH: buildcfg.GOARCH, Experiments: buildcfg.Experiment.String()}
     if buildcfg.GOARCH == "amd64" { target.GOAMD64 = buildcfg.GOAMD64 } else { target.GOARM64 = buildcfg.GOARM64.String() }
     req := compiler.Request{
@@ -91,7 +90,7 @@ func run() error {
             Spectre: base.Flag.Spectre, ClobberDead: base.Flag.ClobberDead, ClobberDeadReg: base.Flag.ClobberDeadReg,
             Race: base.Flag.Race, Shared: *base.Flag.Shared, InstallSuffix: base.Flag.InstallSuffix,
             Workers: base.Flag.LowerC, DisableOptimization: base.Flag.N != 0,
-            DisableInlining: base.Flag.LowerL == 1, DisableDwarf: !base.Flag.Dwarf,
+            InliningLevel: int(base.Flag.LowerL), LivenessReport: int(base.Flag.Live), BoundsCheckMode: int(base.Flag.B), SmallFrames: base.Flag.SmallFrames, DisableWriteBarrier: !base.Flag.WB, DisableDwarf: !base.Flag.Dwarf,
             Complete: base.Flag.Complete, Standard: base.Flag.Std, CompilingRuntime: base.Flag.CompilingRuntime,
             AssemblyHeader: base.Flag.AsmHdr != "", NoLocalImports: base.Flag.NoLocalImports,
             Language: base.Flag.Lang, BuildID: base.Flag.BuildID, TrimPath: base.Flag.TrimPath, LocalImportPrefix: base.Flag.D,

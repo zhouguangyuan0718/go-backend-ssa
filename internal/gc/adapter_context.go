@@ -28,6 +28,7 @@ import (
 // finalization to the same compiler graph. Public stage calls are serialized;
 // CompileQueued runs the configured backend workers and joins them before return.
 type Context struct {
+	frontendFlagsPrepared                            bool
 	buildEarly                                       bool
 	bloop                                            *bloop.Context
 	loopvar                                          *loopvar.Context
@@ -70,6 +71,16 @@ func NewContext(writer *objw.Context) *Context {
 		panic("compiler finalization requires an object writer")
 	}
 	return &Context{Writer: writer}
+}
+
+// ConfigureFrontendFlags applies the native inline and stack allocation policy
+// after recording raw flags and before parsing or compiling declarations.
+func (c *Context) ConfigureFrontendFlags() {
+	if c == nil || c.Package == nil || c.frontendFlagsPrepared || c.frontendStarted || c.declarationsStarted || c.finishStarted {
+		panic("frontend flags require an unused bound compiler context")
+	}
+	c.frontendFlagsPrepared = true
+	c.configureFrontendFlags()
 }
 
 // AddGCLocals runs the native sequential registration of all function auxiliary

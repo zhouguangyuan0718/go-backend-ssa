@@ -79,3 +79,10 @@ func TestPinnedImportConfigRegression(t *testing.T) {
 	}
 	testPinnedTestDirectory(t, "importcfg", "^Test$/^(alias3.go|closure3.go|closure5.go|ddd2.go|fixedbugs)$/^bug369.go$", "test/slow", "test/fast")
 }
+
+func TestPinnedFrontendFlagsRegression(t *testing.T) {
+	if os.Getenv("GO_SSA_LANGUAGE_REGRESSION") == "" {
+		t.Skip("set GO_SSA_LANGUAGE_REGRESSION and Linux driver fixture inputs")
+	}
+	testPinnedTestDirectory(t, "frontend-flags", "^Test$/^(abi|fixedbugs|live2.go|live_regabi.go|live_uintptrkeepalive.go|uintptrescapes2.go|inline_caller.go|inline_callers.go|linkname.go)$/^(result_live|issue15747|issue20250|issue42944|issue19467|issue59404|issue59638|issue27732a|issue48092)\\.go$")
+}
