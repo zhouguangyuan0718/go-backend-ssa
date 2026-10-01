@@ -59,6 +59,7 @@ func (c *Context) warnfAt(pos src.XPos, f string, a ...any) {
 func (c *Context) errorfAt(pos src.XPos, code errorspkg.Code, f string, a ...any) {
 	g := c.Typecheck.IR
 	g.Diagnostics.Add(diagnostic.Error, code.String(), g.Base.Ctxt.OutermostPos(pos), fmt.Sprintf(f, a...))
+	g.Base.ReportError(pos, code, f, a...)
 }
 func (c *Context) traceWriter() io.Writer {
 	if w := c.Typecheck.IR.TraceWriter; w != nil {

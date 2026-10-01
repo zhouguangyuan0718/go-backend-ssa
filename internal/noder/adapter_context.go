@@ -39,6 +39,7 @@ import (
 // Context owns the formerly process-wide inputs used by the selected noder
 // algorithms. The supplied Link and its position table belong to this instance.
 type Context struct {
+	sourcePositions           *posMap
 	versionErrorRx            *regexp.Regexp
 	sourceStarted, sourceMode bool
 	syntaxMu                  sync.Mutex
@@ -129,6 +130,7 @@ func (c *Context) warn(format string, args ...any) {
 }
 func (c *Context) errorfAt(pos src.XPos, code errors.Code, format string, args ...any) {
 	c.Diagnostics.Add(diagnostic.Error, code.String(), c.Ctxt.PosTable.Pos(pos), fmt.Sprintf(format, args...))
+	c.Base.ReportError(pos, code, format, args...)
 }
 func (c *Context) fatalf(format string, args ...any) { panic(fmt.Errorf(format, args...)) }
 func (c *Context) fatalfAt(pos src.XPos, format string, args ...any) {
@@ -363,10 +365,11 @@ func (c *Context) ReadLocalPackage(data string) *ir.Package {
 }
 
 func (c *Context) errorExit() {
-	if c.sourceMode && c.Diagnostics.HasErrors() {
-		panic(SourceErrors(c.Diagnostics.Diagnostics()))
+	diagnostics := append(c.Diagnostics.Diagnostics(), c.Types.Diagnostics.Diagnostics()...)
+	if c.sourceMode && (c.Diagnostics.HasErrors() || c.Types.Diagnostics.HasErrors()) {
+		panic(SourceErrors(diagnostics))
 	}
-	for _, d := range c.Diagnostics.Diagnostics() {
+	for _, d := range diagnostics {
 		if d.Severity == diagnostic.Error {
 			panic(fmt.Errorf("noder: %s", d))
 		}
@@ -466,6 +469,16 @@ func (e ParseErrors) Error() string {
 // files may be parsed concurrently while that configuration remains fixed.
 // A parser or reader panic is propagated after the error collector is joined.
 func (c *Context) ParseFile(filename string, input io.Reader) (*ParsedFile, error) {
+	f, err := c.ParseSourceFile(filename, input)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
+// ParseSourceFile also retains a tree when the native parser permits checking
+// after directive errors. A nil tree marks native LoadPackage's fatal boundary.
+func (c *Context) ParseSourceFile(filename string, input io.Reader) (*ParsedFile, error) {
 	if c == nil || c.Ctxt == nil || c.Types == nil || c.Base == nil || input == nil || filename == "" || c.GOOS == "" || c.GOARCH == "" || c.Ctxt.Pkgpath == "" {
 		return nil, fmt.Errorf("noder parsing requires a source, filename, target OS/architecture and package path")
 	}
@@ -483,6 +496,9 @@ func (c *Context) ParseFile(filename string, input io.Reader) (*ParsedFile, erro
 		p.file, _ = syntax.Parse(syntax.NewFileBase(filename), input, p.error, p.pragma, syntax.CheckBranches)
 	}()
 	if len(failures) != 0 {
+		if p.file != nil {
+			return &ParsedFile{native: p}, failures
+		}
 		return nil, failures
 	}
 	if p.file == nil {
@@ -604,7 +620,7 @@ func (c *Context) syntaxErrors() int {
 	return n
 }
 func (c *Context) exitIfErrors() {
-	if c.Diagnostics.HasErrors() {
+	if c.Diagnostics.HasErrors() || c.Types.Diagnostics.HasErrors() {
 		c.errorExit()
 	}
 }
@@ -633,7 +649,7 @@ func (c *Context) rewriteRangeFuncs(pkg *types2.Package, info *types2.Info, file
 // This consumes a fresh compilation once. Each retained ParsedFile must belong
 // to this Context; callers must not concurrently mutate its trees or inputs.
 func (c *Context) CompileParsedPackage(parsed []*ParsedFile) (target *ir.Package, err error) {
-	if c == nil || c.sourceStarted || c.importHeader == nil || c.Checker != c.importChecker || c.importStarted || c.importFailed || c.localPkgReader != nil || c.checked != nil || c.Diagnostics.HasErrors() || len(parsed) == 0 {
+	if c == nil || c.sourceStarted || c.importHeader == nil || c.Checker != c.importChecker || c.importStarted || c.importFailed || c.localPkgReader != nil || c.checked != nil || len(parsed) == 0 {
 		return nil, fmt.Errorf("source compilation requires a fresh bound compiler and parsed files")
 	}
 	if c.ReflectData == nil || c.ReflectData.Typecheck != c.Typecheck || c.StaticInit == nil || c.StaticInit.Typecheck != c.Typecheck || c.StaticInit.ReflectData != c.ReflectData || len(c.Typecheck.Target.Funcs) != 0 || len(c.Typecheck.Target.Imports) != 0 {
@@ -675,7 +691,11 @@ func (c *Context) CompileParsedPackage(parsed []*ParsedFile) (target *ir.Package
 			}
 		}
 	}()
-	c.unified(posMap{compilation: c}, noders)
+	m := posMap{compilation: c}
+	if c.sourcePositions != nil {
+		m = *c.sourcePositions
+	}
+	c.unified(m, noders)
 	return c.Typecheck.Target, nil
 }
 
@@ -730,4 +750,16 @@ func (c *Context) readDependencyExport(f interface {
 		return u.data, nil
 	}
 	return c.readExportData(f)
+}
+
+// ReportParseErrors translates native syntax positions into the same source
+// position map used by type checking, before native error formatting.
+func (c *Context) ReportParseErrors(errs ParseErrors) {
+	if c.sourcePositions == nil {
+		c.sourcePositions = &posMap{compilation: c}
+	}
+	m := c.sourcePositions
+	for _, e := range errs {
+		c.errorfAt(m.makeXPos(e.Pos), 0, "%s", e.Msg)
+	}
 }

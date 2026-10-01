@@ -82,6 +82,7 @@ func (c *Context) assertfAt(ok bool, pos src.XPos, f string, a ...any) {
 func (c *Context) errorf(f string, a ...any) {
 	g := c.Typecheck.IR
 	g.Diagnostics.Add(diagnostic.Error, "", g.Base.Ctxt.OutermostPos(g.Types.Pos), fmt.Sprintf(f, a...))
+	g.Base.ReportError(g.Types.Pos, 0, f, a...)
 }
 func (c *Context) warn(f string, a ...any) { c.warnfAt(c.Typecheck.IR.Types.Pos, f, a...) }
 func (c *Context) warnfAt(pos src.XPos, f string, a ...any) {

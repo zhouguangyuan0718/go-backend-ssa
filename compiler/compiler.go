@@ -72,6 +72,8 @@ type Options struct {
 	AssemblyListing int
 	// OptimizationReport selects native -m detail; zero disables it.
 	OptimizationReport int
+	// Diagnostic flags correspond to native -e, -C, and -L.
+	UnlimitedErrors, OmitErrorColumns, ActualErrorFiles bool
 	// ClobberDead and ClobberDeadReg enable native dead stack/register debugging.
 	ClobberDead, ClobberDeadReg bool
 	// Spectre uses native comma-separated all, index, and ret mitigation settings.
@@ -135,9 +137,16 @@ type Result struct {
 	Target          Target
 	Diagnostics     []diagnostic.Diagnostic
 }
-type Error struct{ Diagnostics []diagnostic.Diagnostic }
+type Error struct {
+	Diagnostics []diagnostic.Diagnostic
+	// Report preserves native formatting, ordering, and diagnostic limits.
+	Report []byte
+}
 
 func (e *Error) Error() string {
+	if len(e.Report) != 0 {
+		return strings.TrimSuffix(string(e.Report), "\n")
+	}
 	var messages []string
 	for _, d := range e.Diagnostics {
 		if d.Severity == diagnostic.Error {
@@ -230,7 +239,10 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 		return append(graph.Diagnostics.Diagnostics(), u.Diagnostics.Diagnostics()...)
 	}
 	errors := func() bool { return graph.Diagnostics.HasErrors() || u.Diagnostics.HasErrors() || link.Errors != 0 }
-	link.DiagFunc = func(f string, a ...any) { graph.Diagnostics.Add(diagnostic.Error, "", src.Pos{}, fmt.Sprintf(f, a...)) }
+	link.DiagFunc = func(f string, a ...any) {
+		graph.Diagnostics.Add(diagnostic.Error, "", src.Pos{}, fmt.Sprintf(f, a...))
+		graph.Base.ReportError(src.XPos{}, 0, f, a...)
+	}
 	defer func() {
 		failure := recover()
 		graph.CloseHTMLWriters()
@@ -243,11 +255,14 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 			}
 		}
 		if failure != nil {
-			panic(failure)
+			if _, sourceExit := failure.(base.SourceErrorExit); !sourceExit {
+				panic(failure)
+			}
 		}
 		if errors() {
+			graph.Base.FlushReports()
 			result = nil
-			err = &Error{Diagnostics: diagnostics()}
+			err = &Error{Diagnostics: diagnostics(), Report: debugOutput.snapshot()}
 		}
 	}()
 	tc := typecheck.NewContext(graph)
@@ -256,6 +271,15 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	tc.InitUniverse()
 	tc.InitRuntime()
 	flags := &graph.Base.Flag
+	if req.Options.UnlimitedErrors {
+		flags.LowerE = 1
+	}
+	if req.Options.OmitErrorColumns {
+		flags.C = 1
+	}
+	if req.Options.ActualErrorFiles {
+		flags.L = 1
+	}
 	flags.S = base.CountFlag(req.Options.AssemblyListing)
 	flags.LowerM = base.CountFlag(req.Options.OptimizationReport)
 	flags.Spectre = req.Options.Spectre
@@ -427,9 +451,16 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 			return nil, fmt.Errorf("source filename is empty or duplicated: %q", file.Name)
 		}
 		seen[file.Name] = true
-		parsed[i], e = nd.ParseFile(file.Name, strings.NewReader(string(file.Data)))
+		parsed[i], e = nd.ParseSourceFile(file.Name, strings.NewReader(string(file.Data)))
 		if e != nil {
-			return nil, e
+			var parsing noder.ParseErrors
+			if !stderrors.As(e, &parsing) {
+				return nil, e
+			}
+			nd.ReportParseErrors(parsing)
+			if parsed[i] == nil {
+				return nil, &Error{Diagnostics: diagnostics()}
+			}
 		}
 	}
 	if _, e = nd.CompileParsedPackage(parsed); e != nil {
@@ -470,9 +501,6 @@ func compile(ctx context.Context, req Request, built **Package) (result *Result,
 	}
 	finalizer.BindBackend(backend, lowering)
 	finalizer.PrepareFrontend(syms, profile)
-	if errors() {
-		return nil, &Error{Diagnostics: diagnostics()}
-	}
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}

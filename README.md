@@ -133,6 +133,7 @@
 
 116. [M7 Go codegen 回归](docs/m7-codegen-regression.md)：独立补全固定测试目录、clobber 调试输入及双架构官方对照。
 117. [M7 Spectre 参数](docs/m7-spectre.md)：原生目标限制、索引/间接调用防护及 AMD64 codegen 回归。
+118. [M7 原生错误报告](docs/m7-error-reports.md)：错误数量限制、位置格式、排序去重及独立的文本诊断。
 
 ## 当前可运行的工具
 

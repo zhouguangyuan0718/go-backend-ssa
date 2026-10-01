@@ -12,15 +12,15 @@ func TestPinnedCodegenRegression(t *testing.T) {
 	if os.Getenv("GO_SSA_CODEGEN_REGRESSION") == "" {
 		t.Skip("set GO_SSA_CODEGEN_REGRESSION and Linux driver fixture inputs")
 	}
-	testPinnedTestDirectory(t, "codegen", "^Test/codegen/")
+	testPinnedTestDirectory(t, "codegen", "^Test/codegen/", "command-line-arguments")
 }
 func TestPinnedLanguageRegression(t *testing.T) {
 	if os.Getenv("GO_SSA_LANGUAGE_REGRESSION") == "" {
 		t.Skip("set GO_SSA_LANGUAGE_REGRESSION and Linux driver fixture inputs")
 	}
-	testPinnedTestDirectory(t, "language", "^Test$")
+	testPinnedTestDirectory(t, "language", "^Test$", "command-line-arguments")
 }
-func testPinnedTestDirectory(t *testing.T, suite, run string) {
+func testPinnedTestDirectory(t *testing.T, suite, run string, successfulPackages ...string) {
 	arch := os.Getenv("GO_SSA_TEST_ARCH")
 	if arch == "" {
 		arch = "arm64"
@@ -60,6 +60,15 @@ func testPinnedTestDirectory(t *testing.T, suite, run string) {
 	// Native run tests execute from GOROOT/test and may create linker output.
 	f.writableReference = true
 	// This package consists solely of external tests, so its compiler package
-	// identity is testdir_test. Require direct test-source compiles as well.
-	testPinnedNativeRegressionFixture(t, f, suite, run, []string{"cmd/internal/testdir_test", "command-line-arguments"}, "cmd/internal/testdir")
+	// identity is testdir_test. Additional required packages must produce a
+	// successful archive; intentional source errors do not write success traces.
+	required := append([]string{"cmd/internal/testdir_test"}, successfulPackages...)
+	testPinnedNativeRegressionFixture(t, f, suite, run, required, "cmd/internal/testdir")
+}
+
+func TestPinnedDiagnosticRegression(t *testing.T) {
+	if os.Getenv("GO_SSA_LANGUAGE_REGRESSION") == "" {
+		t.Skip("set GO_SSA_LANGUAGE_REGRESSION and Linux driver fixture inputs")
+	}
+	testPinnedTestDirectory(t, "diagnostic", "^Test$/^(fixedbugs|slice3err.go)$/^(issue14999|issue20027|issue42058a|issue42058b|issue4468|issue49767|issue49814|issue78355|notinheap2|issue22662b)\\.go$")
 }

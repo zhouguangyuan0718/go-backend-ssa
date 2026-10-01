@@ -108,3 +108,5 @@ Built/EarlyOptimized 中的 Block.Values 不是执行顺序。消费方按照控
 `Options.ClobberDead` 和 `Options.ClobberDeadReg` 对应原生死栈槽、死寄存器调试开关；`Debug.ClobberDeadHash` 显式提供函数 hash 后缀筛选。库不读取 `GOCLOBBERDEADHASH`，替换驱动负责传入。见 [Go codegen 验收](m7-codegen-regression.md)。
 
 `Options.Spectre` 接受原生 `all,index,ret` 设置语法，并保留目标限制、错误及 DWARF producer 记录。见 [Spectre 验收](m7-spectre.md)。
+
+`compiler.Error.Report` 保存独立的原生诊断文本，`Error()` 使用该文本；`Diagnostics` 保留结构化坐标与消息。`Options.UnlimitedErrors`、`OmitErrorColumns`、`ActualErrorFiles` 分别对应 `-e`、`-C`、`-L`，列号开关仅影响文本。详见 [错误报告验收](m7-error-reports.md)。

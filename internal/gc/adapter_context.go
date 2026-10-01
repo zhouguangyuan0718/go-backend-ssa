@@ -340,17 +340,19 @@ func (c *Context) compileWorker(fn *ir.Func, worker int, profile *pgoir.Profile)
 
 // CompileDeclarations runs the native package fixed point after frontend passes,
 // generating runtime types, globals and functions until no more work appears.
+// Source errors do not invalidate ownership: native per-function checks collect
+// remaining diagnostics. Failed stages mean interrupted execution, not messages.
 // The native final DWARF pass participates in that same fixed point. Call once
 // on a fresh bound backend; do not pre-enqueue functions or emit globals.
 func (c *Context) CompileDeclarations(symABIs *ssagen.SymABIs, profile *pgoir.Profile) {
-	if c == nil || c.Backend == nil || c.declarationsStarted || c.finishStarted || c.frontendRunning || c.frontendFailed || c.functionDataDone || c.workerFailure != nil || len(c.enqueued) != 0 || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.Typecheck.IR.CurFunc != nil || !c.Backend.OwnsSymABIs(symABIs) || c.Backend.WorkerCount() != c.Package.Noder.Typecheck.IR.Base.Flag.LowerC || c.Backend.WorkerCount() < 1 || c.errors() != 0 || profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile) {
+	if c == nil || c.Backend == nil || c.declarationsStarted || c.finishStarted || c.frontendRunning || c.frontendFailed || c.functionDataDone || c.workerFailure != nil || len(c.enqueued) != 0 || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.Typecheck.IR.CurFunc != nil || !c.Backend.OwnsSymABIs(symABIs) || c.Backend.WorkerCount() != c.Package.Noder.Typecheck.IR.Base.Flag.LowerC || c.Backend.WorkerCount() < 1 || profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile) {
 		panic("declaration compilation requires a fresh initialized backend and owned ABI/profile")
 	}
 	c.declarationsStarted, c.declarationsRunning = true, true
 	completed := false
 	defer func() { c.declarationsRunning = false; c.declarationsFailed = !completed }()
 	c.compileDeclarations(symABIs, profile)
-	completed = c.errors() == 0
+	completed = true
 }
 
 // PrepareFrontend preserves Main's native pass order from the first IR report
@@ -358,7 +360,7 @@ func (c *Context) CompileDeclarations(symABIs *ssagen.SymABIs, profile *pgoir.Pr
 // Call once after loading local IR and applying coverage fixups, before compiling
 // declarations. A started pass consumes this stage even if a provider panics.
 func (c *Context) PrepareFrontend(symABIs *ssagen.SymABIs, profile *pgoir.Profile) {
-	if c == nil || c.Backend == nil || c.frontendStarted || c.declarationsStarted || c.functionDataDone || c.workerFailure != nil || len(c.enqueued) != 0 || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.Typecheck.IR.CurFunc != nil || !c.Backend.OwnsSymABIs(symABIs) || c.errors() != 0 || profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile) {
+	if c == nil || c.Backend == nil || c.frontendStarted || c.declarationsStarted || c.functionDataDone || c.workerFailure != nil || len(c.enqueued) != 0 || len(c.compilequeue) != 0 || c.Writer.Link.ObjectNumbered() || c.Package.Noder.Typecheck.IR.CurFunc != nil || !c.Backend.OwnsSymABIs(symABIs) || profile != nil && !c.Backend.Inline.PGO.OwnsProfile(profile) {
 		panic("frontend preparation requires a fresh compiler graph and owned ABI/profile")
 	}
 	n := c.Package.Noder
@@ -395,7 +397,7 @@ func (c *Context) PrepareFrontend(symABIs *ssagen.SymABIs, profile *pgoir.Profil
 	completed := false
 	defer func() { c.frontendRunning = false; c.frontendFailed = !completed }()
 	c.prepareFrontend(symABIs, profile)
-	completed = c.errors() == 0
+	completed = true
 }
 
 // FinishPackage preserves Main's post-compilation write-barrier checks, global

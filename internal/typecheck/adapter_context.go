@@ -68,6 +68,7 @@ func (c *Context) errorfAt(pos src.XPos, code errorspkg.Code, format string, arg
 	entries := c.IR.Diagnostics.Diagnostics()
 	c.lastError = entries[len(entries)-1]
 	c.lastErrorLine = c.IR.Base.FmtPos(pos)
+	c.IR.Base.ReportError(pos, code, format, args...)
 }
 func (c *Context) errors() int {
 	n := 0
@@ -84,6 +85,7 @@ func (c *Context) errors() int {
 // Preserve the native selector-error refinement on structured diagnostics. The
 // compare-and-rewrite also prevents changing an intervening phase's message.
 func (c *Context) updateErrorDot(line, name, expr string) {
+	c.IR.Base.UpdateReportDot(line, name, expr)
 	if c.lastErrorLine == line && c.lastError.Message == fmt.Sprintf("undefined: %v", name) {
 		c.IR.Diagnostics.RewriteLast(c.lastError, fmt.Sprintf("undefined: %v in %v", name, expr))
 	}

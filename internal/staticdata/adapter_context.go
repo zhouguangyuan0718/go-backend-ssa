@@ -39,6 +39,7 @@ func NewContext(graph *ir.Context, writer *objw.Context) *Context {
 func (c *Context) fatalf(f string, a ...any) { panic(fmt.Errorf(f, a...)) }
 func (c *Context) errorfAt(pos src.XPos, code errors.Code, f string, a ...any) {
 	c.IR.Diagnostics.Add(diagnostic.Error, code.String(), c.Writer.Link.PosTable.Pos(pos), fmt.Sprintf(f, a...))
+	c.IR.Base.ReportError(pos, code, f, a...)
 }
 func (c *Context) checkName(n *ir.Name) {
 	if n == nil || n.Sym() == nil || n.Sym().Universe() != c.IR.Types || n.Type() != nil && n.Type().Universe() != c.IR.Types {

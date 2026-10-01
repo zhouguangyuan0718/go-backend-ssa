@@ -84,6 +84,7 @@ func (c *Context) warnfAt(p src.XPos, f string, a ...any) {
 
 func (c *Context) errorfAt(p src.XPos, code errorspkg.Code, f string, a ...any) {
 	c.SSA.IR.Diagnostics.Add(diagnostic.Error, code.String(), c.SSA.IR.Base.Ctxt.PosTable.Pos(p), fmt.Sprintf(f, a...))
+	c.SSA.IR.Base.ReportError(p, code, f, a...)
 }
 
 func (c *Context) checkArgLiveness(fn *ir.Func, f *ssa.Func, pp *objw.Progs) {

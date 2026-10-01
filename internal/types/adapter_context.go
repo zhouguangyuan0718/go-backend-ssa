@@ -217,6 +217,9 @@ func (u *Universe) assertf(b bool, format string, args ...any) {
 func (u *Universe) errorf(format string, args ...any) { u.errorfAt(u.Pos, 0, format, args...) }
 func (u *Universe) errorfAt(pos src.XPos, code errors.Code, format string, args ...any) {
 	u.Diagnostics.Add(diagnostic.Error, strconv.Itoa(int(code)), u.PosTable.Pos(pos), fmt.Sprintf(format, args...))
+	if u.links != nil {
+		u.links.ReportError(pos, code, format, args...)
+	}
 }
 func (u *Universe) checkMethods(methods []*Field) {
 	for _, f := range methods {

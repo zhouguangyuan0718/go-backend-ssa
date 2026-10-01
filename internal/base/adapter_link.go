@@ -7,6 +7,7 @@ import (
 	"go-backend-ssa/internal/cmd/src"
 	"go-backend-ssa/internal/go/bisect"
 	"go-backend-ssa/internal/go/buildcfg"
+	errorspkg "go-backend-ssa/internal/go/types/errors"
 	"io"
 	"sync"
 )
@@ -14,6 +15,11 @@ import (
 // LinkContext owns the native linker-symbol namespace inputs. The Link and its
 // lookup maps stay intact; no second symbol representation is introduced.
 type LinkContext struct {
+	numErrors, numSyntaxErrors int
+	lastError                  struct {
+		syntax, other src.XPos
+		msg           string
+	}
 	reportMu                                            sync.Mutex
 	reportMessages                                      []errorMsg
 	Experiment                                          buildcfg.ExperimentFlags
@@ -142,3 +148,28 @@ func (c *LinkContext) ReportWarning(pos src.XPos, format string, args ...any) {
 	c.reportWarning(pos, format, args...)
 }
 func (c *LinkContext) FlushReports() { c.reportMu.Lock(); defer c.reportMu.Unlock(); c.flushReports() }
+
+// SourceErrorExit is the native compiler error-exit boundary. The embedding
+// compiler catches it after joining work and returns detached diagnostics.
+type SourceErrorExit struct{}
+
+func (SourceErrorExit) Error() string   { return "source compilation failed" }
+func (c *LinkContext) sourceErrorExit() { c.flushReports(); panic(SourceErrorExit{}) }
+
+// The driver owns output-file cleanup. This library never discovers a path.
+func (c *LinkContext) haltOnError() {
+	if c.Flag.LowerH != 0 {
+		c.flushReports()
+		panic("-h")
+	}
+}
+func (c *LinkContext) ReportError(pos src.XPos, code errorspkg.Code, format string, args ...any) {
+	c.reportMu.Lock()
+	defer c.reportMu.Unlock()
+	c.reportError(pos, code, format, args...)
+}
+func (c *LinkContext) UpdateReportDot(line, name, expr string) {
+	c.reportMu.Lock()
+	defer c.reportMu.Unlock()
+	c.updateReportDot(line, name, expr)
+}

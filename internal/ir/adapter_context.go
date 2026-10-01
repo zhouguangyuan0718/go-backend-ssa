@@ -144,6 +144,7 @@ func (c *Context) fatalfAt(pos src.XPos, format string, args ...any) {
 }
 func (c *Context) errorfAt(pos src.XPos, code errors.Code, format string, args ...any) {
 	c.Diagnostics.Add(diagnostic.Error, code.String(), c.Base.Ctxt.PosTable.Pos(pos), fmt.Sprintf(format, args...))
+	c.Base.ReportError(pos, code, format, args...)
 }
 func (c *Context) warnfAt(pos src.XPos, format string, args ...any) {
 	c.Diagnostics.Add(diagnostic.Warning, "", c.Base.Ctxt.PosTable.Pos(pos), fmt.Sprintf(format, args...))

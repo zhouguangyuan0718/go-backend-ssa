@@ -121,6 +121,7 @@ func (c *Context) traceWriter() io.Writer {
 func (c *Context) errorfAt(pos src.XPos, code errorspkg.Code, f string, a ...any) {
 	g := c.Typecheck.IR
 	g.Diagnostics.Add(diagnostic.Error, code.String(), g.Base.Ctxt.PosTable.Pos(pos), fmt.Sprintf(f, a...))
+	g.Base.ReportError(pos, code, f, a...)
 }
 func (c *Context) checkSym(s *types.Sym) {
 	if s == nil || s.Universe() != c.Typecheck.IR.Types {

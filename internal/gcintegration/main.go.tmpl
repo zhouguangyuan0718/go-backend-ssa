@@ -65,7 +65,7 @@ func run() error {
     base.DebugSSA = ssa.PhaseOption
     base.ParseFlags()
     supported := map[string]bool{
-        "spectre": true, "clobberdead": true, "clobberdeadreg": true,
+        "e": true, "C": true, "L": true, "spectre": true, "clobberdead": true, "clobberdeadreg": true,
         "p": true, "o": true, "lang": true, "std": true, "+": true,
         "complete": true, "buildid": true, "goversion": true,
         "trimpath": true, "nolocalimports": true, "D": true,
@@ -86,6 +86,7 @@ func run() error {
         Target: target,
         Paths: compiler.SourcePaths{WorkingDirectory: base.Ctxt.Pathname, GOROOT: buildcfg.GOROOT, HostOS: runtime.GOOS},
         Options: compiler.Options{
+            UnlimitedErrors: base.Flag.LowerE != 0, OmitErrorColumns: base.Flag.C != 0, ActualErrorFiles: base.Flag.L == 1,
             AssemblyListing: int(base.Flag.S), OptimizationReport: int(base.Flag.LowerM),
             Spectre: base.Flag.Spectre, ClobberDead: base.Flag.ClobberDead, ClobberDeadReg: base.Flag.ClobberDeadReg,
             Race: base.Flag.Race, Shared: *base.Flag.Shared, InstallSuffix: base.Flag.InstallSuffix,
